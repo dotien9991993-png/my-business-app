@@ -4459,7 +4459,7 @@ export default function SimpleMarketingSystem() {
         category: formCategory,
         receipt_date: formDate,
         note: formNote,
-        status: (currentUser.role === 'Admin' || currentUser.role === 'admin') ? 'approved' : 'pending',
+        status: 'pending',
         created_by: currentUser.name
       };
       try {
