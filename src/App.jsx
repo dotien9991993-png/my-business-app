@@ -4030,6 +4030,14 @@ export default function SimpleMarketingSystem() {
                 <div className="font-medium">{currentUser.name}</div>
                 <div className="text-sm text-gray-600">{currentUser.role} • {currentUser.team}</div>
               </div>
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                <button
+                  onClick={() => setShowPermissionsModal(true)}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm"
+                >
+                  🔐 Phân Quyền
+                </button>
+              )}
               <button
                 onClick={() => {
                   setIsLoggedIn(false);
@@ -4197,8 +4205,19 @@ export default function SimpleMarketingSystem() {
               ))}
             </div>
 
-            {/* Logout Button */}
-            <div className="p-4 border-t">
+            {/* Admin Buttons */}
+            <div className="p-4 border-t space-y-2">
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                <button
+                  onClick={() => {
+                    setShowPermissionsModal(true);
+                    setShowMobileSidebar(false);
+                  }}
+                  className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium"
+                >
+                  🔐 Phân Quyền
+                </button>
+              )}
               <button
                 onClick={() => {
                   setIsLoggedIn(false);
