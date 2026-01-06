@@ -19,6 +19,7 @@ export default function SimpleMarketingSystem() {
   const [loading, setLoading] = useState(true);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [userPermissions, setUserPermissions] = useState({});
 
   const [allUsers, setAllUsers] = useState([]);
@@ -3984,12 +3985,25 @@ export default function SimpleMarketingSystem() {
                             setActiveTab('users');
                             setShowAdminMenu(false);
                           }}
-                          className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3"
+                          className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3 border-b"
                         >
                           <span className="text-xl">👥</span>
                           <div>
                             <div className="font-medium">Users</div>
                             <div className="text-xs text-gray-500">Quản lý người dùng</div>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowPermissionsModal(true);
+                            setShowAdminMenu(false);
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3"
+                        >
+                          <span className="text-xl">🔐</span>
+                          <div>
+                            <div className="font-medium">Phân Quyền</div>
+                            <div className="text-xs text-gray-500">Quản lý quyền truy cập</div>
                           </div>
                         </button>
                       </div>
@@ -4164,8 +4178,7 @@ export default function SimpleMarketingSystem() {
                 { id: 'receipts', l: '🧾 Thu/Chi', show: true },
                 { id: 'debts', l: '📋 Công Nợ', show: true },
                 { id: 'salaries', l: '💰 Lương', show: true },
-                { id: 'reports', l: '📈 Báo Cáo', show: true },
-                { id: 'users', l: '👥 Phân Quyền', show: hasFinanceFullAccess() }
+                { id: 'reports', l: '📈 Báo Cáo', show: true }
               ] : []).filter(t => t.show).map(t => (
                 <button
                   key={t.id}
@@ -4273,8 +4286,7 @@ export default function SimpleMarketingSystem() {
             { id: 'receipts', l: '🧾 Thu/Chi' },
             { id: 'debts', l: '📋 Công Nợ' },
             { id: 'salaries', l: '💰 Lương' },
-            { id: 'reports', l: '📈 Báo Cáo' },
-            ...(hasFinanceFullAccess() ? [{ id: 'users', l: '👥 Phân Quyền' }] : [])
+            { id: 'reports', l: '📈 Báo Cáo' }
           ] : []).map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'}`}>
               {t.l}
@@ -4304,8 +4316,7 @@ export default function SimpleMarketingSystem() {
             { id: 'receipts', l: '🧾 Thu/Chi' },
             { id: 'debts', l: '📋 Công Nợ' },
             { id: 'salaries', l: '💰 Lương' },
-            { id: 'reports', l: '📈 Báo Cáo' },
-            { id: 'users', l: '👥 Phân Quyền' }
+            { id: 'reports', l: '📈 Báo Cáo' }
           ] : []).find(t => t.id === activeTab)?.l || ''}
         </h2>
       </div>
@@ -4337,7 +4348,6 @@ export default function SimpleMarketingSystem() {
             {activeTab === 'debts' && <DebtsView />}
             {activeTab === 'salaries' && <SalariesView />}
             {activeTab === 'reports' && <ReportsView />}
-            {activeTab === 'users' && <UsersPermissionsView />}
           </>
         )}
       </div>
@@ -4346,6 +4356,7 @@ export default function SimpleMarketingSystem() {
       {showCreateTaskModal && <CreateTaskModal />}
       {showCreateJobModal && <CreateJobModal />}
       {showJobModal && <JobDetailModal />}
+      {showPermissionsModal && <PermissionsModal />}
     </div>
   );
 
@@ -6008,7 +6019,7 @@ export default function SimpleMarketingSystem() {
     );
   }
 
-  function UsersPermissionsView() {
+  function PermissionsModal() {
     const [localPermissions, setLocalPermissions] = useState({});
     const [saving, setSaving] = useState(false);
 
@@ -6073,80 +6084,86 @@ export default function SimpleMarketingSystem() {
     };
 
     return (
-      <div className="p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">👥 Phân Quyền Người Dùng</h2>
-          {saving && <span className="text-blue-600 text-sm">Đang lưu...</span>}
-        </div>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="p-6 border-b bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-bold">🔐 Phân Quyền Người Dùng</h2>
+              <p className="text-white/80 text-sm">Quản lý quyền truy cập các module</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {saving && <span className="text-white/80 text-sm">Đang lưu...</span>}
+              <button onClick={() => setShowPermissionsModal(false)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg flex items-center justify-center">×</button>
+            </div>
+          </div>
+          
+          <div className="p-6 overflow-y-auto flex-1 space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <h3 className="font-medium text-blue-800 mb-2">📌 Hướng dẫn:</h3>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="flex items-center gap-2"><span className="px-2 py-1 bg-gray-100 text-gray-600 rounded">Không có</span> Ẩn module</div>
+                <div className="flex items-center gap-2"><span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded">Của mình</span> Xem dữ liệu mình tạo</div>
+                <div className="flex items-center gap-2"><span className="px-2 py-1 bg-green-100 text-green-700 rounded">Toàn quyền</span> Xem tất cả + duyệt</div>
+              </div>
+            </div>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <h3 className="font-medium text-blue-800 mb-2">📌 Hướng dẫn phân quyền:</h3>
-          <ul className="text-sm text-blue-700 space-y-1">
-            <li>• <strong>Không có:</strong> Không thấy module</li>
-            <li>• <strong>Của mình:</strong> Chỉ xem dữ liệu do mình tạo (task, thu chi, lương của mình)</li>
-            <li>• <strong>Toàn quyền:</strong> Xem tất cả + tạo/sửa/xóa + duyệt + báo cáo</li>
-          </ul>
-        </div>
-
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-700">Người dùng</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
-                  {modules.map(m => (
-                    <th key={m.id} className="px-4 py-3 text-center font-medium text-gray-700">{m.name}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {allUsers.map(user => {
-                  const isAdmin = user.role === 'Admin' || user.role === 'admin';
-                  return (
-                    <tr key={user.id} className={isAdmin ? 'bg-red-50/30' : 'hover:bg-gray-50'}>
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{user.name}</div>
-                        <div className="text-xs text-gray-500">{user.email}</div>
-                      </td>
-                      <td className="px-4 py-3">{getRoleBadge(user.role)}</td>
+            <div className="bg-white rounded-xl border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium text-gray-700">Người dùng</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
                       {modules.map(m => (
-                        <td key={m.id} className="px-4 py-3 text-center">
-                          {isAdmin ? (
-                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm">Toàn quyền</span>
-                          ) : (
-                            <select
-                              value={getUserPermission(user.id, m.id)}
-                              onChange={(e) => handlePermissionChange(user.id, m.id, parseInt(e.target.value))}
-                              className={`px-3 py-1.5 rounded border text-sm font-medium cursor-pointer ${
-                                getUserPermission(user.id, m.id) === 0 ? 'bg-gray-100 text-gray-600' :
-                                getUserPermission(user.id, m.id) === 1 ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-green-100 text-green-700'
-                              }`}
-                            >
-                              {permissionLevels.map(p => (
-                                <option key={p.value} value={p.value}>{p.label}</option>
-                              ))}
-                            </select>
-                          )}
-                        </td>
+                        <th key={m.id} className="px-4 py-3 text-center font-medium text-gray-700">{m.name}</th>
                       ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y">
+                    {allUsers.map(user => {
+                      const isAdmin = user.role === 'Admin' || user.role === 'admin';
+                      return (
+                        <tr key={user.id} className={isAdmin ? 'bg-red-50/30' : 'hover:bg-gray-50'}>
+                          <td className="px-4 py-3">
+                            <div className="font-medium">{user.name}</div>
+                            <div className="text-xs text-gray-500">{user.email}</div>
+                          </td>
+                          <td className="px-4 py-3">{getRoleBadge(user.role)}</td>
+                          {modules.map(m => (
+                            <td key={m.id} className="px-4 py-3 text-center">
+                              {isAdmin ? (
+                                <span className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm">Toàn quyền</span>
+                              ) : (
+                                <select
+                                  value={getUserPermission(user.id, m.id)}
+                                  onChange={(e) => handlePermissionChange(user.id, m.id, parseInt(e.target.value))}
+                                  className={`px-3 py-1.5 rounded border text-sm font-medium cursor-pointer ${
+                                    getUserPermission(user.id, m.id) === 0 ? 'bg-gray-100 text-gray-600' :
+                                    getUserPermission(user.id, m.id) === 1 ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-green-100 text-green-700'
+                                  }`}
+                                >
+                                  {permissionLevels.map(p => (
+                                    <option key={p.value} value={p.value}>{p.label}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-          <h3 className="font-medium text-yellow-800 mb-2">⚠️ Lưu ý:</h3>
-          <ul className="text-sm text-yellow-700 space-y-1">
-            <li>• Admin luôn có toàn quyền tất cả module</li>
-            <li>• Manager mặc định có toàn quyền (có thể thay đổi)</li>
-            <li>• Member mặc định chỉ xem của mình</li>
-            <li>• Thay đổi quyền được lưu tự động</li>
-          </ul>
+          <div className="p-4 border-t bg-gray-50 flex justify-end">
+            <button onClick={() => setShowPermissionsModal(false)} className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium">
+              Đóng
+            </button>
+          </div>
         </div>
       </div>
     );
