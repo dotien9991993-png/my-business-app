@@ -4925,6 +4925,7 @@ export default function SimpleMarketingSystem() {
       const updatedPayments = [...(selectedDebt.payments || []), newPayment];
 
       try {
+        // Cập nhật công nợ
         const { error } = await supabase.from('debts').update({
           paid_amount: newPaidAmount,
           remaining_amount: newRemainingAmount,
@@ -4932,7 +4933,31 @@ export default function SimpleMarketingSystem() {
           payments: updatedPayments
         }).eq('id', selectedDebt.id);
         if (error) throw error;
-        alert('Ghi nhận thanh toán thành công!');
+
+        // Tự động tạo phiếu thu/chi
+        const receiptType = selectedDebt.type === 'receivable' ? 'thu' : 'chi';
+        const receiptPrefix = receiptType === 'thu' ? 'PT' : 'PC';
+        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const receiptNumber = receiptPrefix + '-' + dateStr + '-' + randomNum;
+
+        const newReceipt = {
+          receipt_number: receiptNumber,
+          type: receiptType,
+          amount: amount,
+          description: (receiptType === 'thu' ? 'Thu nợ từ ' : 'Trả nợ cho ') + selectedDebt.partner_name,
+          category: receiptType === 'thu' ? 'Thu nợ khách' : 'Trả nợ NCC',
+          receipt_date: new Date().toISOString().split('T')[0],
+          note: 'Thanh toán công nợ ' + selectedDebt.debt_number + (paymentNote ? ' - ' + paymentNote : ''),
+          status: 'approved',
+          created_by: currentUser.name,
+          approved_by: currentUser.name,
+          approved_at: new Date().toISOString()
+        };
+
+        await supabase.from('receipts_payments').insert([newReceipt]);
+
+        alert('Ghi nhận thanh toán thành công! Đã tạo phiếu ' + (receiptType === 'thu' ? 'thu' : 'chi') + ' tự động.');
         setShowPaymentModal(false);
         setShowDetailModal(false);
         setPaymentAmount('');
