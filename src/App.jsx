@@ -4407,7 +4407,7 @@ export default function SimpleMarketingSystem() {
     const [formNote, setFormNote] = useState('');
 
     const categories = {
-      thu: ['Bán hàng', 'Dịch vụ lắp đặt', 'Dịch vụ bảo trì', 'Thu nợ khách', 'Khác'],
+      thu: ['Bán tại cửa hàng', 'Lắp đặt tại nhà khách', 'Thu nợ của khách', 'Khác'],
       chi: ['Nhập hàng', 'Lương nhân viên', 'Tiền thuê mặt bằng', 'Điện nước', 'Marketing', 'Vận chuyển', 'Khác']
     };
 
@@ -4460,7 +4460,8 @@ export default function SimpleMarketingSystem() {
         receipt_date: formDate,
         note: formNote,
         status: 'pending',
-        created_by: currentUser.name
+        created_by: currentUser.name,
+        created_at: new Date().toISOString()
       };
       try {
         const { error } = await supabase.from('receipts_payments').insert([newReceipt]);
@@ -4762,6 +4763,7 @@ export default function SimpleMarketingSystem() {
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <div className="text-xs text-gray-500 mb-1">Người tạo</div>
                       <div className="font-medium">{selectedReceipt.created_by || 'N/A'}</div>
+                      {selectedReceipt.created_at && <div className="text-xs text-gray-500 mt-1">Lúc: {new Date(selectedReceipt.created_at).toLocaleString('vi-VN')}</div>}
                     </div>
                   </div>
                   {selectedReceipt.approved_by && (
@@ -4887,6 +4889,7 @@ export default function SimpleMarketingSystem() {
         note: formNote,
         status: 'pending',
         created_by: currentUser.name,
+        created_at: new Date().toISOString(),
         payments: []
       };
       try {
@@ -5218,13 +5221,21 @@ export default function SimpleMarketingSystem() {
                     <div className="text-yellow-800">{selectedDebt.note}</div>
                   </div>
                 )}
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <div className="text-xs text-gray-500 mb-1">Người tạo</div>
+                  <div className="font-medium">{selectedDebt.created_by || 'N/A'}</div>
+                  {selectedDebt.created_at && <div className="text-xs text-gray-500 mt-1">Lúc: {new Date(selectedDebt.created_at).toLocaleString('vi-VN')}</div>}
+                </div>
                 {selectedDebt.payments && selectedDebt.payments.length > 0 && (
                   <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <div className="text-xs text-blue-600 mb-2">Lịch sử thanh toán</div>
                     <div className="space-y-2">
                       {selectedDebt.payments.map((p, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span className="text-gray-600">{new Date(p.date).toLocaleDateString('vi-VN')}</span>
+                        <div key={idx} className="flex justify-between items-center text-sm border-b border-blue-100 pb-2 last:border-0 last:pb-0">
+                          <div>
+                            <div className="text-gray-600">{new Date(p.date).toLocaleDateString('vi-VN')}</div>
+                            {p.recorded_by && <div className="text-xs text-gray-500">bởi {p.recorded_by}</div>}
+                          </div>
                           <span className="font-medium text-blue-700">+{parseFloat(p.amount).toLocaleString('vi-VN')}đ</span>
                         </div>
                       ))}
