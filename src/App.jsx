@@ -19,6 +19,7 @@ export default function SimpleMarketingSystem() {
   const [loading, setLoading] = useState(true);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [userPermissions, setUserPermissions] = useState({});
 
   const [allUsers, setAllUsers] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -33,6 +34,14 @@ export default function SimpleMarketingSystem() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Permission helper: Check if user has full access to finance
+  const hasFinanceFullAccess = () => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager') return true;
+    const perms = userPermissions[currentUser.id];
+    return perms && perms.finance === 2;
+  };
 
   const [templates] = useState([
     { id: 1, name: 'Facebook Ads Campaign', tasks: ['Thiết kế creative', 'Viết copy', 'Setup ads', 'Launch'], team: 'Performance' },
@@ -80,6 +89,7 @@ export default function SimpleMarketingSystem() {
     loadTasks();
     loadTechnicalJobs();
     loadFinanceData();
+    loadPermissions();
     
     // Subscribe to realtime task changes
     const tasksChannel = supabase
@@ -135,6 +145,18 @@ export default function SimpleMarketingSystem() {
     } catch (error) {
       console.error('Error loading users:', error);
     }
+  };
+
+  const loadPermissions = async () => {
+    try {
+      const { data } = await supabase.from('user_permissions').select('*');
+      const permsObj = {};
+      (data || []).forEach(p => {
+        if (!permsObj[p.user_id]) permsObj[p.user_id] = {};
+        permsObj[p.user_id][p.module] = p.permission_level;
+      });
+      setUserPermissions(permsObj);
+    } catch (e) { /* ignore */ }
   };
 
   const loadTasks = async () => {
@@ -4411,11 +4433,9 @@ export default function SimpleMarketingSystem() {
       chi: ['Nhập hàng', 'Lương nhân viên', 'Tiền thuê mặt bằng', 'Điện nước', 'Marketing', 'Vận chuyển', 'Khác']
     };
 
-    const isMember = currentUser.role === 'Member' || currentUser.role === 'member';
-    
+    const canViewAll = hasFinanceFullAccess();
     const filteredReceipts = receiptsPayments.filter(r => {
-      // Member chỉ xem được phiếu của mình
-      if (isMember && r.created_by !== currentUser.name) return false;
+      if (!canViewAll && r.created_by !== currentUser.name) return false;
       if (filterType !== 'all' && r.type !== filterType) return false;
       if (filterStatus !== 'all' && r.status !== filterStatus) return false;
       if (searchText && !r.description?.toLowerCase().includes(searchText.toLowerCase()) && !r.receipt_number?.toLowerCase().includes(searchText.toLowerCase())) return false;
@@ -4867,11 +4887,9 @@ export default function SimpleMarketingSystem() {
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentNote, setPaymentNote] = useState('');
 
-    const isMember = currentUser.role === 'Member' || currentUser.role === 'member';
-
+    const canViewAll = hasFinanceFullAccess();
     const filteredDebts = debts.filter(d => {
-      // Member chỉ xem được công nợ của mình
-      if (isMember && d.created_by !== currentUser.name) return false;
+      if (!canViewAll && d.created_by !== currentUser.name) return false;
       if (filterType !== 'all' && d.type !== filterType) return false;
       if (filterStatus === 'pending' && d.status === 'paid') return false;
       if (filterStatus === 'paid' && d.status !== 'paid') return false;
@@ -5577,31 +5595,25 @@ export default function SimpleMarketingSystem() {
       setShowSalaryDetailModal(true);
     };
 
-    const isMember = currentUser.role === 'Member' || currentUser.role === 'member';
-    
-    // Member không xem được danh sách nhân viên
-    const filteredEmployees = isMember ? [] : (activeTab === 'all' ? employees : employees.filter(e => e.department === activeTab));
-    
-    // Member chỉ xem được lương của mình
+    const canViewAll = hasFinanceFullAccess();
+    const filteredEmployees = !canViewAll ? [] : (activeTab === 'all' ? employees : employees.filter(e => e.department === activeTab));
     const filteredSalaries = (() => {
-      let salaries = activeTab === 'all' ? monthlySalaries : monthlySalaries.filter(s => s.department === activeTab);
-      if (isMember) {
-        salaries = salaries.filter(s => s.employee_name === currentUser.name);
-      }
-      return salaries;
+      let sals = activeTab === 'all' ? monthlySalaries : monthlySalaries.filter(s => s.department === activeTab);
+      if (!canViewAll) sals = sals.filter(s => s.employee_name === currentUser.name);
+      return sals;
     })();
     
     const totalSalaryByDept = (dept) => {
-      if (isMember) return 0; // Member không xem được tổng
+      if (!canViewAll) return 0;
       return monthlySalaries.filter(s => dept === 'all' || s.department === dept).reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0);
     };
 
-    const canApprove = currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager';
+    const canApprove = canViewAll;
 
     return (
       <div className="p-6 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <h2 className="text-2xl font-bold">💰 {isMember ? 'Lương Của Tôi' : 'Quản Lý Lương'}</h2>
+          <h2 className="text-2xl font-bold">💰 Quản Lý Lương</h2>
           <div className="flex items-center gap-2">
             <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
               {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>Tháng {m}</option>)}
@@ -5609,97 +5621,89 @@ export default function SimpleMarketingSystem() {
             <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
               {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
-            {!isMember && (
-              <button onClick={() => setShowAddEmployeeModal(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
-                ➕ Thêm NV
-              </button>
-            )}
+            <button onClick={() => setShowAddEmployeeModal(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+              ➕ Thêm NV
+            </button>
           </div>
         </div>
 
-        {!isMember && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gray-50 border rounded-xl p-4 cursor-pointer hover:bg-gray-100" onClick={() => setActiveTab('all')}>
-              <div className="text-sm text-gray-600">Tổng lương</div>
-              <div className="text-xl font-bold text-gray-800">{(totalSalaryByDept('all') / 1000000).toFixed(1)}M</div>
-              <div className="text-xs text-gray-500">{monthlySalaries.length} bảng lương</div>
-            </div>
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 cursor-pointer hover:bg-purple-100" onClick={() => setActiveTab('livestream')}>
-              <div className="text-sm text-purple-600">🎥 Livestream</div>
-              <div className="text-xl font-bold text-purple-700">{(totalSalaryByDept('livestream') / 1000000).toFixed(1)}M</div>
-              <div className="text-xs text-purple-500">{employees.filter(e => e.department === 'livestream').length} NV</div>
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 cursor-pointer hover:bg-blue-100" onClick={() => setActiveTab('media')}>
-              <div className="text-sm text-blue-600">🎬 Media</div>
-              <div className="text-xl font-bold text-blue-700">{(totalSalaryByDept('media') / 1000000).toFixed(1)}M</div>
-              <div className="text-xs text-blue-500">{employees.filter(e => e.department === 'media').length} NV</div>
-            </div>
-            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 cursor-pointer hover:bg-orange-100" onClick={() => setActiveTab('warehouse')}>
-              <div className="text-sm text-orange-600">📦 Kho</div>
-              <div className="text-xl font-bold text-orange-700">{(totalSalaryByDept('warehouse') / 1000000).toFixed(1)}M</div>
-              <div className="text-xs text-orange-500">{employees.filter(e => e.department === 'warehouse').length} NV</div>
-            </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gray-50 border rounded-xl p-4 cursor-pointer hover:bg-gray-100" onClick={() => setActiveTab('all')}>
+            <div className="text-sm text-gray-600">Tổng lương</div>
+            <div className="text-xl font-bold text-gray-800">{(totalSalaryByDept('all') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-gray-500">{monthlySalaries.length} bảng lương</div>
           </div>
-        )}
-
-        {!isMember && (
-          <div className="flex gap-2 border-b">
-            <button onClick={() => setActiveTab('all')} className={activeTab === 'all' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>Tất cả</button>
-            <button onClick={() => setActiveTab('livestream')} className={activeTab === 'livestream' ? "px-4 py-2 border-b-2 border-purple-600 text-purple-600 font-medium" : "px-4 py-2 text-gray-500"}>🎥 Livestream</button>
-            <button onClick={() => setActiveTab('media')} className={activeTab === 'media' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>🎬 Media</button>
-            <button onClick={() => setActiveTab('warehouse')} className={activeTab === 'warehouse' ? "px-4 py-2 border-b-2 border-orange-600 text-orange-600 font-medium" : "px-4 py-2 text-gray-500"}>📦 Kho</button>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 cursor-pointer hover:bg-purple-100" onClick={() => setActiveTab('livestream')}>
+            <div className="text-sm text-purple-600">🎥 Livestream</div>
+            <div className="text-xl font-bold text-purple-700">{(totalSalaryByDept('livestream') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-purple-500">{employees.filter(e => e.department === 'livestream').length} NV</div>
           </div>
-        )}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 cursor-pointer hover:bg-blue-100" onClick={() => setActiveTab('media')}>
+            <div className="text-sm text-blue-600">🎬 Media</div>
+            <div className="text-xl font-bold text-blue-700">{(totalSalaryByDept('media') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-blue-500">{employees.filter(e => e.department === 'media').length} NV</div>
+          </div>
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 cursor-pointer hover:bg-orange-100" onClick={() => setActiveTab('warehouse')}>
+            <div className="text-sm text-orange-600">📦 Kho</div>
+            <div className="text-xl font-bold text-orange-700">{(totalSalaryByDept('warehouse') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-orange-500">{employees.filter(e => e.department === 'warehouse').length} NV</div>
+          </div>
+        </div>
 
-        <div className={isMember ? "" : "grid grid-cols-1 lg:grid-cols-2 gap-4"}>
-          {!isMember && (
-            <div className="bg-white rounded-xl border">
-              <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <h3 className="font-bold">👥 Danh sách nhân viên ({filteredEmployees.length})</h3>
-              </div>
-              {filteredEmployees.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">Chưa có nhân viên</div>
-              ) : (
-                <div className="divide-y max-h-[400px] overflow-y-auto">
-                  {filteredEmployees.map(emp => {
-                    const hasSalary = monthlySalaries.some(s => s.employee_id === emp.id);
-                    return (
-                      <div key={emp.id} className="p-4 hover:bg-gray-50">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-medium">{emp.name}</div>
-                            <div className="text-sm text-gray-500">{departments[emp.department]?.name}</div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
-                              {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
-                              {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ/{emp.department === 'media' ? 'video' : 'đơn'}</span>}
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            {!hasSalary ? (
-                              <button onClick={() => openCreateSalary(emp)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Tính lương</button>
-                            ) : (
-                              <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm">Đã tính</span>
-                            )}
-                            {canApprove && (
-                              <button onClick={() => handleDeleteEmployee(emp.id)} className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-600 rounded text-sm">🗑️</button>
-                            )}
+        <div className="flex gap-2 border-b">
+          <button onClick={() => setActiveTab('all')} className={activeTab === 'all' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>Tất cả</button>
+          <button onClick={() => setActiveTab('livestream')} className={activeTab === 'livestream' ? "px-4 py-2 border-b-2 border-purple-600 text-purple-600 font-medium" : "px-4 py-2 text-gray-500"}>🎥 Livestream</button>
+          <button onClick={() => setActiveTab('media')} className={activeTab === 'media' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>🎬 Media</button>
+          <button onClick={() => setActiveTab('warehouse')} className={activeTab === 'warehouse' ? "px-4 py-2 border-b-2 border-orange-600 text-orange-600 font-medium" : "px-4 py-2 text-gray-500"}>📦 Kho</button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl border">
+            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold">👥 Danh sách nhân viên ({filteredEmployees.length})</h3>
+            </div>
+            {filteredEmployees.length === 0 ? (
+              <div className="p-6 text-center text-gray-500">Chưa có nhân viên</div>
+            ) : (
+              <div className="divide-y max-h-[400px] overflow-y-auto">
+                {filteredEmployees.map(emp => {
+                  const hasSalary = monthlySalaries.some(s => s.employee_id === emp.id);
+                  return (
+                    <div key={emp.id} className="p-4 hover:bg-gray-50">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium">{emp.name}</div>
+                          <div className="text-sm text-gray-500">{departments[emp.department]?.name}</div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
+                            {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
+                            {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ/{emp.department === 'media' ? 'video' : 'đơn'}</span>}
                           </div>
                         </div>
+                        <div className="flex gap-2">
+                          {!hasSalary ? (
+                            <button onClick={() => openCreateSalary(emp)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Tính lương</button>
+                          ) : (
+                            <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm">Đã tính</span>
+                          )}
+                          {canApprove && (
+                            <button onClick={() => handleDeleteEmployee(emp.id)} className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-600 rounded text-sm">🗑️</button>
+                          )}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <div className="bg-white rounded-xl border">
             <div className="p-4 border-b bg-gray-50">
-              <h3 className="font-bold">📋 {isMember ? 'Lương của tôi' : 'Bảng lương'} T{selectedMonth}/{selectedYear} ({filteredSalaries.length})</h3>
+              <h3 className="font-bold">📋 Bảng lương T{selectedMonth}/{selectedYear} ({filteredSalaries.length})</h3>
             </div>
             {filteredSalaries.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">{isMember ? 'Chưa có bảng lương của bạn' : 'Chưa có bảng lương'}</div>
+              <div className="p-6 text-center text-gray-500">Chưa có bảng lương</div>
             ) : (
               <div className="divide-y max-h-[400px] overflow-y-auto">
                 {filteredSalaries.map(salary => (
