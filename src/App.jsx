@@ -4390,8 +4390,12 @@ export default function SimpleMarketingSystem() {
     );
   }
 
+
   function ReceiptsView() {
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [selectedReceipt, setSelectedReceipt] = useState(null);
+    const [isEditing, setIsEditing] = useState(false);
     const [filterType, setFilterType] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [searchText, setSearchText] = useState('');
@@ -4417,14 +4421,34 @@ export default function SimpleMarketingSystem() {
     const generateReceiptNumber = (type) => {
       const prefix = type === 'thu' ? 'PT' : 'PC';
       const date = new Date();
-      const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+      const dateStr = date.getFullYear().toString() + String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0');
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-      return `${prefix}-${dateStr}-${random}`;
+      return prefix + '-' + dateStr + '-' + random;
+    };
+
+    const resetForm = () => {
+      setFormAmount('');
+      setFormDescription('');
+      setFormCategory('');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormNote('');
+    };
+
+    const openDetailModal = (receipt) => {
+      setSelectedReceipt(receipt);
+      setFormType(receipt.type);
+      setFormAmount(receipt.amount.toString());
+      setFormDescription(receipt.description || '');
+      setFormCategory(receipt.category || '');
+      setFormDate(receipt.receipt_date ? receipt.receipt_date.split('T')[0] : new Date().toISOString().split('T')[0]);
+      setFormNote(receipt.note || '');
+      setIsEditing(false);
+      setShowDetailModal(true);
     };
 
     const handleCreateReceipt = async () => {
       if (!formAmount || !formDescription || !formCategory) {
-        alert('⚠️ Vui lòng điền đầy đủ thông tin bắt buộc!');
+        alert('Vui lòng điền đầy đủ thông tin bắt buộc!');
         return;
       }
       const newReceipt = {
@@ -4441,12 +4465,35 @@ export default function SimpleMarketingSystem() {
       try {
         const { error } = await supabase.from('receipts_payments').insert([newReceipt]);
         if (error) throw error;
-        alert('✅ Tạo phiếu thành công!');
+        alert('Tạo phiếu thành công!');
         setShowCreateModal(false);
-        setFormAmount(''); setFormDescription(''); setFormCategory(''); setFormNote('');
+        resetForm();
         loadFinanceData();
       } catch (error) {
-        alert('❌ Lỗi: ' + error.message);
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const handleUpdateReceipt = async () => {
+      if (!formAmount || !formDescription || !formCategory) {
+        alert('Vui lòng điền đầy đủ thông tin bắt buộc!');
+        return;
+      }
+      try {
+        const { error } = await supabase.from('receipts_payments').update({
+          amount: parseFloat(formAmount),
+          description: formDescription,
+          category: formCategory,
+          receipt_date: formDate,
+          note: formNote
+        }).eq('id', selectedReceipt.id);
+        if (error) throw error;
+        alert('Cập nhật thành công!');
+        setIsEditing(false);
+        setShowDetailModal(false);
+        loadFinanceData();
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
       }
     };
 
@@ -4454,10 +4501,23 @@ export default function SimpleMarketingSystem() {
       try {
         const { error } = await supabase.from('receipts_payments').update({ status: 'approved' }).eq('id', id);
         if (error) throw error;
-        alert('✅ Đã duyệt!');
+        alert('Đã duyệt!');
+        setShowDetailModal(false);
         loadFinanceData();
       } catch (error) {
-        alert('❌ Lỗi: ' + error.message);
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const handleReject = async (id) => {
+      try {
+        const { error } = await supabase.from('receipts_payments').update({ status: 'rejected' }).eq('id', id);
+        if (error) throw error;
+        alert('Đã từ chối!');
+        setShowDetailModal(false);
+        loadFinanceData();
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
       }
     };
 
@@ -4466,10 +4526,11 @@ export default function SimpleMarketingSystem() {
       try {
         const { error } = await supabase.from('receipts_payments').delete().eq('id', id);
         if (error) throw error;
-        alert('✅ Đã xóa!');
+        alert('Đã xóa!');
+        setShowDetailModal(false);
         loadFinanceData();
       } catch (error) {
-        alert('❌ Lỗi: ' + error.message);
+        alert('Lỗi: ' + error.message);
       }
     };
 
@@ -4481,8 +4542,18 @@ export default function SimpleMarketingSystem() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-2xl font-bold">🧾 Phiếu Thu/Chi</h2>
           <div className="flex gap-2">
-            <button onClick={() => { setFormType('thu'); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">➕ Tạo Phiếu Thu</button>
-            <button onClick={() => { setFormType('chi'); setShowCreateModal(true); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">➕ Tạo Phiếu Chi</button>
+            <button
+              onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+            >
+              ➕ Tạo Phiếu Thu
+            </button>
+            <button
+              onClick={() => { setFormType('chi'); resetForm(); setShowCreateModal(true); }}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
+            >
+              ➕ Tạo Phiếu Chi
+            </button>
           </div>
         </div>
 
@@ -4495,9 +4566,9 @@ export default function SimpleMarketingSystem() {
             <div className="text-sm text-red-600 font-medium">Tổng Chi</div>
             <div className="text-2xl font-bold text-red-700">-{(totalChi / 1000000).toFixed(1)}M</div>
           </div>
-          <div className={`border rounded-xl p-4 ${totalThu - totalChi >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'}`}>
-            <div className={`text-sm font-medium ${totalThu - totalChi >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>Chênh lệch</div>
-            <div className={`text-2xl font-bold ${totalThu - totalChi >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>{((totalThu - totalChi) / 1000000).toFixed(1)}M</div>
+          <div className={(totalThu - totalChi >= 0) ? "bg-blue-50 border border-blue-200 rounded-xl p-4" : "bg-orange-50 border border-orange-200 rounded-xl p-4"}>
+            <div className={(totalThu - totalChi >= 0) ? "text-sm text-blue-600 font-medium" : "text-sm text-orange-600 font-medium"}>Chênh lệch</div>
+            <div className={(totalThu - totalChi >= 0) ? "text-2xl font-bold text-blue-700" : "text-2xl font-bold text-orange-700"}>{((totalThu - totalChi) / 1000000).toFixed(1)}M</div>
           </div>
         </div>
 
@@ -4535,27 +4606,30 @@ export default function SimpleMarketingSystem() {
           ) : (
             <div className="divide-y">
               {filteredReceipts.map(receipt => (
-                <div key={receipt.id} className="p-4 hover:bg-gray-50">
+                <div key={receipt.id} onClick={() => openDetailModal(receipt)} className="p-4 hover:bg-gray-50 cursor-pointer transition-colors">
                   <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${receipt.type === 'thu' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{receipt.type === 'thu' ? 'THU' : 'CHI'}</span>
+                        <span className={receipt.type === 'thu' ? "px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700" : "px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700"}>
+                          {receipt.type === 'thu' ? 'THU' : 'CHI'}
+                        </span>
                         <span className="font-bold">{receipt.receipt_number}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs ${receipt.status === 'approved' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{receipt.status === 'approved' ? '✓ Đã duyệt' : '⏳ Chờ duyệt'}</span>
+                        <span className={receipt.status === 'approved' ? "px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700" : receipt.status === 'rejected' ? "px-2 py-0.5 rounded text-xs bg-red-100 text-red-700" : "px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700"}>
+                          {receipt.status === 'approved' ? '✓ Đã duyệt' : receipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
+                        </span>
                       </div>
                       <div className="text-gray-700">{receipt.description}</div>
-                      <div className="text-sm text-gray-500 mt-1">📅 {new Date(receipt.receipt_date).toLocaleDateString('vi-VN')}{receipt.category && ` • 📁 ${receipt.category}`}{receipt.created_by && ` • 👤 ${receipt.created_by}`}</div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        📅 {new Date(receipt.receipt_date).toLocaleDateString('vi-VN')}
+                        {receipt.category && <span> • 📁 {receipt.category}</span>}
+                        {receipt.created_by && <span> • 👤 {receipt.created_by}</span>}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className={`text-xl font-bold ${receipt.type === 'thu' ? 'text-green-600' : 'text-red-600'}`}>{receipt.type === 'thu' ? '+' : '-'}{parseFloat(receipt.amount).toLocaleString('vi-VN')}đ</div>
-                      <div className="flex gap-1">
-                        {receipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
-                          <button onClick={() => handleApprove(receipt.id)} className="p-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg" title="Duyệt">✓</button>
-                        )}
-                        {(currentUser.role === 'Admin' || currentUser.role === 'admin') && (
-                          <button onClick={() => handleDelete(receipt.id)} className="p-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg" title="Xóa">🗑️</button>
-                        )}
+                      <div className={receipt.type === 'thu' ? "text-xl font-bold text-green-600" : "text-xl font-bold text-red-600"}>
+                        {receipt.type === 'thu' ? '+' : '-'}{parseFloat(receipt.amount).toLocaleString('vi-VN')}đ
                       </div>
+                      <div className="text-gray-400">→</div>
                     </div>
                   </div>
                 </div>
@@ -4567,7 +4641,7 @@ export default function SimpleMarketingSystem() {
         {showCreateModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <div className={`p-6 border-b ${formType === 'thu' ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'} text-white`}>
+              <div className={formType === 'thu' ? "p-6 border-b bg-gradient-to-r from-green-500 to-emerald-600 text-white" : "p-6 border-b bg-gradient-to-r from-red-500 to-rose-600 text-white"}>
                 <div className="flex justify-between items-center">
                   <h2 className="text-2xl font-bold">{formType === 'thu' ? '💵 Tạo Phiếu Thu' : '💸 Tạo Phiếu Chi'}</h2>
                   <button onClick={() => setShowCreateModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
@@ -4577,8 +4651,8 @@ export default function SimpleMarketingSystem() {
                 <div>
                   <label className="block text-sm font-medium mb-2">Loại phiếu</label>
                   <div className="flex gap-2">
-                    <button onClick={() => { setFormType('thu'); setFormCategory(''); }} className={`flex-1 py-3 rounded-lg font-medium ${formType === 'thu' ? 'bg-green-600 text-white' : 'bg-gray-100'}`}>💵 Phiếu Thu</button>
-                    <button onClick={() => { setFormType('chi'); setFormCategory(''); }} className={`flex-1 py-3 rounded-lg font-medium ${formType === 'chi' ? 'bg-red-600 text-white' : 'bg-gray-100'}`}>💸 Phiếu Chi</button>
+                    <button onClick={() => { setFormType('thu'); setFormCategory(''); }} className={formType === 'thu' ? "flex-1 py-3 rounded-lg font-medium bg-green-600 text-white" : "flex-1 py-3 rounded-lg font-medium bg-gray-100"}>💵 Phiếu Thu</button>
+                    <button onClick={() => { setFormType('chi'); setFormCategory(''); }} className={formType === 'chi' ? "flex-1 py-3 rounded-lg font-medium bg-red-600 text-white" : "flex-1 py-3 rounded-lg font-medium bg-gray-100"}>💸 Phiếu Chi</button>
                   </div>
                 </div>
                 <div>
@@ -4603,12 +4677,123 @@ export default function SimpleMarketingSystem() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Ghi chú</label>
-                  <textarea value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Ghi chú thêm..." rows="2" className="w-full px-4 py-3 border-2 rounded-lg" />
+                  <textarea value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Ghi chú thêm..." rows={2} className="w-full px-4 py-3 border-2 rounded-lg"></textarea>
                 </div>
               </div>
               <div className="p-6 border-t bg-gray-50 flex gap-3">
                 <button onClick={() => setShowCreateModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
-                <button onClick={handleCreateReceipt} className={`flex-1 px-6 py-3 text-white rounded-lg font-medium ${formType === 'thu' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>✅ Tạo Phiếu</button>
+                <button onClick={handleCreateReceipt} className={formType === 'thu' ? "flex-1 px-6 py-3 text-white rounded-lg font-medium bg-green-600 hover:bg-green-700" : "flex-1 px-6 py-3 text-white rounded-lg font-medium bg-red-600 hover:bg-red-700"}>✅ Tạo Phiếu</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDetailModal && selectedReceipt && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <div className={selectedReceipt.type === 'thu' ? "p-6 border-b bg-gradient-to-r from-green-500 to-emerald-600 text-white" : "p-6 border-b bg-gradient-to-r from-red-500 to-rose-600 text-white"}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-2xl font-bold">{selectedReceipt.type === 'thu' ? '💵 Phiếu Thu' : '💸 Phiếu Chi'}</h2>
+                    <p className="text-white/80 mt-1">{selectedReceipt.receipt_number}</p>
+                  </div>
+                  <button onClick={() => { setShowDetailModal(false); setIsEditing(false); }} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
+                </div>
+              </div>
+              
+              {isEditing ? (
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Số tiền (VNĐ) *</label>
+                    <input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} className="w-full px-4 py-3 border-2 rounded-lg text-lg" />
+                    {formAmount && <div className="text-sm text-gray-500 mt-1">= {parseFloat(formAmount).toLocaleString('vi-VN')} VNĐ</div>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Danh mục *</label>
+                    <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="w-full px-4 py-3 border-2 rounded-lg">
+                      <option value="">-- Chọn danh mục --</option>
+                      {categories[selectedReceipt.type].map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Mô tả *</label>
+                    <input type="text" value={formDescription} onChange={(e) => setFormDescription(e.target.value)} className="w-full px-4 py-3 border-2 rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Ngày</label>
+                    <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="w-full px-4 py-3 border-2 rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Ghi chú</label>
+                    <textarea value={formNote} onChange={(e) => setFormNote(e.target.value)} rows={2} className="w-full px-4 py-3 border-2 rounded-lg"></textarea>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 space-y-4">
+                  <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                    <span className="text-gray-600">Số tiền</span>
+                    <span className={selectedReceipt.type === 'thu' ? "text-2xl font-bold text-green-600" : "text-2xl font-bold text-red-600"}>
+                      {selectedReceipt.type === 'thu' ? '+' : '-'}{parseFloat(selectedReceipt.amount).toLocaleString('vi-VN')}đ
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="text-xs text-gray-500 mb-1">Danh mục</div>
+                      <div className="font-medium">{selectedReceipt.category || 'Chưa phân loại'}</div>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="text-xs text-gray-500 mb-1">Ngày</div>
+                      <div className="font-medium">{new Date(selectedReceipt.receipt_date).toLocaleDateString('vi-VN')}</div>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="text-xs text-gray-500 mb-1">Trạng thái</div>
+                      <div className={selectedReceipt.status === 'approved' ? "font-medium text-green-600" : selectedReceipt.status === 'rejected' ? "font-medium text-red-600" : "font-medium text-yellow-600"}>
+                        {selectedReceipt.status === 'approved' ? '✓ Đã duyệt' : selectedReceipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="text-xs text-gray-500 mb-1">Người tạo</div>
+                      <div className="font-medium">{selectedReceipt.created_by || 'N/A'}</div>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="text-xs text-gray-500 mb-1">Mô tả</div>
+                    <div className="font-medium">{selectedReceipt.description}</div>
+                  </div>
+                  {selectedReceipt.note && (
+                    <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <div className="text-xs text-yellow-600 mb-1">Ghi chú</div>
+                      <div className="text-yellow-800">{selectedReceipt.note}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              <div className="p-6 border-t bg-gray-50">
+                {isEditing ? (
+                  <div className="flex gap-3">
+                    <button onClick={() => setIsEditing(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
+                    <button onClick={handleUpdateReceipt} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">💾 Lưu thay đổi</button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                      <div className="flex gap-3">
+                        <button onClick={() => handleApprove(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">✓ Duyệt</button>
+                        <button onClick={() => handleReject(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium">✗ Từ chối</button>
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      {(currentUser.role === 'Admin' || currentUser.role === 'admin' || selectedReceipt.created_by === currentUser.name) && (
+                        <button onClick={() => setIsEditing(true)} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✏️ Sửa</button>
+                      )}
+                      {(currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                        <button onClick={() => handleDelete(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
+                      )}
+                      <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
