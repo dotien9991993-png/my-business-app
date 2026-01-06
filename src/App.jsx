@@ -4391,35 +4391,274 @@ export default function SimpleMarketingSystem() {
   }
 
   function ReceiptsView() {
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [filterType, setFilterType] = useState('all');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [searchText, setSearchText] = useState('');
+    
+    // Form states
+    const [formType, setFormType] = useState('thu');
+    const [formAmount, setFormAmount] = useState('');
+    const [formDescription, setFormDescription] = useState('');
+    const [formCategory, setFormCategory] = useState('');
+    const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+    const [formNote, setFormNote] = useState('');
+
+    const categories = {
+      thu: ['Bán hàng', 'Dịch vụ lắp đặt', 'Dịch vụ bảo trì', 'Thu nợ khách', 'Khác'],
+      chi: ['Nhập hàng', 'Lương nhân viên', 'Tiền thuê mặt bằng', 'Điện nước', 'Marketing', 'Vận chuyển', 'Khác']
+    };
+
+    const filteredReceipts = receiptsPayments.filter(r => {
+      if (filterType !== 'all' && r.type !== filterType) return false;
+      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      if (searchText && !r.description?.toLowerCase().includes(searchText.toLowerCase()) && 
+          !r.receipt_number?.toLowerCase().includes(searchText.toLowerCase())) return false;
+      return true;
+    });
+
+    const generateReceiptNumber = (type) => {
+      const prefix = type === 'thu' ? 'PT' : 'PC';
+      const date = new Date();
+      const dateStr = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      return `${prefix}-${dateStr}-${random}`;
+    };
+
+    const handleCreateReceipt = async () => {
+      if (!formAmount || !formDescription || !formCategory) {
+        alert('⚠️ Vui lòng điền đầy đủ thông tin!');
+        return;
+      }
+
+      const newReceipt = {
+        receipt_number: generateReceiptNumber(formType),
+        type: formType,
+        amount: parseFloat(formAmount),
+        description: formDescription,
+        category: formCategory,
+        receipt_date: formDate,
+        note: formNote,
+        status: currentUser.role === 'Admin' || currentUser.role === 'admin' ? 'approved' : 'pending',
+        created_by: currentUser.name
+      };
+
+      try {
+        const { error } = await supabase
+          .from('receipts_payments')
+          .insert([newReceipt]);
+
+        if (error) throw error;
+
+        alert(`✅ Tạo phiếu ${formType === 'thu' ? 'thu' : 'chi'} thành công!`);
+        setShowCreateModal(false);
+        resetForm();
+        loadFinanceData();
+      } catch (error) {
+        console.error('Error creating receipt:', error);
+        alert('❌ Lỗi khi tạo phiếu: ' + error.message);
+      }
+    };
+
+    const handleApprove = async (id) => {
+      try {
+        const { error } = await supabase
+          .from('receipts_payments')
+          .update({ status: 'approved' })
+          .eq('id', id);
+
+        if (error) throw error;
+        alert('✅ Đã duyệt phiếu!');
+        loadFinanceData();
+      } catch (error) {
+        console.error('Error approving:', error);
+        alert('❌ Lỗi: ' + error.message);
+      }
+    };
+
+    const handleDelete = async (id) => {
+      if (!window.confirm('⚠️ Bạn có chắc muốn xóa phiếu này?')) return;
+      
+      try {
+        const { error } = await supabase
+          .from('receipts_payments')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+        alert('✅ Đã xóa phiếu!');
+        loadFinanceData();
+      } catch (error) {
+        console.error('Error deleting:', error);
+        alert('❌ Lỗi: ' + error.message);
+      }
+    };
+
+    const resetForm = () => {
+      setFormType('thu');
+      setFormAmount('');
+      setFormDescription('');
+      setFormCategory('');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormNote('');
+    };
+
+    const totalThu = filteredReceipts
+      .filter(r => r.type === 'thu')
+      .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+    
+    const totalChi = filteredReceipts
+      .filter(r => r.type === 'chi')
+      .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+
     return (
       <div className="p-6 space-y-4">
-        <div className="flex justify-between items-center">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-2xl font-bold">🧾 Phiếu Thu/Chi</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setFormType('thu');
+                setShowCreateModal(true);
+              }}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+            >
+              ➕ Tạo Phiếu Thu
+            </button>
+            <button
+              onClick={() => {
+                setFormType('chi');
+                setShowCreateModal(true);
+              }}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
+            >
+              ➕ Tạo Phiếu Chi
+            </button>
+          </div>
         </div>
-        
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <div className="text-sm text-green-600 font-medium">Tổng Thu (đã lọc)</div>
+            <div className="text-2xl font-bold text-green-700">
+              +{(totalThu / 1000000).toFixed(1)}M
+            </div>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="text-sm text-red-600 font-medium">Tổng Chi (đã lọc)</div>
+            <div className="text-2xl font-bold text-red-700">
+              -{(totalChi / 1000000).toFixed(1)}M
+            </div>
+          </div>
+          <div className={`border rounded-xl p-4 ${totalThu - totalChi >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'}`}>
+            <div className={`text-sm font-medium ${totalThu - totalChi >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+              Chênh lệch
+            </div>
+            <div className={`text-2xl font-bold ${totalThu - totalChi >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+              {((totalThu - totalChi) / 1000000).toFixed(1)}M
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
         <div className="bg-white rounded-xl border p-4">
-          {receiptsPayments.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">Chưa có phiếu thu/chi. Hãy chạy demo-data.sql để có dữ liệu mẫu.</p>
+          <div className="flex flex-wrap gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Loại</label>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Tất cả</option>
+                <option value="thu">Phiếu Thu</option>
+                <option value="chi">Phiếu Chi</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Trạng thái</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Tất cả</option>
+                <option value="pending">Chờ duyệt</option>
+                <option value="approved">Đã duyệt</option>
+              </select>
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-sm font-medium mb-1">Tìm kiếm</label>
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Tìm theo mô tả, số phiếu..."
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Receipts List */}
+        <div className="bg-white rounded-xl border">
+          {filteredReceipts.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="text-6xl mb-4">📝</div>
+              <p className="text-gray-500">Chưa có phiếu thu/chi nào</p>
+              <p className="text-sm text-gray-400 mt-1">Bấm nút "Tạo Phiếu Thu" hoặc "Tạo Phiếu Chi" để bắt đầu</p>
+            </div>
           ) : (
-            <div className="space-y-2">
-              {receiptsPayments.map(receipt => (
-                <div key={receipt.id} className="p-4 border rounded-lg hover:bg-gray-50">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="font-bold">{receipt.receipt_number}</div>
-                      <div className="text-sm text-gray-600">{receipt.description}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {new Date(receipt.receipt_date).toLocaleDateString('vi-VN')}
+            <div className="divide-y">
+              {filteredReceipts.map(receipt => (
+                <div key={receipt.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                          receipt.type === 'thu' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {receipt.type === 'thu' ? 'THU' : 'CHI'}
+                        </span>
+                        <span className="font-bold">{receipt.receipt_number}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          receipt.status === 'approved' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {receipt.status === 'approved' ? '✓ Đã duyệt' : '⏳ Chờ duyệt'}
+                        </span>
+                      </div>
+                      <div className="text-gray-700">{receipt.description}</div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        📅 {new Date(receipt.receipt_date).toLocaleDateString('vi-VN')}
+                        {receipt.category && <span className="ml-2">• 📁 {receipt.category}</span>}
+                        {receipt.created_by && <span className="ml-2">• 👤 {receipt.created_by}</span>}
                       </div>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-3">
                       <div className={`text-xl font-bold ${receipt.type === 'thu' ? 'text-green-600' : 'text-red-600'}`}>
-                        {receipt.type === 'thu' ? '+' : '-'}{(parseFloat(receipt.amount) / 1000000).toFixed(1)}M
+                        {receipt.type === 'thu' ? '+' : '-'}{parseFloat(receipt.amount).toLocaleString('vi-VN')}đ
                       </div>
-                      <div className={`text-xs px-2 py-1 rounded mt-1 ${
-                        receipt.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {receipt.status === 'approved' ? 'Đã duyệt' : 'Chờ duyệt'}
+                      <div className="flex gap-1">
+                        {receipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                          <button
+                            onClick={() => handleApprove(receipt.id)}
+                            className="p-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg"
+                            title="Duyệt"
+                          >
+                            ✓
+                          </button>
+                        )}
+                        {(currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                          <button
+                            onClick={() => handleDelete(receipt.id)}
+                            className="p-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg"
+                            title="Xóa"
+                          >
+                            🗑️
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -4428,6 +4667,154 @@ export default function SimpleMarketingSystem() {
             </div>
           )}
         </div>
+
+        {/* Create Modal */}
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <div className={`p-6 border-b ${formType === 'thu' ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'} text-white`}>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-2xl font-bold">
+                    {formType === 'thu' ? '💵 Tạo Phiếu Thu' : '💸 Tạo Phiếu Chi'}
+                  </h2>
+                  <button 
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      resetForm();
+                    }}
+                    className="text-2xl hover:bg-white/20 w-8 h-8 rounded"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {/* Type Toggle */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Loại phiếu</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setFormType('thu');
+                        setFormCategory('');
+                      }}
+                      className={`flex-1 py-3 rounded-lg font-medium transition-all ${
+                        formType === 'thu'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      💵 Phiếu Thu
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFormType('chi');
+                        setFormCategory('');
+                      }}
+                      className={`flex-1 py-3 rounded-lg font-medium transition-all ${
+                        formType === 'chi'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      💸 Phiếu Chi
+                    </button>
+                  </div>
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Số tiền (VNĐ) *</label>
+                  <input
+                    type="number"
+                    value={formAmount}
+                    onChange={(e) => setFormAmount(e.target.value)}
+                    placeholder="Nhập số tiền..."
+                    className="w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+                  />
+                  {formAmount && (
+                    <div className="text-sm text-gray-500 mt-1">
+                      = {parseFloat(formAmount).toLocaleString('vi-VN')} VNĐ
+                    </div>
+                  )}
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Danh mục *</label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Chọn danh mục --</option>
+                    {categories[formType].map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Mô tả *</label>
+                  <input
+                    type="text"
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    placeholder="VD: Thu tiền lắp đặt dàn karaoke khách A"
+                    className="w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Date */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Ngày</label>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Note */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Ghi chú (tùy chọn)</label>
+                  <textarea
+                    value={formNote}
+                    onChange={(e) => setFormNote(e.target.value)}
+                    placeholder="Ghi chú thêm..."
+                    rows="2"
+                    className="w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 border-t bg-gray-50 flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetForm();
+                  }}
+                  className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleCreateReceipt}
+                  className={`flex-1 px-6 py-3 text-white rounded-lg font-medium ${
+                    formType === 'thu'
+                      ? 'bg-green-600 hover:bg-green-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  ✅ Tạo Phiếu
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
