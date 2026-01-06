@@ -4164,7 +4164,8 @@ export default function SimpleMarketingSystem() {
                 { id: 'receipts', l: '🧾 Thu/Chi', show: true },
                 { id: 'debts', l: '📋 Công Nợ', show: true },
                 { id: 'salaries', l: '💰 Lương', show: true },
-                { id: 'reports', l: '📈 Báo Cáo', show: true }
+                { id: 'reports', l: '📈 Báo Cáo', show: true },
+                { id: 'users', l: '👥 Phân Quyền', show: hasFinanceFullAccess() }
               ] : []).filter(t => t.show).map(t => (
                 <button
                   key={t.id}
@@ -4272,7 +4273,8 @@ export default function SimpleMarketingSystem() {
             { id: 'receipts', l: '🧾 Thu/Chi' },
             { id: 'debts', l: '📋 Công Nợ' },
             { id: 'salaries', l: '💰 Lương' },
-            { id: 'reports', l: '📈 Báo Cáo' }
+            { id: 'reports', l: '📈 Báo Cáo' },
+            ...(hasFinanceFullAccess() ? [{ id: 'users', l: '👥 Phân Quyền' }] : [])
           ] : []).map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'}`}>
               {t.l}
@@ -4302,7 +4304,8 @@ export default function SimpleMarketingSystem() {
             { id: 'receipts', l: '🧾 Thu/Chi' },
             { id: 'debts', l: '📋 Công Nợ' },
             { id: 'salaries', l: '💰 Lương' },
-            { id: 'reports', l: '📈 Báo Cáo' }
+            { id: 'reports', l: '📈 Báo Cáo' },
+            { id: 'users', l: '👥 Phân Quyền' }
           ] : []).find(t => t.id === activeTab)?.l || ''}
         </h2>
       </div>
@@ -4334,6 +4337,7 @@ export default function SimpleMarketingSystem() {
             {activeTab === 'debts' && <DebtsView />}
             {activeTab === 'salaries' && <SalariesView />}
             {activeTab === 'reports' && <ReportsView />}
+            {activeTab === 'users' && <UsersPermissionsView />}
           </>
         )}
       </div>
@@ -5999,6 +6003,150 @@ export default function SimpleMarketingSystem() {
               </span>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  function UsersPermissionsView() {
+    const [localPermissions, setLocalPermissions] = useState({});
+    const [saving, setSaving] = useState(false);
+
+    const modules = [
+      { id: 'marketing', name: '📱 Marketing' },
+      { id: 'technical', name: '🔧 Kỹ Thuật' },
+      { id: 'finance', name: '💰 Tài Chính' }
+    ];
+
+    const permissionLevels = [
+      { value: 0, label: 'Không có', color: 'bg-gray-100 text-gray-600' },
+      { value: 1, label: 'Của mình', color: 'bg-yellow-100 text-yellow-700' },
+      { value: 2, label: 'Toàn quyền', color: 'bg-green-100 text-green-700' }
+    ];
+
+    useEffect(() => {
+      setLocalPermissions(userPermissions);
+    }, [userPermissions]);
+
+    const getUserPermission = (userId, module) => {
+      const user = allUsers.find(u => u.id === userId);
+      if (user?.role === 'Admin' || user?.role === 'admin') return 2;
+      if (user?.role === 'Manager') return 2;
+      return localPermissions[userId]?.[module] ?? 1;
+    };
+
+    const handlePermissionChange = async (userId, module, level) => {
+      const user = allUsers.find(u => u.id === userId);
+      if (user?.role === 'Admin' || user?.role === 'admin') {
+        alert('Không thể thay đổi quyền Admin!');
+        return;
+      }
+
+      setLocalPermissions(prev => ({
+        ...prev,
+        [userId]: { ...(prev[userId] || {}), [module]: level }
+      }));
+
+      try {
+        setSaving(true);
+        const { error } = await supabase
+          .from('user_permissions')
+          .upsert({
+            user_id: userId,
+            module: module,
+            permission_level: level
+          }, { onConflict: 'user_id,module' });
+        
+        if (error) throw error;
+        loadPermissions();
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const getRoleBadge = (role) => {
+      if (role === 'Admin' || role === 'admin') return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">Admin</span>;
+      if (role === 'Manager') return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">Manager</span>;
+      return <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">Member</span>;
+    };
+
+    return (
+      <div className="p-6 space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">👥 Phân Quyền Người Dùng</h2>
+          {saving && <span className="text-blue-600 text-sm">Đang lưu...</span>}
+        </div>
+
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <h3 className="font-medium text-blue-800 mb-2">📌 Hướng dẫn phân quyền:</h3>
+          <ul className="text-sm text-blue-700 space-y-1">
+            <li>• <strong>Không có:</strong> Không thấy module</li>
+            <li>• <strong>Của mình:</strong> Chỉ xem dữ liệu do mình tạo (task, thu chi, lương của mình)</li>
+            <li>• <strong>Toàn quyền:</strong> Xem tất cả + tạo/sửa/xóa + duyệt + báo cáo</li>
+          </ul>
+        </div>
+
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700">Người dùng</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
+                  {modules.map(m => (
+                    <th key={m.id} className="px-4 py-3 text-center font-medium text-gray-700">{m.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {allUsers.map(user => {
+                  const isAdmin = user.role === 'Admin' || user.role === 'admin';
+                  return (
+                    <tr key={user.id} className={isAdmin ? 'bg-red-50/30' : 'hover:bg-gray-50'}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{user.name}</div>
+                        <div className="text-xs text-gray-500">{user.email}</div>
+                      </td>
+                      <td className="px-4 py-3">{getRoleBadge(user.role)}</td>
+                      {modules.map(m => (
+                        <td key={m.id} className="px-4 py-3 text-center">
+                          {isAdmin ? (
+                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm">Toàn quyền</span>
+                          ) : (
+                            <select
+                              value={getUserPermission(user.id, m.id)}
+                              onChange={(e) => handlePermissionChange(user.id, m.id, parseInt(e.target.value))}
+                              className={`px-3 py-1.5 rounded border text-sm font-medium cursor-pointer ${
+                                getUserPermission(user.id, m.id) === 0 ? 'bg-gray-100 text-gray-600' :
+                                getUserPermission(user.id, m.id) === 1 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-green-100 text-green-700'
+                              }`}
+                            >
+                              {permissionLevels.map(p => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+          <h3 className="font-medium text-yellow-800 mb-2">⚠️ Lưu ý:</h3>
+          <ul className="text-sm text-yellow-700 space-y-1">
+            <li>• Admin luôn có toàn quyền tất cả module</li>
+            <li>• Manager mặc định có toàn quyền (có thể thay đổi)</li>
+            <li>• Member mặc định chỉ xem của mình</li>
+            <li>• Thay đổi quyền được lưu tự động</li>
+          </ul>
         </div>
       </div>
     );
