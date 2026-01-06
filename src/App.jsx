@@ -5325,44 +5325,597 @@ export default function SimpleMarketingSystem() {
   }
 
   function SalariesView() {
+    const [activeTab, setActiveTab] = useState('all');
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+    const [showSalaryDetailModal, setShowSalaryDetailModal] = useState(false);
+    const [showCreateSalaryModal, setShowCreateSalaryModal] = useState(false);
+    const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const [selectedSalary, setSelectedSalary] = useState(null);
+    
+    const [employees, setEmployees] = useState([]);
+    const [monthlySalaries, setMonthlySalaries] = useState([]);
+    
+    // Form states
+    const [formName, setFormName] = useState('');
+    const [formPhone, setFormPhone] = useState('');
+    const [formDepartment, setFormDepartment] = useState('livestream');
+    const [formBaseSalary, setFormBaseSalary] = useState('');
+    const [formCommissionRate, setFormCommissionRate] = useState('');
+    const [formBonusPerUnit, setFormBonusPerUnit] = useState('');
+    
+    // Salary calculation form
+    const [salaryRevenue, setSalaryRevenue] = useState('');
+    const [salaryUnits, setSalaryUnits] = useState('');
+    const [salaryBonus, setSalaryBonus] = useState('');
+    const [salaryDeduction, setSalaryDeduction] = useState('');
+    const [salaryNote, setSalaryNote] = useState('');
+
+    const departments = {
+      livestream: { name: '🎥 Livestream', color: 'purple', commissionLabel: '% Hoa hồng', unitLabel: 'Doanh số' },
+      media: { name: '🎬 Media', color: 'blue', commissionLabel: 'đ/Video', unitLabel: 'Số video' },
+      warehouse: { name: '📦 Kho', color: 'orange', commissionLabel: 'đ/Đơn', unitLabel: 'Số đơn' }
+    };
+
+    useEffect(() => {
+      loadEmployees();
+      loadMonthlySalaries();
+    }, [selectedMonth, selectedYear]);
+
+    const loadEmployees = async () => {
+      try {
+        const { data, error } = await supabase.from('employees').select('*').order('department');
+        if (error) throw error;
+        setEmployees(data || []);
+      } catch (error) {
+        console.log('Load employees:', error.message);
+      }
+    };
+
+    const loadMonthlySalaries = async () => {
+      try {
+        const { data, error } = await supabase.from('salaries')
+          .select('*')
+          .eq('month', selectedMonth)
+          .eq('year', selectedYear)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        setMonthlySalaries(data || []);
+      } catch (error) {
+        console.log('Load salaries:', error.message);
+      }
+    };
+
+    const handleAddEmployee = async () => {
+      if (!formName || !formBaseSalary) {
+        alert('Vui lòng nhập tên và lương cơ bản!');
+        return;
+      }
+      try {
+        const { error } = await supabase.from('employees').insert([{
+          name: formName,
+          phone: formPhone,
+          department: formDepartment,
+          base_salary: parseFloat(formBaseSalary),
+          commission_rate: parseFloat(formCommissionRate) || 0,
+          bonus_per_unit: parseFloat(formBonusPerUnit) || 0,
+          status: 'active',
+          created_by: currentUser.name,
+          created_at: new Date().toISOString()
+        }]);
+        if (error) throw error;
+        alert('Thêm nhân viên thành công!');
+        setShowAddEmployeeModal(false);
+        resetEmployeeForm();
+        loadEmployees();
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const resetEmployeeForm = () => {
+      setFormName('');
+      setFormPhone('');
+      setFormDepartment('livestream');
+      setFormBaseSalary('');
+      setFormCommissionRate('');
+      setFormBonusPerUnit('');
+    };
+
+    const openCreateSalary = (employee) => {
+      setSelectedEmployee(employee);
+      setSalaryRevenue('');
+      setSalaryUnits('');
+      setSalaryBonus('');
+      setSalaryDeduction('');
+      setSalaryNote('');
+      setShowCreateSalaryModal(true);
+    };
+
+    const calculateSalary = () => {
+      if (!selectedEmployee) return { commission: 0, unitBonus: 0, total: 0 };
+      const base = parseFloat(selectedEmployee.base_salary) || 0;
+      const revenue = parseFloat(salaryRevenue) || 0;
+      const units = parseFloat(salaryUnits) || 0;
+      const bonus = parseFloat(salaryBonus) || 0;
+      const deduction = parseFloat(salaryDeduction) || 0;
+      
+      let commission = 0;
+      let unitBonus = 0;
+      
+      if (selectedEmployee.department === 'livestream') {
+        commission = revenue * (parseFloat(selectedEmployee.commission_rate) || 0) / 100;
+      } else {
+        unitBonus = units * (parseFloat(selectedEmployee.bonus_per_unit) || 0);
+      }
+      
+      const total = base + commission + unitBonus + bonus - deduction;
+      return { commission, unitBonus, total };
+    };
+
+    const handleCreateSalary = async () => {
+      const calc = calculateSalary();
+      try {
+        const { error } = await supabase.from('salaries').insert([{
+          employee_id: selectedEmployee.id,
+          employee_name: selectedEmployee.name,
+          department: selectedEmployee.department,
+          month: selectedMonth,
+          year: selectedYear,
+          base_salary: parseFloat(selectedEmployee.base_salary),
+          revenue: parseFloat(salaryRevenue) || 0,
+          units: parseFloat(salaryUnits) || 0,
+          commission: calc.commission,
+          unit_bonus: calc.unitBonus,
+          bonus: parseFloat(salaryBonus) || 0,
+          deduction: parseFloat(salaryDeduction) || 0,
+          total_salary: calc.total,
+          note: salaryNote,
+          status: 'pending',
+          created_by: currentUser.name,
+          created_at: new Date().toISOString()
+        }]);
+        if (error) throw error;
+        alert('Tạo bảng lương thành công!');
+        setShowCreateSalaryModal(false);
+        loadMonthlySalaries();
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const handleApproveSalary = async (salary) => {
+      try {
+        const { error } = await supabase.from('salaries').update({
+          status: 'approved',
+          approved_by: currentUser.name,
+          approved_at: new Date().toISOString()
+        }).eq('id', salary.id);
+        if (error) throw error;
+        alert('Đã duyệt bảng lương!');
+        loadMonthlySalaries();
+        setShowSalaryDetailModal(false);
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const handlePaySalary = async (salary) => {
+      if (!window.confirm(`Xác nhận trả lương ${salary.employee_name}: ${parseFloat(salary.total_salary).toLocaleString('vi-VN')}đ?`)) return;
+      try {
+        // Cập nhật trạng thái lương
+        const { error } = await supabase.from('salaries').update({
+          status: 'paid',
+          paid_by: currentUser.name,
+          paid_at: new Date().toISOString()
+        }).eq('id', salary.id);
+        if (error) throw error;
+
+        // Tạo phiếu chi
+        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        await supabase.from('receipts_payments').insert([{
+          receipt_number: 'PC-' + dateStr + '-' + randomNum,
+          type: 'chi',
+          amount: salary.total_salary,
+          description: 'Trả lương T' + salary.month + '/' + salary.year + ' - ' + salary.employee_name,
+          category: 'Lương nhân viên',
+          receipt_date: new Date().toISOString().split('T')[0],
+          note: 'Tự động từ bảng lương',
+          status: 'approved',
+          created_by: currentUser.name,
+          approved_by: currentUser.name,
+          approved_at: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        }]);
+
+        alert('Đã trả lương và tạo phiếu chi!');
+        loadMonthlySalaries();
+        loadFinanceData();
+        setShowSalaryDetailModal(false);
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const handleDeleteSalary = async (id) => {
+      if (!window.confirm('Xóa bảng lương này?')) return;
+      try {
+        const { error } = await supabase.from('salaries').delete().eq('id', id);
+        if (error) throw error;
+        alert('Đã xóa!');
+        loadMonthlySalaries();
+        setShowSalaryDetailModal(false);
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const handleDeleteEmployee = async (id) => {
+      if (!window.confirm('Xóa nhân viên này?')) return;
+      try {
+        const { error } = await supabase.from('employees').delete().eq('id', id);
+        if (error) throw error;
+        alert('Đã xóa!');
+        loadEmployees();
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      }
+    };
+
+    const openSalaryDetail = (salary) => {
+      setSelectedSalary(salary);
+      setShowSalaryDetailModal(true);
+    };
+
+    const filteredEmployees = activeTab === 'all' ? employees : employees.filter(e => e.department === activeTab);
+    const filteredSalaries = activeTab === 'all' ? monthlySalaries : monthlySalaries.filter(s => s.department === activeTab);
+    
+    const totalSalaryByDept = (dept) => {
+      return monthlySalaries.filter(s => dept === 'all' || s.department === dept).reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0);
+    };
+
+    const canApprove = currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager';
+
     return (
       <div className="p-6 space-y-4">
-        <h2 className="text-2xl font-bold">💰 Quản Lý Lương & Thưởng</h2>
-        
-        <div className="bg-white rounded-xl border p-4">
-          {salaries.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">Chưa có dữ liệu lương. Hãy chạy demo-data.sql để có dữ liệu mẫu.</p>
-          ) : (
-            <div className="space-y-3">
-              {salaries.map(salary => (
-                <div key={salary.id} className="p-4 border rounded-lg hover:bg-gray-50">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="font-bold">{salary.employee_name}</div>
-                      <div className="text-sm text-gray-600">Tháng {salary.month}/{salary.year}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Lương CB: {(parseFloat(salary.base_salary) / 1000000).toFixed(1)}M • 
-                        Thưởng: {((parseFloat(salary.bonus || 0) + parseFloat(salary.commission || 0)) / 1000000).toFixed(1)}M
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h2 className="text-2xl font-bold">💰 Quản Lý Lương</h2>
+          <div className="flex items-center gap-2">
+            <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>Tháng {m}</option>)}
+            </select>
+            <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
+              {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <button onClick={() => setShowAddEmployeeModal(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+              ➕ Thêm NV
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gray-50 border rounded-xl p-4 cursor-pointer hover:bg-gray-100" onClick={() => setActiveTab('all')}>
+            <div className="text-sm text-gray-600">Tổng lương</div>
+            <div className="text-xl font-bold text-gray-800">{(totalSalaryByDept('all') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-gray-500">{monthlySalaries.length} bảng lương</div>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 cursor-pointer hover:bg-purple-100" onClick={() => setActiveTab('livestream')}>
+            <div className="text-sm text-purple-600">🎥 Livestream</div>
+            <div className="text-xl font-bold text-purple-700">{(totalSalaryByDept('livestream') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-purple-500">{employees.filter(e => e.department === 'livestream').length} NV</div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 cursor-pointer hover:bg-blue-100" onClick={() => setActiveTab('media')}>
+            <div className="text-sm text-blue-600">🎬 Media</div>
+            <div className="text-xl font-bold text-blue-700">{(totalSalaryByDept('media') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-blue-500">{employees.filter(e => e.department === 'media').length} NV</div>
+          </div>
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 cursor-pointer hover:bg-orange-100" onClick={() => setActiveTab('warehouse')}>
+            <div className="text-sm text-orange-600">📦 Kho</div>
+            <div className="text-xl font-bold text-orange-700">{(totalSalaryByDept('warehouse') / 1000000).toFixed(1)}M</div>
+            <div className="text-xs text-orange-500">{employees.filter(e => e.department === 'warehouse').length} NV</div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 border-b">
+          <button onClick={() => setActiveTab('all')} className={activeTab === 'all' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>Tất cả</button>
+          <button onClick={() => setActiveTab('livestream')} className={activeTab === 'livestream' ? "px-4 py-2 border-b-2 border-purple-600 text-purple-600 font-medium" : "px-4 py-2 text-gray-500"}>🎥 Livestream</button>
+          <button onClick={() => setActiveTab('media')} className={activeTab === 'media' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>🎬 Media</button>
+          <button onClick={() => setActiveTab('warehouse')} className={activeTab === 'warehouse' ? "px-4 py-2 border-b-2 border-orange-600 text-orange-600 font-medium" : "px-4 py-2 text-gray-500"}>📦 Kho</button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl border">
+            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold">👥 Danh sách nhân viên ({filteredEmployees.length})</h3>
+            </div>
+            {filteredEmployees.length === 0 ? (
+              <div className="p-6 text-center text-gray-500">Chưa có nhân viên</div>
+            ) : (
+              <div className="divide-y max-h-[400px] overflow-y-auto">
+                {filteredEmployees.map(emp => {
+                  const hasSalary = monthlySalaries.some(s => s.employee_id === emp.id);
+                  return (
+                    <div key={emp.id} className="p-4 hover:bg-gray-50">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium">{emp.name}</div>
+                          <div className="text-sm text-gray-500">{departments[emp.department]?.name}</div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
+                            {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
+                            {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ/{emp.department === 'media' ? 'video' : 'đơn'}</span>}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {!hasSalary ? (
+                            <button onClick={() => openCreateSalary(emp)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Tính lương</button>
+                          ) : (
+                            <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm">Đã tính</span>
+                          )}
+                          {canApprove && (
+                            <button onClick={() => handleDeleteEmployee(emp.id)} className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-600 rounded text-sm">🗑️</button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-xl font-bold text-blue-600">
-                        {(parseFloat(salary.total_salary) / 1000000).toFixed(1)}M
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border">
+            <div className="p-4 border-b bg-gray-50">
+              <h3 className="font-bold">📋 Bảng lương T{selectedMonth}/{selectedYear} ({filteredSalaries.length})</h3>
+            </div>
+            {filteredSalaries.length === 0 ? (
+              <div className="p-6 text-center text-gray-500">Chưa có bảng lương</div>
+            ) : (
+              <div className="divide-y max-h-[400px] overflow-y-auto">
+                {filteredSalaries.map(salary => (
+                  <div key={salary.id} onClick={() => openSalaryDetail(salary)} className="p-4 hover:bg-gray-50 cursor-pointer">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-medium">{salary.employee_name}</div>
+                        <div className="text-sm text-gray-500">{departments[salary.department]?.name}</div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          CB: {(parseFloat(salary.base_salary)/1000000).toFixed(1)}M
+                          {salary.commission > 0 && <span> + HH: {(parseFloat(salary.commission)/1000000).toFixed(1)}M</span>}
+                          {salary.unit_bonus > 0 && <span> + Thưởng: {(parseFloat(salary.unit_bonus)/1000000).toFixed(1)}M</span>}
+                          {salary.bonus > 0 && <span> + Bonus: {(parseFloat(salary.bonus)/1000000).toFixed(1)}M</span>}
+                          {salary.deduction > 0 && <span> - Trừ: {(parseFloat(salary.deduction)/1000000).toFixed(1)}M</span>}
+                        </div>
                       </div>
-                      <div className={`text-xs px-2 py-1 rounded mt-1 ${
-                        salary.status === 'paid' ? 'bg-green-100 text-green-700' : 
-                        salary.status === 'approved' ? 'bg-blue-100 text-blue-700' : 
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {salary.status === 'paid' ? 'Đã trả' : salary.status === 'approved' ? 'Đã duyệt' : 'Nháp'}
+                      <div className="text-right">
+                        <div className="font-bold text-blue-600">{(parseFloat(salary.total_salary)/1000000).toFixed(1)}M</div>
+                        <span className={salary.status === 'paid' ? "text-xs px-2 py-0.5 rounded bg-green-100 text-green-700" : salary.status === 'approved' ? "text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700" : "text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700"}>
+                          {salary.status === 'paid' ? '✅ Đã trả' : salary.status === 'approved' ? '✓ Đã duyệt' : '⏳ Chờ duyệt'}
+                        </span>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        {showAddEmployeeModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full">
+              <div className="p-6 border-b bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold">➕ Thêm Nhân Viên</h2>
+                  <button onClick={() => setShowAddEmployeeModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Họ tên *</label>
+                  <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nguyễn Văn A" className="w-full px-4 py-3 border-2 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Số điện thoại</label>
+                  <input type="text" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="0912345678" className="w-full px-4 py-3 border-2 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Bộ phận *</label>
+                  <select value={formDepartment} onChange={(e) => setFormDepartment(e.target.value)} className="w-full px-4 py-3 border-2 rounded-lg">
+                    <option value="livestream">🎥 Livestream</option>
+                    <option value="media">🎬 Media</option>
+                    <option value="warehouse">📦 Kho</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Lương cơ bản (VNĐ) *</label>
+                  <input type="number" value={formBaseSalary} onChange={(e) => setFormBaseSalary(e.target.value)} placeholder="5000000" className="w-full px-4 py-3 border-2 rounded-lg" />
+                </div>
+                {formDepartment === 'livestream' ? (
+                  <div>
+                    <label className="block text-sm font-medium mb-2">% Hoa hồng doanh số</label>
+                    <input type="number" value={formCommissionRate} onChange={(e) => setFormCommissionRate(e.target.value)} placeholder="2" className="w-full px-4 py-3 border-2 rounded-lg" />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Thưởng mỗi {formDepartment === 'media' ? 'video' : 'đơn hàng'} (VNĐ)</label>
+                    <input type="number" value={formBonusPerUnit} onChange={(e) => setFormBonusPerUnit(e.target.value)} placeholder="50000" className="w-full px-4 py-3 border-2 rounded-lg" />
+                  </div>
+                )}
+              </div>
+              <div className="p-6 border-t bg-gray-50 flex gap-3">
+                <button onClick={() => setShowAddEmployeeModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
+                <button onClick={handleAddEmployee} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✅ Thêm</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCreateSalaryModal && selectedEmployee && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full">
+              <div className="p-6 border-b bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-xl font-bold">💰 Tính Lương T{selectedMonth}/{selectedYear}</h2>
+                    <p className="text-white/80">{selectedEmployee.name} - {departments[selectedEmployee.department]?.name}</p>
+                  </div>
+                  <button onClick={() => setShowCreateSalaryModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <div className="text-sm text-gray-500">Lương cơ bản</div>
+                  <div className="font-bold">{parseFloat(selectedEmployee.base_salary).toLocaleString('vi-VN')}đ</div>
+                </div>
+                {selectedEmployee.department === 'livestream' ? (
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Doanh số bán (VNĐ)</label>
+                    <input type="number" value={salaryRevenue} onChange={(e) => setSalaryRevenue(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
+                    {salaryRevenue && selectedEmployee.commission_rate > 0 && (
+                      <div className="text-sm text-green-600 mt-1">Hoa hồng {selectedEmployee.commission_rate}%: +{(parseFloat(salaryRevenue) * selectedEmployee.commission_rate / 100).toLocaleString('vi-VN')}đ</div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Số {selectedEmployee.department === 'media' ? 'video' : 'đơn hàng'}</label>
+                    <input type="number" value={salaryUnits} onChange={(e) => setSalaryUnits(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
+                    {salaryUnits && selectedEmployee.bonus_per_unit > 0 && (
+                      <div className="text-sm text-green-600 mt-1">Thưởng: +{(parseFloat(salaryUnits) * selectedEmployee.bonus_per_unit).toLocaleString('vi-VN')}đ</div>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Thưởng thêm (VNĐ)</label>
+                  <input type="number" value={salaryBonus} onChange={(e) => setSalaryBonus(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Khấu trừ (VNĐ)</label>
+                  <input type="number" value={salaryDeduction} onChange={(e) => setSalaryDeduction(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Ghi chú</label>
+                  <input type="text" value={salaryNote} onChange={(e) => setSalaryNote(e.target.value)} placeholder="Ghi chú..." className="w-full px-4 py-3 border-2 rounded-lg" />
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-sm text-blue-600">Tổng thực nhận</div>
+                  <div className="text-2xl font-bold text-blue-700">{calculateSalary().total.toLocaleString('vi-VN')}đ</div>
+                </div>
+              </div>
+              <div className="p-6 border-t bg-gray-50 flex gap-3">
+                <button onClick={() => setShowCreateSalaryModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
+                <button onClick={handleCreateSalary} className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">✅ Tạo bảng lương</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSalaryDetailModal && selectedSalary && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full">
+              <div className="p-6 border-b bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-xl font-bold">📋 Chi Tiết Lương</h2>
+                    <p className="text-white/80">{selectedSalary.employee_name} - T{selectedSalary.month}/{selectedSalary.year}</p>
+                  </div>
+                  <button onClick={() => setShowSalaryDetailModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
+                </div>
+              </div>
+              <div className="p-6 space-y-3">
+                <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
+                  <span>Lương cơ bản</span>
+                  <span className="font-medium">{parseFloat(selectedSalary.base_salary).toLocaleString('vi-VN')}đ</span>
+                </div>
+                {selectedSalary.revenue > 0 && (
+                  <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
+                    <span>Doanh số</span>
+                    <span className="font-medium">{parseFloat(selectedSalary.revenue).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                )}
+                {selectedSalary.commission > 0 && (
+                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
+                    <span>+ Hoa hồng</span>
+                    <span className="font-medium text-green-600">+{parseFloat(selectedSalary.commission).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                )}
+                {selectedSalary.units > 0 && (
+                  <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
+                    <span>Số {selectedSalary.department === 'media' ? 'video' : 'đơn'}</span>
+                    <span className="font-medium">{selectedSalary.units}</span>
+                  </div>
+                )}
+                {selectedSalary.unit_bonus > 0 && (
+                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
+                    <span>+ Thưởng sản lượng</span>
+                    <span className="font-medium text-green-600">+{parseFloat(selectedSalary.unit_bonus).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                )}
+                {selectedSalary.bonus > 0 && (
+                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
+                    <span>+ Thưởng thêm</span>
+                    <span className="font-medium text-green-600">+{parseFloat(selectedSalary.bonus).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                )}
+                {selectedSalary.deduction > 0 && (
+                  <div className="flex justify-between p-3 bg-red-50 rounded-lg">
+                    <span>- Khấu trừ</span>
+                    <span className="font-medium text-red-600">-{parseFloat(selectedSalary.deduction).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                )}
+                <div className="flex justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <span className="font-bold">THỰC NHẬN</span>
+                  <span className="font-bold text-blue-700 text-xl">{parseFloat(selectedSalary.total_salary).toLocaleString('vi-VN')}đ</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="p-2 bg-gray-50 rounded">
+                    <div className="text-xs text-gray-500">Người tạo</div>
+                    <div>{selectedSalary.created_by || 'N/A'}</div>
+                  </div>
+                  <div className="p-2 bg-gray-50 rounded">
+                    <div className="text-xs text-gray-500">Trạng thái</div>
+                    <div className={selectedSalary.status === 'paid' ? "text-green-600" : selectedSalary.status === 'approved' ? "text-blue-600" : "text-yellow-600"}>
+                      {selectedSalary.status === 'paid' ? '✅ Đã trả' : selectedSalary.status === 'approved' ? '✓ Đã duyệt' : '⏳ Chờ duyệt'}
+                    </div>
+                  </div>
+                  {selectedSalary.approved_by && (
+                    <div className="p-2 bg-gray-50 rounded">
+                      <div className="text-xs text-gray-500">Người duyệt</div>
+                      <div>{selectedSalary.approved_by}</div>
+                    </div>
+                  )}
+                  {selectedSalary.paid_by && (
+                    <div className="p-2 bg-gray-50 rounded">
+                      <div className="text-xs text-gray-500">Người trả</div>
+                      <div>{selectedSalary.paid_by}</div>
+                    </div>
+                  )}
+                </div>
+                {selectedSalary.note && (
+                  <div className="p-3 bg-yellow-50 rounded-lg">
+                    <div className="text-xs text-yellow-600">Ghi chú</div>
+                    <div className="text-yellow-800">{selectedSalary.note}</div>
+                  </div>
+                )}
+              </div>
+              <div className="p-6 border-t bg-gray-50 space-y-3">
+                {selectedSalary.status === 'pending' && canApprove && (
+                  <button onClick={() => handleApproveSalary(selectedSalary)} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✓ Duyệt bảng lương</button>
+                )}
+                {selectedSalary.status === 'approved' && canApprove && (
+                  <button onClick={() => handlePaySalary(selectedSalary)} className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">💵 Trả lương</button>
+                )}
+                <div className="flex gap-3">
+                  {selectedSalary.status === 'pending' && canApprove && (
+                    <button onClick={() => handleDeleteSalary(selectedSalary.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
+                  )}
+                  <button onClick={() => setShowSalaryDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
