@@ -4459,7 +4459,7 @@ export default function SimpleMarketingSystem() {
         category: formCategory,
         receipt_date: formDate,
         note: formNote,
-        status: (currentUser.role === 'Admin' || currentUser.role === 'admin') ? 'approved' : 'pending',
+        status: 'pending',
         created_by: currentUser.name
       };
       try {
@@ -4499,7 +4499,11 @@ export default function SimpleMarketingSystem() {
 
     const handleApprove = async (id) => {
       try {
-        const { error } = await supabase.from('receipts_payments').update({ status: 'approved' }).eq('id', id);
+        const { error } = await supabase.from('receipts_payments').update({ 
+          status: 'approved',
+          approved_by: currentUser.name,
+          approved_at: new Date().toISOString()
+        }).eq('id', id);
         if (error) throw error;
         alert('Đã duyệt!');
         setShowDetailModal(false);
@@ -4511,7 +4515,11 @@ export default function SimpleMarketingSystem() {
 
     const handleReject = async (id) => {
       try {
-        const { error } = await supabase.from('receipts_payments').update({ status: 'rejected' }).eq('id', id);
+        const { error } = await supabase.from('receipts_payments').update({ 
+          status: 'rejected',
+          approved_by: currentUser.name,
+          approved_at: new Date().toISOString()
+        }).eq('id', id);
         if (error) throw error;
         alert('Đã từ chối!');
         setShowDetailModal(false);
@@ -4748,7 +4756,7 @@ export default function SimpleMarketingSystem() {
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <div className="text-xs text-gray-500 mb-1">Trạng thái</div>
                       <div className={selectedReceipt.status === 'approved' ? "font-medium text-green-600" : selectedReceipt.status === 'rejected' ? "font-medium text-red-600" : "font-medium text-yellow-600"}>
-                        {selectedReceipt.status === 'approved' ? '✓ Đã duyệt' : selectedReceipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
+                        {selectedReceipt.status === 'approved' ? '🔒 Đã duyệt' : selectedReceipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
                       </div>
                     </div>
                     <div className="p-3 bg-gray-50 rounded-lg">
@@ -4756,6 +4764,15 @@ export default function SimpleMarketingSystem() {
                       <div className="font-medium">{selectedReceipt.created_by || 'N/A'}</div>
                     </div>
                   </div>
+                  {(selectedReceipt.status === 'approved' || selectedReceipt.status === 'rejected') && selectedReceipt.approved_by && (
+                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="text-xs text-blue-600 mb-1">{selectedReceipt.status === 'approved' ? '✓ Người duyệt' : '✗ Người từ chối'}</div>
+                      <div className="font-medium text-blue-800">{selectedReceipt.approved_by}</div>
+                      {selectedReceipt.approved_at && (
+                        <div className="text-xs text-blue-600 mt-1">Lúc: {new Date(selectedReceipt.approved_at).toLocaleString('vi-VN')}</div>
+                      )}
+                    </div>
+                  )}
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <div className="text-xs text-gray-500 mb-1">Mô tả</div>
                     <div className="font-medium">{selectedReceipt.description}</div>
@@ -4764,6 +4781,11 @@ export default function SimpleMarketingSystem() {
                     <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                       <div className="text-xs text-yellow-600 mb-1">Ghi chú</div>
                       <div className="text-yellow-800">{selectedReceipt.note}</div>
+                    </div>
+                  )}
+                  {selectedReceipt.status === 'approved' && (
+                    <div className="p-3 bg-gray-100 rounded-lg border border-gray-300 text-center">
+                      <span className="text-gray-600 text-sm">🔒 Phiếu đã duyệt - Không thể chỉnh sửa</span>
                     </div>
                   )}
                 </div>
@@ -4777,17 +4799,17 @@ export default function SimpleMarketingSystem() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                    {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager') && (
                       <div className="flex gap-3">
                         <button onClick={() => handleApprove(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">✓ Duyệt</button>
                         <button onClick={() => handleReject(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium">✗ Từ chối</button>
                       </div>
                     )}
                     <div className="flex gap-3">
-                      {(currentUser.role === 'Admin' || currentUser.role === 'admin' || selectedReceipt.created_by === currentUser.name) && (
+                      {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin' || selectedReceipt.created_by === currentUser.name) && (
                         <button onClick={() => setIsEditing(true)} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✏️ Sửa</button>
                       )}
-                      {(currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                      {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
                         <button onClick={() => handleDelete(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
                       )}
                       <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
