@@ -4602,45 +4602,76 @@ export default function SimpleMarketingSystem() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border">
-          {filteredReceipts.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="text-6xl mb-4">📝</div>
-              <p className="text-gray-500">Chưa có phiếu thu/chi nào</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl border">
+            <div className="p-4 border-b bg-green-50">
+              <h3 className="font-bold text-green-700">💵 Phiếu Thu ({filteredReceipts.filter(r => r.type === 'thu').length})</h3>
             </div>
-          ) : (
-            <div className="divide-y">
-              {filteredReceipts.map(receipt => (
-                <div key={receipt.id} onClick={() => openDetailModal(receipt)} className="p-4 hover:bg-gray-50 cursor-pointer">
-                  <div className="flex flex-col md:flex-row justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={receipt.type === 'thu' ? "px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700" : "px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700"}>
-                          {receipt.type === 'thu' ? 'THU' : 'CHI'}
-                        </span>
-                        <span className="font-bold">{receipt.receipt_number}</span>
-                        <span className={receipt.status === 'approved' ? "px-2 py-0.5 rounded text-xs bg-green-100 text-green-700" : receipt.status === 'rejected' ? "px-2 py-0.5 rounded text-xs bg-red-100 text-red-700" : "px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700"}>
-                          {receipt.status === 'approved' ? '🔒 Đã duyệt' : receipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
-                        </span>
+            {filteredReceipts.filter(r => r.type === 'thu').length === 0 ? (
+              <div className="p-6 text-center text-gray-500">Chưa có phiếu thu</div>
+            ) : (
+              <div className="divide-y max-h-[500px] overflow-y-auto">
+                {filteredReceipts.filter(r => r.type === 'thu').sort((a, b) => new Date(b.created_at || b.receipt_date) - new Date(a.created_at || a.receipt_date)).map(receipt => (
+                  <div key={receipt.id} onClick={() => openDetailModal(receipt)} className="p-4 hover:bg-gray-50 cursor-pointer">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-bold text-sm">{receipt.receipt_number}</span>
+                          <span className={receipt.status === 'approved' ? "px-2 py-0.5 rounded text-xs bg-green-100 text-green-700" : receipt.status === 'rejected' ? "px-2 py-0.5 rounded text-xs bg-red-100 text-red-700" : "px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700"}>
+                            {receipt.status === 'approved' ? '🔒 Đã duyệt' : receipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
+                          </span>
+                        </div>
+                        <div className="text-gray-700 text-sm truncate">{receipt.description}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          📅 {new Date(receipt.receipt_date).toLocaleDateString('vi-VN')}
+                          {receipt.category && <span> • {receipt.category}</span>}
+                        </div>
                       </div>
-                      <div className="text-gray-700">{receipt.description}</div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        📅 {new Date(receipt.receipt_date).toLocaleDateString('vi-VN')}
-                        {receipt.category && <span> • 📁 {receipt.category}</span>}
-                        {receipt.created_by && <span> • 👤 {receipt.created_by}</span>}
+                      <div className="text-right">
+                        <div className="font-bold text-green-600">+{parseFloat(receipt.amount).toLocaleString('vi-VN')}đ</div>
+                        <div className="text-xs text-gray-500">{receipt.created_by}</div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className={receipt.type === 'thu' ? "text-xl font-bold text-green-600" : "text-xl font-bold text-red-600"}>
-                        {receipt.type === 'thu' ? '+' : '-'}{parseFloat(receipt.amount).toLocaleString('vi-VN')}đ
-                      </div>
-                      <div className="text-gray-400">→</div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border">
+            <div className="p-4 border-b bg-red-50">
+              <h3 className="font-bold text-red-700">💸 Phiếu Chi ({filteredReceipts.filter(r => r.type === 'chi').length})</h3>
             </div>
-          )}
+            {filteredReceipts.filter(r => r.type === 'chi').length === 0 ? (
+              <div className="p-6 text-center text-gray-500">Chưa có phiếu chi</div>
+            ) : (
+              <div className="divide-y max-h-[500px] overflow-y-auto">
+                {filteredReceipts.filter(r => r.type === 'chi').sort((a, b) => new Date(b.created_at || b.receipt_date) - new Date(a.created_at || a.receipt_date)).map(receipt => (
+                  <div key={receipt.id} onClick={() => openDetailModal(receipt)} className="p-4 hover:bg-gray-50 cursor-pointer">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-bold text-sm">{receipt.receipt_number}</span>
+                          <span className={receipt.status === 'approved' ? "px-2 py-0.5 rounded text-xs bg-green-100 text-green-700" : receipt.status === 'rejected' ? "px-2 py-0.5 rounded text-xs bg-red-100 text-red-700" : "px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700"}>
+                            {receipt.status === 'approved' ? '🔒 Đã duyệt' : receipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
+                          </span>
+                        </div>
+                        <div className="text-gray-700 text-sm truncate">{receipt.description}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          📅 {new Date(receipt.receipt_date).toLocaleDateString('vi-VN')}
+                          {receipt.category && <span> • {receipt.category}</span>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-red-600">-{parseFloat(receipt.amount).toLocaleString('vi-VN')}đ</div>
+                        <div className="text-xs text-gray-500">{receipt.created_by}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {showCreateModal && (
