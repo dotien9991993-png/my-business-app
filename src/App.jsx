@@ -4542,6 +4542,7 @@ export default function SimpleMarketingSystem() {
       }
     };
 
+    const canApprove = currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager';
     const totalThu = filteredReceipts.filter(r => r.type === 'thu').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
     const totalChi = filteredReceipts.filter(r => r.type === 'chi').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
 
@@ -4550,16 +4551,10 @@ export default function SimpleMarketingSystem() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-2xl font-bold">🧾 Phiếu Thu/Chi</h2>
           <div className="flex gap-2">
-            <button
-              onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
-            >
+            <button onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
               ➕ Tạo Phiếu Thu
             </button>
-            <button
-              onClick={() => { setFormType('chi'); resetForm(); setShowCreateModal(true); }}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
-            >
+            <button onClick={() => { setFormType('chi'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
               ➕ Tạo Phiếu Chi
             </button>
           </div>
@@ -4596,6 +4591,7 @@ export default function SimpleMarketingSystem() {
                 <option value="all">Tất cả</option>
                 <option value="pending">Chờ duyệt</option>
                 <option value="approved">Đã duyệt</option>
+                <option value="rejected">Từ chối</option>
               </select>
             </div>
             <div className="flex-1 min-w-[200px]">
@@ -4614,7 +4610,7 @@ export default function SimpleMarketingSystem() {
           ) : (
             <div className="divide-y">
               {filteredReceipts.map(receipt => (
-                <div key={receipt.id} onClick={() => openDetailModal(receipt)} className="p-4 hover:bg-gray-50 cursor-pointer transition-colors">
+                <div key={receipt.id} onClick={() => openDetailModal(receipt)} className="p-4 hover:bg-gray-50 cursor-pointer">
                   <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -4622,8 +4618,8 @@ export default function SimpleMarketingSystem() {
                           {receipt.type === 'thu' ? 'THU' : 'CHI'}
                         </span>
                         <span className="font-bold">{receipt.receipt_number}</span>
-                        <span className={receipt.status === 'approved' ? "px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700" : receipt.status === 'rejected' ? "px-2 py-0.5 rounded text-xs bg-red-100 text-red-700" : "px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700"}>
-                          {receipt.status === 'approved' ? '✓ Đã duyệt' : receipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
+                        <span className={receipt.status === 'approved' ? "px-2 py-0.5 rounded text-xs bg-green-100 text-green-700" : receipt.status === 'rejected' ? "px-2 py-0.5 rounded text-xs bg-red-100 text-red-700" : "px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700"}>
+                          {receipt.status === 'approved' ? '🔒 Đã duyệt' : receipt.status === 'rejected' ? '✗ Từ chối' : '⏳ Chờ duyệt'}
                         </span>
                       </div>
                       <div className="text-gray-700">{receipt.description}</div>
@@ -4735,6 +4731,10 @@ export default function SimpleMarketingSystem() {
                     <label className="block text-sm font-medium mb-2">Ghi chú</label>
                     <textarea value={formNote} onChange={(e) => setFormNote(e.target.value)} rows={2} className="w-full px-4 py-3 border-2 rounded-lg"></textarea>
                   </div>
+                  <div className="flex gap-3 pt-4">
+                    <button onClick={() => setIsEditing(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
+                    <button onClick={handleUpdateReceipt} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">💾 Lưu</button>
+                  </div>
                 </div>
               ) : (
                 <div className="p-6 space-y-4">
@@ -4764,13 +4764,11 @@ export default function SimpleMarketingSystem() {
                       <div className="font-medium">{selectedReceipt.created_by || 'N/A'}</div>
                     </div>
                   </div>
-                  {(selectedReceipt.status === 'approved' || selectedReceipt.status === 'rejected') && selectedReceipt.approved_by && (
+                  {selectedReceipt.approved_by && (
                     <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                       <div className="text-xs text-blue-600 mb-1">{selectedReceipt.status === 'approved' ? '✓ Người duyệt' : '✗ Người từ chối'}</div>
                       <div className="font-medium text-blue-800">{selectedReceipt.approved_by}</div>
-                      {selectedReceipt.approved_at && (
-                        <div className="text-xs text-blue-600 mt-1">Lúc: {new Date(selectedReceipt.approved_at).toLocaleString('vi-VN')}</div>
-                      )}
+                      {selectedReceipt.approved_at && <div className="text-xs text-blue-600 mt-1">Lúc: {new Date(selectedReceipt.approved_at).toLocaleString('vi-VN')}</div>}
                     </div>
                   )}
                   <div className="p-3 bg-gray-50 rounded-lg">
@@ -4784,46 +4782,35 @@ export default function SimpleMarketingSystem() {
                     </div>
                   )}
                   {selectedReceipt.status === 'approved' && (
-                    <div className="p-3 bg-gray-100 rounded-lg border border-gray-300 text-center">
-                      <span className="text-gray-600 text-sm">🔒 Phiếu đã duyệt - Không thể chỉnh sửa</span>
+                    <div className="p-3 bg-gray-100 rounded-lg text-center">
+                      <span className="text-gray-500 text-sm">🔒 Phiếu đã duyệt - Không thể chỉnh sửa</span>
                     </div>
                   )}
-                </div>
-              )}
-              
-              <div className="p-6 border-t bg-gray-50">
-                {isEditing ? (
-                  <div className="flex gap-3">
-                    <button onClick={() => setIsEditing(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
-                    <button onClick={handleUpdateReceipt} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">💾 Lưu thay đổi</button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager') && (
+                  <div className="space-y-3 pt-4">
+                    {selectedReceipt.status === 'pending' && canApprove && (
                       <div className="flex gap-3">
                         <button onClick={() => handleApprove(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">✓ Duyệt</button>
-                        <button onClick={() => handleReject(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium">✗ Từ chối</button>
+                        <button onClick={() => handleReject(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium">✗ Từ chối</button>
                       </div>
                     )}
                     <div className="flex gap-3">
-                      {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin' || selectedReceipt.created_by === currentUser.name) && (
+                      {selectedReceipt.status === 'pending' && (
                         <button onClick={() => setIsEditing(true)} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✏️ Sửa</button>
                       )}
-                      {selectedReceipt.status === 'pending' && (currentUser.role === 'Admin' || currentUser.role === 'admin') && (
+                      {selectedReceipt.status === 'pending' && canApprove && (
                         <button onClick={() => handleDelete(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
                       )}
                       <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
     );
   }
-
   function DebtsView() {
     const receivables = debts.filter(d => d.type === 'receivable');
     const payables = debts.filter(d => d.type === 'payable');
