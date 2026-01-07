@@ -6498,6 +6498,7 @@ export default function SimpleMarketingSystem() {
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedReceipt, setSelectedReceipt] = useState(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [filterType, setFilterType] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [searchText, setSearchText] = useState('');
@@ -6941,11 +6942,33 @@ export default function SimpleMarketingSystem() {
                       {selectedReceipt.status === 'pending' && canEditFinance() && (
                         <button onClick={() => setIsEditing(true)} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✏️ Sửa</button>
                       )}
-                      {/* Admin có thể xóa mọi phiếu, user khác chỉ xóa được phiếu pending */}
-                      {((currentUser.role === 'Admin' || currentUser.role === 'admin') || (selectedReceipt.status === 'pending' && canEditFinance())) && (
-                        <button onClick={() => handleDelete(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
-                      )}
                       <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
+                      {/* Menu 3 chấm chứa nút Xóa */}
+                      {((currentUser.role === 'Admin' || currentUser.role === 'admin') || (selectedReceipt.status === 'pending' && canEditFinance())) && (
+                        <div className="relative">
+                          <button 
+                            onClick={() => setShowMoreMenu(!showMoreMenu)} 
+                            className="px-4 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+                          >
+                            ⋮
+                          </button>
+                          {showMoreMenu && (
+                            <div className="absolute bottom-full right-0 mb-2 bg-white border rounded-lg shadow-lg py-1 min-w-[120px] z-10">
+                              <button 
+                                onClick={() => {
+                                  if (window.confirm('Bạn có chắc muốn xóa phiếu này?')) {
+                                    handleDelete(selectedReceipt.id);
+                                    setShowMoreMenu(false);
+                                  }
+                                }} 
+                                className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2"
+                              >
+                                🗑️ Xóa phiếu
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
