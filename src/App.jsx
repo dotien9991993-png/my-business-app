@@ -3441,7 +3441,7 @@ export default function SimpleMarketingSystem() {
     const [title, setTitle] = useState('');
     const [platform, setPlatform] = useState([]);
     const [priority, setPriority] = useState('');
-    const [dueDate, setDueDate] = useState('');
+    const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [description, setDescription] = useState('');
     const [assignee, setAssignee] = useState(currentUser.name);
 
