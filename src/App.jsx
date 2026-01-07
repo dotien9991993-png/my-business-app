@@ -21,8 +21,29 @@ const useHashRouter = () => {
   return { path: hash, navigate };
 };
 
+// Get tenant slug from subdomain
+const getTenantSlug = () => {
+  const hostname = window.location.hostname;
+  // localhost hoặc IP -> dùng default tenant
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+    return 'hoangnamaudio'; // Default cho development
+  }
+  // subdomain.domain.com -> lấy subdomain
+  const parts = hostname.split('.');
+  if (parts.length >= 3) {
+    return parts[0]; // hoangnamaudio.yourdomain.com -> hoangnamaudio
+  }
+  // domain.com without subdomain -> default
+  return 'hoangnamaudio';
+};
+
 export default function SimpleMarketingSystem() {
   const { path, navigate } = useHashRouter();
+  
+  // Tenant state
+  const [tenant, setTenant] = useState(null);
+  const [tenantLoading, setTenantLoading] = useState(true);
+  const [tenantError, setTenantError] = useState(null);
   
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -56,6 +77,41 @@ export default function SimpleMarketingSystem() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Load tenant info on mount
+  useEffect(() => {
+    const loadTenant = async () => {
+      try {
+        const slug = getTenantSlug();
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('slug', slug)
+          .eq('is_active', true)
+          .single();
+        
+        if (error || !data) {
+          setTenantError('Không tìm thấy công ty hoặc tài khoản đã bị khóa');
+          setTenantLoading(false);
+          return;
+        }
+        
+        // Check plan expiry
+        if (data.plan_expires_at && new Date(data.plan_expires_at) < new Date()) {
+          setTenantError('Gói dịch vụ đã hết hạn. Vui lòng liên hệ để gia hạn.');
+          setTenantLoading(false);
+          return;
+        }
+        
+        setTenant(data);
+        setTenantLoading(false);
+      } catch (err) {
+        setTenantError('Lỗi kết nối. Vui lòng thử lại.');
+        setTenantLoading(false);
+      }
+    };
+    loadTenant();
+  }, []);
 
   // Sync URL with activeModule and activeTab
   useEffect(() => {
@@ -113,27 +169,39 @@ export default function SimpleMarketingSystem() {
   // Load data from Supabase on mount
   // Restore session từ localStorage khi load trang
   useEffect(() => {
-    const savedUser = localStorage.getItem('marketingSystemUser');
-    const savedLoggedIn = localStorage.getItem('marketingSystemLoggedIn');
+    if (!tenant) return; // Chờ tenant load xong
+    
+    const savedUser = localStorage.getItem(`${tenant.slug}_user`);
+    const savedLoggedIn = localStorage.getItem(`${tenant.slug}_loggedIn`);
     
     if (savedUser && savedLoggedIn === 'true') {
       try {
         const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        setIsLoggedIn(true);
-        // Set default route if no hash
-        if (!window.location.hash) {
-          navigate('media/dashboard');
+        // Verify user belongs to this tenant
+        if (user.tenant_id === tenant.id) {
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+          // Set default route if no hash
+          if (!window.location.hash) {
+            navigate('media/dashboard');
+          }
+        } else {
+          // Wrong tenant, clear session
+          localStorage.removeItem(`${tenant.slug}_user`);
+          localStorage.removeItem(`${tenant.slug}_loggedIn`);
         }
       } catch (error) {
         console.error('Error restoring session:', error);
-        localStorage.removeItem('marketingSystemUser');
-        localStorage.removeItem('marketingSystemLoggedIn');
+        localStorage.removeItem(`${tenant.slug}_user`);
+        localStorage.removeItem(`${tenant.slug}_loggedIn`);
       }
     }
-  }, [navigate]);
+  }, [tenant, navigate]);
 
   useEffect(() => {
+    // Chờ tenant load xong mới load data
+    if (!tenant) return;
+    
     loadUsers();
     loadTasks();
     loadTechnicalJobs();
@@ -170,7 +238,7 @@ export default function SimpleMarketingSystem() {
       supabase.removeChannel(jobsChannel);
       supabase.removeChannel(financeChannel);
     };
-  }, []);
+  }, [tenant]);
 
   // Check deadline notifications
   useEffect(() => {
@@ -183,10 +251,12 @@ export default function SimpleMarketingSystem() {
   }, [tasks, currentUser, isLoggedIn]);
 
   const loadUsers = async () => {
+    if (!tenant) return;
     try {
       const { data, error } = await supabase
         .from('users')
         .select('*')
+        .eq('tenant_id', tenant.id)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
@@ -209,10 +279,12 @@ export default function SimpleMarketingSystem() {
   };
 
   const loadTasks = async () => {
+    if (!tenant) return;
     try {
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
+        .eq('tenant_id', tenant.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -241,10 +313,12 @@ export default function SimpleMarketingSystem() {
   };
 
   const loadTechnicalJobs = async () => {
+    if (!tenant) return;
     try {
       const { data, error } = await supabase
         .from('technical_jobs')
         .select('*')
+        .eq('tenant_id', tenant.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -274,11 +348,12 @@ export default function SimpleMarketingSystem() {
 
   // Finance Data Loading
   const loadFinanceData = async () => {
+    if (!tenant) return;
     try {
       const [receiptsRes, debtsRes, salariesRes] = await Promise.all([
-        supabase.from('receipts_payments').select('*').order('receipt_date', { ascending: false }).limit(50),
-        supabase.from('debts').select('*').order('created_at', { ascending: false }).limit(50),
-        supabase.from('salaries').select('*').order('year', { ascending: false }).order('month', { ascending: false }).limit(50)
+        supabase.from('receipts_payments').select('*').eq('tenant_id', tenant.id).order('receipt_date', { ascending: false }).limit(50),
+        supabase.from('debts').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(50),
+        supabase.from('salaries').select('*').eq('tenant_id', tenant.id).order('year', { ascending: false }).order('month', { ascending: false }).limit(50)
       ]);
       
       if (receiptsRes.data) setReceiptsPayments(receiptsRes.data);
@@ -319,6 +394,7 @@ export default function SimpleMarketingSystem() {
       const { error } = await supabase
         .from('tasks')
         .insert([{
+          tenant_id: tenant.id,
           title,
           assignee: assignee,
           team: taskTeam,
@@ -364,6 +440,7 @@ export default function SimpleMarketingSystem() {
       const { error } = await supabase
         .from('technical_jobs')
         .insert([{
+          tenant_id: tenant.id,
           title: jobData.title,
           type: jobData.type,
           customer_name: jobData.customerName,
@@ -691,6 +768,7 @@ export default function SimpleMarketingSystem() {
       const { data, error } = await supabase
         .from('users')
         .select('*')
+        .eq('tenant_id', tenant.id)
         .eq('email', email)
         .eq('password', password)
         .single();
@@ -704,9 +782,9 @@ export default function SimpleMarketingSystem() {
       setIsLoggedIn(true);
       setShowLoginModal(false);
       
-      // Lưu session vào localStorage
-      localStorage.setItem('marketingSystemUser', JSON.stringify(data));
-      localStorage.setItem('marketingSystemLoggedIn', 'true');
+      // Lưu session vào localStorage (thêm tenant slug)
+      localStorage.setItem(`${tenant.slug}_user`, JSON.stringify(data));
+      localStorage.setItem(`${tenant.slug}_loggedIn`, 'true');
       
       // Navigate to default page
       navigate('media/dashboard');
@@ -723,9 +801,21 @@ export default function SimpleMarketingSystem() {
     }
     
     try {
+      // Check max users limit
+      const { count } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenant.id);
+      
+      if (count >= tenant.max_users) {
+        alert(`❌ Đã đạt giới hạn ${tenant.max_users} người dùng. Vui lòng nâng cấp gói!`);
+        return;
+      }
+      
       const { data: existing } = await supabase
         .from('users')
         .select('email')
+        .eq('tenant_id', tenant.id)
         .eq('email', email)
         .single();
       
@@ -736,7 +826,7 @@ export default function SimpleMarketingSystem() {
       
       const { error } = await supabase
         .from('users')
-        .insert([{ name, email, password, team, role }]);
+        .insert([{ tenant_id: tenant.id, name, email, password, team, role }]);
       
       if (error) throw error;
       
@@ -3904,6 +3994,36 @@ export default function SimpleMarketingSystem() {
     );
   };
 
+  // Loading tenant
+  if (tenantLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="animate-spin text-6xl mb-4">⚙️</div>
+          <h2 className="text-xl font-bold text-gray-800">Đang tải...</h2>
+          <p className="text-gray-500 mt-2">Vui lòng chờ trong giây lát</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Tenant error (không tìm thấy hoặc hết hạn)
+  if (tenantError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-500 via-orange-500 to-yellow-500 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-xl font-bold text-red-600 mb-2">Không thể truy cập</h2>
+          <p className="text-gray-600 mb-6">{tenantError}</p>
+          <div className="text-sm text-gray-500">
+            <p>Liên hệ hỗ trợ:</p>
+            <p className="font-medium">support@yourdomain.com</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
@@ -3911,13 +4031,13 @@ export default function SimpleMarketingSystem() {
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
               <img 
-                src="/logo.png?v=2" 
-                alt="Hoàng Nam Audio" 
+                src={tenant.logo_url || "/logo.png?v=2"} 
+                alt={tenant.name} 
                 className="h-32 w-auto"
               />
             </div>
-            <h1 className="text-3xl font-bold mb-2">Hoàng Nam Audio</h1>
-            <p className="text-gray-600">Làm việc hăng say, tiền ngay về túi</p>
+            <h1 className="text-3xl font-bold mb-2">{tenant.name}</h1>
+            <p className="text-gray-600">{tenant.slogan || 'Làm việc hăng say, tiền ngay về túi'}</p>
           </div>
           
           <div className="space-y-4">
@@ -3989,10 +4109,10 @@ export default function SimpleMarketingSystem() {
           {/* Desktop Header */}
           <div className="hidden md:flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <img src="/logo.png?v=2" alt="Hoàng Nam Audio" className="h-12 w-auto" />
+              <img src={tenant.logo_url || "/logo.png?v=2"} alt={tenant.name} className="h-12 w-auto" />
               <div>
-                <h1 className="text-2xl font-bold">Hoàng Nam Audio</h1>
-                <p className="text-gray-600 text-sm">Làm việc hăng say, tiền ngay về túi</p>
+                <h1 className="text-2xl font-bold">{tenant.name}</h1>
+                <p className="text-gray-600 text-sm">{tenant.slogan || 'Làm việc hăng say, tiền ngay về túi'}</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -4027,8 +4147,8 @@ export default function SimpleMarketingSystem() {
                   setIsLoggedIn(false);
                   setCurrentUser(null);
                   setActiveTab('dashboard');
-                  localStorage.removeItem('marketingSystemUser');
-                  localStorage.removeItem('marketingSystemLoggedIn');
+                  localStorage.removeItem(`${tenant.slug}_user`);
+                  localStorage.removeItem(`${tenant.slug}_loggedIn`);
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm"
               >
@@ -4242,8 +4362,8 @@ export default function SimpleMarketingSystem() {
                   setIsLoggedIn(false);
                   setCurrentUser(null);
                   setActiveTab('dashboard');
-                  localStorage.removeItem('marketingSystemUser');
-                  localStorage.removeItem('marketingSystemLoggedIn');
+                  localStorage.removeItem(`${tenant.slug}_user`);
+                  localStorage.removeItem(`${tenant.slug}_loggedIn`);
                   setShowMobileSidebar(false);
                 }}
                 className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
@@ -4692,6 +4812,7 @@ export default function SimpleMarketingSystem() {
         return;
       }
       const newReceipt = {
+        tenant_id: tenant.id,
         receipt_number: generateReceiptNumber(formType),
         type: formType,
         amount: parseFloat(formAmount),
@@ -5150,6 +5271,7 @@ export default function SimpleMarketingSystem() {
         return;
       }
       const newDebt = {
+        tenant_id: tenant.id,
         debt_number: generateDebtNumber(formType),
         type: formType,
         partner_name: formPartnerName,
@@ -5218,6 +5340,7 @@ export default function SimpleMarketingSystem() {
         const receiptNumber = receiptPrefix + '-' + dateStr + '-' + randomNum;
 
         const newReceipt = {
+          tenant_id: tenant.id,
           receipt_number: receiptNumber,
           type: receiptType,
           amount: amount,
@@ -5700,6 +5823,7 @@ export default function SimpleMarketingSystem() {
       const calc = calculateSalary();
       try {
         const { error } = await supabase.from('salaries').insert([{
+          tenant_id: tenant.id,
           employee_id: selectedEmployee.id,
           employee_name: selectedEmployee.name,
           department: selectedEmployee.department,
@@ -5758,6 +5882,7 @@ export default function SimpleMarketingSystem() {
         const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
         const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
         await supabase.from('receipts_payments').insert([{
+          tenant_id: tenant.id,
           receipt_number: 'PC-' + dateStr + '-' + randomNum,
           type: 'chi',
           amount: salary.total_salary,
