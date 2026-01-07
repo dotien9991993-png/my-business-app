@@ -6069,44 +6069,31 @@ export default function SimpleMarketingSystem() {
       const perms = user.permissions || {};
       const depts = departments.filter(d => perms[d.id] && perms[d.id] > 0);
       if (depts.length === 0) return <span className="text-gray-400">Chưa phân quyền</span>;
-      return depts.map(d => d.name.split(' ')[0]).join(', ');
+      return depts.map(d => {
+        const level = perms[d.id];
+        const icon = d.name.split(' ')[0];
+        const levelLabel = level === 1 ? '①' : level === 2 ? '②' : '③';
+        return `${icon}${levelLabel}`;
+      }).join(' ');
     };
 
-    const handleSavePermissions = async (userId, newPermissions) => {
-      try {
-        setSaving(true);
-        const { error } = await supabase
-          .from('users')
-          .update({ permissions: newPermissions })
-          .eq('id', userId);
-        if (error) throw error;
-        await loadUsers();
-        setSelectedUser(prev => prev ? { ...prev, permissions: newPermissions } : null);
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
-      } finally {
-        setSaving(false);
-      }
-    };
-
-    // User Detail Modal
+    // User Detail Modal - CHỈ LƯU KHI NHẤN NÚT LƯU
     const UserPermissionDetail = ({ user, onClose }) => {
       const [localPerms, setLocalPerms] = useState(user.permissions || {});
+      const [hasChanges, setHasChanges] = useState(false);
       const isAdmin = user.role === 'Admin' || user.role === 'admin';
 
       const handleToggleDept = (deptId) => {
         if (isAdmin) return;
         const current = localPerms[deptId] || 0;
-        const newPerms = { ...localPerms, [deptId]: current > 0 ? 0 : 1 };
-        setLocalPerms(newPerms);
-        handleSavePermissions(user.id, newPerms);
+        setLocalPerms(prev => ({ ...prev, [deptId]: current > 0 ? 0 : 1 }));
+        setHasChanges(true);
       };
 
       const handleLevelChange = (deptId, level) => {
         if (isAdmin) return;
-        const newPerms = { ...localPerms, [deptId]: level };
-        setLocalPerms(newPerms);
-        handleSavePermissions(user.id, newPerms);
+        setLocalPerms(prev => ({ ...prev, [deptId]: level }));
+        setHasChanges(true);
       };
 
       const selectAllDepts = () => {
@@ -6115,14 +6102,40 @@ export default function SimpleMarketingSystem() {
         const newPerms = {};
         departments.forEach(d => { newPerms[d.id] = allEnabled ? 0 : 1; });
         setLocalPerms(newPerms);
-        handleSavePermissions(user.id, newPerms);
+        setHasChanges(true);
+      };
+
+      const handleSave = async () => {
+        try {
+          setSaving(true);
+          const { error } = await supabase
+            .from('users')
+            .update({ permissions: localPerms })
+            .eq('id', user.id);
+          if (error) throw error;
+          await loadUsers();
+          setHasChanges(false);
+          alert('✅ Đã lưu phân quyền thành công!');
+          onClose();
+        } catch (error) {
+          alert('❌ Lỗi: ' + error.message);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const handleCancel = () => {
+        if (hasChanges) {
+          if (!window.confirm('Bạn có thay đổi chưa lưu. Bạn có chắc muốn hủy?')) return;
+        }
+        onClose();
       };
 
       const getLevelColor = (level) => {
-        if (level === 0) return 'bg-gray-100 text-gray-500';
-        if (level === 1) return 'bg-yellow-100 text-yellow-700';
-        if (level === 2) return 'bg-blue-100 text-blue-700';
-        return 'bg-green-100 text-green-700';
+        if (level === 0) return 'bg-gray-100 text-gray-500 border-gray-200';
+        if (level === 1) return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+        if (level === 2) return 'bg-blue-100 text-blue-700 border-blue-300';
+        return 'bg-green-100 text-green-700 border-green-300';
       };
 
       return (
@@ -6131,28 +6144,29 @@ export default function SimpleMarketingSystem() {
             <div className="p-5 border-b bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className="text-xl font-bold flex items-center gap-2">
-                    🔐 Phân quyền: {user.name}
-                  </h2>
-                  <p className="text-white/80 text-sm mt-1">{user.email} • {getRoleBadge(user.role)}</p>
+                  <h2 className="text-xl font-bold">🔐 Phân quyền: {user.name}</h2>
+                  <p className="text-white/80 text-sm mt-1">{user.email}</p>
                 </div>
-                <button onClick={onClose} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg flex items-center justify-center">×</button>
+                <div className="flex items-center gap-2">
+                  {getRoleBadge(user.role)}
+                  <button onClick={handleCancel} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg flex items-center justify-center ml-2">×</button>
+                </div>
               </div>
             </div>
 
             <div className="p-5 overflow-y-auto flex-1 space-y-3">
               {isAdmin ? (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-                  <div className="text-4xl mb-2">👑</div>
-                  <div className="font-medium text-red-800">Admin có toàn quyền tất cả bộ phận</div>
-                  <div className="text-sm text-red-600">Không thể thay đổi quyền Admin</div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+                  <div className="text-5xl mb-3">👑</div>
+                  <div className="font-bold text-red-800 text-lg">Admin có toàn quyền</div>
+                  <div className="text-sm text-red-600 mt-1">Không thể thay đổi quyền Admin</div>
                 </div>
               ) : (
                 <>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-600">Chọn bộ phận và cấp quyền:</span>
-                    <button onClick={selectAllDepts} className="text-sm text-blue-600 hover:underline">
-                      {departments.every(d => localPerms[d.id] > 0) ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                  <div className="flex justify-between items-center bg-gray-50 rounded-lg p-3">
+                    <span className="text-sm font-medium text-gray-700">Chọn bộ phận và cấp quyền:</span>
+                    <button onClick={selectAllDepts} className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                      {departments.every(d => localPerms[d.id] > 0) ? '❌ Bỏ chọn tất cả' : '✅ Chọn tất cả'}
                     </button>
                   </div>
 
@@ -6161,55 +6175,49 @@ export default function SimpleMarketingSystem() {
                     const isEnabled = level > 0;
 
                     return (
-                      <div key={dept.id} className={`border rounded-xl overflow-hidden transition-all ${isEnabled ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200 bg-gray-50'}`}>
+                      <div key={dept.id} className={`border-2 rounded-xl overflow-hidden transition-all ${isEnabled ? 'border-blue-400 shadow-sm' : 'border-gray-200'}`}>
                         <div 
-                          className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                          className={`p-4 flex items-center justify-between cursor-pointer ${isEnabled ? 'bg-blue-50' : 'bg-gray-50 hover:bg-gray-100'}`}
                           onClick={() => handleToggleDept(dept.id)}
                         >
                           <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={isEnabled}
-                              onChange={() => {}}
-                              className="w-5 h-5 rounded border-gray-300 text-blue-600 cursor-pointer"
-                            />
+                            <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${isEnabled ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
+                              {isEnabled && <span className="text-white text-sm">✓</span>}
+                            </div>
                             <div>
-                              <div className="font-medium">{dept.name}</div>
+                              <div className="font-semibold text-gray-800">{dept.name}</div>
                               <div className="text-xs text-gray-500">{dept.desc}</div>
                             </div>
                           </div>
                           {isEnabled && (
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${getLevelColor(level)}`}>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${getLevelColor(level)}`}>
                               {permissionLevels.find(p => p.value === level)?.label}
                             </span>
                           )}
                         </div>
 
                         {isEnabled && (
-                          <div className="px-4 pb-4 pt-2 border-t bg-white">
-                            <div className="text-xs text-gray-500 mb-2">Cấp quyền:</div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div className="px-4 pb-4 pt-3 bg-white border-t">
+                            <div className="text-xs text-gray-500 mb-3 font-medium">⚡ Chọn cấp quyền:</div>
+                            <div className="grid grid-cols-3 gap-2">
                               {permissionLevels.filter(p => p.value > 0).map(p => (
-                                <label 
+                                <button 
                                   key={p.value}
-                                  className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${
+                                  onClick={(e) => { e.stopPropagation(); handleLevelChange(dept.id, p.value); }}
+                                  className={`p-3 rounded-xl border-2 text-left transition-all ${
                                     level === p.value 
-                                      ? `border-${p.color}-400 bg-${p.color}-50` 
-                                      : 'border-gray-200 hover:border-gray-300'
+                                      ? getLevelColor(p.value) + ' border-2 shadow-sm' 
+                                      : 'border-gray-200 hover:border-gray-300 bg-white'
                                   }`}
                                 >
-                                  <input
-                                    type="radio"
-                                    name={`level-${dept.id}`}
-                                    checked={level === p.value}
-                                    onChange={() => handleLevelChange(dept.id, p.value)}
-                                    className="text-blue-600"
-                                  />
-                                  <div>
-                                    <div className="text-sm font-medium">{p.label}</div>
-                                    <div className="text-xs text-gray-500">{p.desc}</div>
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${level === p.value ? 'border-current bg-current' : 'border-gray-300'}`}>
+                                      {level === p.value && <span className="text-white text-xs">•</span>}
+                                    </div>
+                                    <span className="font-bold text-sm">{p.label}</span>
                                   </div>
-                                </label>
+                                  <div className="text-xs text-gray-500 ml-6">{p.desc}</div>
+                                </button>
                               ))}
                             </div>
                           </div>
@@ -6222,11 +6230,27 @@ export default function SimpleMarketingSystem() {
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-              {saving && <span className="text-blue-600 text-sm animate-pulse">💾 Đang lưu...</span>}
-              {!saving && <span className="text-green-600 text-sm">✓ Tự động lưu</span>}
-              <button onClick={onClose} className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium">
-                ✓ Xong
-              </button>
+              <div>
+                {hasChanges && <span className="text-orange-600 text-sm font-medium">⚠️ Có thay đổi chưa lưu</span>}
+              </div>
+              <div className="flex gap-3">
+                <button onClick={handleCancel} className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100">
+                  Hủy
+                </button>
+                {!isAdmin && (
+                  <button 
+                    onClick={handleSave} 
+                    disabled={saving || !hasChanges}
+                    className={`px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 ${
+                      hasChanges 
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {saving ? '💾 Đang lưu...' : '💾 Lưu thay đổi'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -6239,7 +6263,7 @@ export default function SimpleMarketingSystem() {
           <div className="p-6 border-b bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold">🔐 Quản Lý Phân Quyền</h2>
-              <p className="text-white/80 text-sm">Nhấn vào từng user để phân quyền chi tiết</p>
+              <p className="text-white/80 text-sm">Nhấn "Phân quyền" để cài đặt chi tiết cho từng user</p>
             </div>
             <button onClick={() => setShowPermissionsModal(false)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg flex items-center justify-center">×</button>
           </div>
@@ -6251,15 +6275,15 @@ export default function SimpleMarketingSystem() {
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-700">Người dùng</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Bộ phận được phân quyền</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-700">Thao tác</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Quyền hiện tại</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-700 w-40">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {allUsers.map(user => {
                     const isAdmin = user.role === 'Admin' || user.role === 'admin';
                     return (
-                      <tr key={user.id} className={`${isAdmin ? 'bg-red-50/30' : 'hover:bg-gray-50'} cursor-pointer`} onClick={() => setSelectedUser(user)}>
+                      <tr key={user.id} className={isAdmin ? 'bg-red-50/30' : 'hover:bg-gray-50'}>
                         <td className="px-4 py-4">
                           <div className="font-medium">{user.name}</div>
                           <div className="text-xs text-gray-500">{user.email}</div>
@@ -6270,10 +6294,14 @@ export default function SimpleMarketingSystem() {
                         </td>
                         <td className="px-4 py-4 text-center">
                           <button 
-                            onClick={(e) => { e.stopPropagation(); setSelectedUser(user); }}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+                            onClick={() => setSelectedUser(user)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                              isAdmin 
+                                ? 'bg-gray-100 text-gray-500 cursor-default'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                            }`}
                           >
-                            ⚙️ Phân quyền
+                            {isAdmin ? '👑 Admin' : '⚙️ Phân quyền'}
                           </button>
                         </td>
                       </tr>
@@ -6284,22 +6312,22 @@ export default function SimpleMarketingSystem() {
             </div>
 
             <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <h3 className="font-medium text-blue-800 mb-2">📌 Hướng dẫn cấp quyền:</h3>
+              <h3 className="font-medium text-blue-800 mb-3">📌 Chú thích cấp quyền:</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded bg-gray-300"></span>
+                  <span className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs font-bold">0</span>
                   <span>Không có quyền</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded bg-yellow-400"></span>
+                  <span className="w-6 h-6 rounded-full bg-yellow-400 flex items-center justify-center text-white text-xs font-bold">①</span>
                   <span>Xem của mình</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded bg-blue-400"></span>
+                  <span className="w-6 h-6 rounded-full bg-blue-400 flex items-center justify-center text-white text-xs font-bold">②</span>
                   <span>Xem tất cả</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded bg-green-400"></span>
+                  <span className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold">③</span>
                   <span>Toàn quyền</span>
                 </div>
               </div>
