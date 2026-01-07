@@ -3652,7 +3652,7 @@ export default function SimpleMarketingSystem() {
             title: editTitle,
             platform: editPlatform.join(', '),
             priority: editPriority,
-            dueDate: editDueDate,
+            due_date: editDueDate,
             description: editDescription
           })
           .eq('id', selectedTask.id);
