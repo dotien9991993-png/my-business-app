@@ -6513,9 +6513,13 @@ export default function SimpleMarketingSystem() {
       chi: ['Nhập hàng', 'Lương nhân viên', 'Tiền thuê mặt bằng', 'Điện nước', 'Marketing', 'Vận chuyển', 'Khác']
     };
 
-    const canViewAll = hasFinanceFullAccess();
+    // Permission check for receipts
+    const financeLevel = getPermissionLevel('finance');
+    const canViewAllReceipts = financeLevel >= 2; // Level 2+ xem tất cả
+    
     const filteredReceipts = receiptsPayments.filter(r => {
-      if (!canViewAll && r.created_by !== currentUser.name) return false;
+      // Level 1: chỉ xem phiếu mình tạo
+      if (!canViewAllReceipts && r.created_by !== currentUser.name) return false;
       if (filterType !== 'all' && r.type !== filterType) return false;
       if (filterStatus !== 'all' && r.status !== filterStatus) return false;
       if (searchText && !r.description?.toLowerCase().includes(searchText.toLowerCase()) && !r.receipt_number?.toLowerCase().includes(searchText.toLowerCase())) return false;
@@ -6970,9 +6974,13 @@ export default function SimpleMarketingSystem() {
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentNote, setPaymentNote] = useState('');
 
-    const canViewAll = hasFinanceFullAccess();
+    // Permission check for debts
+    const financeLevel = getPermissionLevel('finance');
+    const canViewAllDebts = financeLevel >= 2; // Level 2+ xem tất cả
+    
     const filteredDebts = debts.filter(d => {
-      if (!canViewAll && d.created_by !== currentUser.name) return false;
+      // Level 1: chỉ xem công nợ mình tạo
+      if (!canViewAllDebts && d.created_by !== currentUser.name) return false;
       if (filterType !== 'all' && d.type !== filterType) return false;
       if (filterStatus === 'pending' && d.status === 'paid') return false;
       if (filterStatus === 'paid' && d.status !== 'paid') return false;
@@ -7684,20 +7692,28 @@ export default function SimpleMarketingSystem() {
       setShowSalaryDetailModal(true);
     };
 
-    const canViewAll = hasFinanceFullAccess();
-    const filteredEmployees = !canViewAll ? [] : (activeTab === 'all' ? employees : employees.filter(e => e.department === activeTab));
+    // Permission levels for salary:
+    // Level 1: Chỉ xem lương của mình
+    // Level 2: Xem tất cả lương (không sửa/xóa)
+    // Level 3: Full quyền (tính lương, sửa, xóa)
+    const financeLevel = getPermissionLevel('finance');
+    const canViewAllSalaries = financeLevel >= 2; // Level 2+ có thể xem tất cả
+    const canManageSalaries = financeLevel >= 3; // Level 3 mới được tính lương/sửa/xóa
+    
+    const filteredEmployees = !canManageSalaries ? [] : (activeTab === 'all' ? employees : employees.filter(e => e.department === activeTab));
     const filteredSalaries = (() => {
       let sals = activeTab === 'all' ? monthlySalaries : monthlySalaries.filter(s => s.department === activeTab);
-      if (!canViewAll) sals = sals.filter(s => s.employee_name === currentUser.name);
+      // Level 1: chỉ xem lương của mình
+      if (!canViewAllSalaries) sals = sals.filter(s => s.employee_name === currentUser.name);
       return sals;
     })();
     
     const totalSalaryByDept = (dept) => {
-      if (!canViewAll) return 0;
+      if (!canViewAllSalaries) return 0;
       return monthlySalaries.filter(s => dept === 'all' || s.department === dept).reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0);
     };
 
-    const canApprove = canViewAll;
+    const canApprove = canManageSalaries;
 
     return (
       <div className="p-6 space-y-4">
@@ -7710,9 +7726,11 @@ export default function SimpleMarketingSystem() {
             <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
               {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
-            <button onClick={() => setShowAddEmployeeModal(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
-              ➕ Thêm NV
-            </button>
+            {canManageSalaries && (
+              <button onClick={() => setShowAddEmployeeModal(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+                ➕ Thêm NV
+              </button>
+            )}
           </div>
         </div>
 
@@ -7746,47 +7764,47 @@ export default function SimpleMarketingSystem() {
           <button onClick={() => setActiveTab('warehouse')} className={activeTab === 'warehouse' ? "px-4 py-2 border-b-2 border-orange-600 text-orange-600 font-medium" : "px-4 py-2 text-gray-500"}>📦 Kho</button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl border">
-            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-              <h3 className="font-bold">👥 Danh sách nhân viên ({filteredEmployees.length})</h3>
-            </div>
-            {filteredEmployees.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">Chưa có nhân viên</div>
-            ) : (
-              <div className="divide-y max-h-[400px] overflow-y-auto">
-                {filteredEmployees.map(emp => {
-                  const hasSalary = monthlySalaries.some(s => s.employee_id === emp.id);
-                  return (
-                    <div key={emp.id} className="p-4 hover:bg-gray-50">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-medium">{emp.name}</div>
-                          <div className="text-sm text-gray-500">{departments[emp.department]?.name}</div>
-                          <div className="text-xs text-gray-400 mt-1">
-                            Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
-                            {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
-                            {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ/{emp.department === 'media' ? 'video' : 'đơn'}</span>}
+        <div className={`grid grid-cols-1 ${canManageSalaries ? 'lg:grid-cols-2' : ''} gap-4`}>
+          {/* Chỉ hiển thị danh sách NV cho người có quyền quản lý */}
+          {canManageSalaries && (
+            <div className="bg-white rounded-xl border">
+              <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+                <h3 className="font-bold">👥 Danh sách nhân viên ({filteredEmployees.length})</h3>
+              </div>
+              {filteredEmployees.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">Chưa có nhân viên</div>
+              ) : (
+                <div className="divide-y max-h-[400px] overflow-y-auto">
+                  {filteredEmployees.map(emp => {
+                    const hasSalary = monthlySalaries.some(s => s.employee_id === emp.id);
+                    return (
+                      <div key={emp.id} className="p-4 hover:bg-gray-50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium">{emp.name}</div>
+                            <div className="text-sm text-gray-500">{departments[emp.department]?.name}</div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
+                              {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
+                              {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ/{emp.department === 'media' ? 'video' : 'đơn'}</span>}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            {!hasSalary ? (
+                              <button onClick={() => openCreateSalary(emp)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Tính lương</button>
+                            ) : (
+                              <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm">Đã tính</span>
+                            )}
+                            <button onClick={() => handleDeleteEmployee(emp.id)} className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-600 rounded text-sm">🗑️</button>
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          {!hasSalary ? (
-                            <button onClick={() => openCreateSalary(emp)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Tính lương</button>
-                          ) : (
-                            <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm">Đã tính</span>
-                          )}
-                          {canApprove && (
-                            <button onClick={() => handleDeleteEmployee(emp.id)} className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-600 rounded text-sm">🗑️</button>
-                          )}
-                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <div className="bg-white rounded-xl border">
             <div className="p-4 border-b bg-gray-50">
               <h3 className="font-bold">📋 Bảng lương T{selectedMonth}/{selectedYear} ({filteredSalaries.length})</h3>
@@ -8024,11 +8042,11 @@ export default function SimpleMarketingSystem() {
                 {selectedSalary.status === 'pending' && canApprove && (
                   <button onClick={() => handleApproveSalary(selectedSalary)} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✓ Duyệt bảng lương</button>
                 )}
-                {selectedSalary.status === 'approved' && canApprove && (
+                {selectedSalary.status === 'approved' && canManageSalaries && (
                   <button onClick={() => handlePaySalary(selectedSalary)} className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">💵 Trả lương</button>
                 )}
                 <div className="flex gap-3">
-                  {selectedSalary.status === 'pending' && canApprove && (
+                  {selectedSalary.status === 'pending' && canManageSalaries && (
                     <button onClick={() => handleDeleteSalary(selectedSalary.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
                   )}
                   <button onClick={() => setShowSalaryDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
