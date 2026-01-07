@@ -155,9 +155,16 @@ export default function SimpleMarketingSystem() {
   // Permission helper: Check if user has full access to finance
   const hasFinanceFullAccess = () => {
     if (!currentUser) return false;
-    if (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin' || currentUser.role === 'Manager') return true;
-    const perms = userPermissions[currentUser.id];
-    return perms && perms.finance === 2;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
+    // Level 2+ can view all, Level 3 = full access
+    return (currentUser.permissions?.finance || 0) >= 2;
+  };
+
+  // Check if user can edit finance data (level 3)
+  const canEditFinance = () => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
+    return (currentUser.permissions?.finance || 0) >= 3;
   };
 
   const [templates] = useState([
@@ -913,6 +920,45 @@ export default function SimpleMarketingSystem() {
 
     return { statusStats, teamStats };
   }, [visibleTasks]);
+
+  // ============ PERMISSION HELPER FUNCTIONS ============
+  // Check if user has permission for a module
+  const hasPermission = (module, minLevel = 1) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
+    const userLevel = currentUser.permissions?.[module] || 0;
+    return userLevel >= minLevel;
+  };
+
+  // Get user's permission level for a module
+  const getPermissionLevel = (module) => {
+    if (!currentUser) return 0;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return 3;
+    return currentUser.permissions?.[module] || 0;
+  };
+
+  // Check if user can view data (level >= 1)
+  const canView = (module) => hasPermission(module, 1);
+
+  // Check if user can view all data (level >= 2)
+  const canViewAll = (module) => hasPermission(module, 2);
+
+  // Check if user can edit/delete (level >= 3)
+  const canEdit = (module) => hasPermission(module, 3);
+
+  // Filter data based on permission level
+  const filterByPermission = (data, module, userField = 'created_by') => {
+    if (!currentUser) return [];
+    const level = getPermissionLevel(module);
+    if (level >= 2) return data; // Level 2+ can see all
+    // Level 1: Only see own data (created by user OR assigned to user)
+    return data.filter(item => 
+      item[userField] === currentUser.name || 
+      item.assignee === currentUser.name ||
+      item.created_by === currentUser.name
+    );
+  };
+  // ============ END PERMISSION HELPERS ============
 
   const getStatusColor = (s) => {
     const c = { 'Nháp': 'bg-gray-200 text-gray-700', 'Chưa Quay': 'bg-yellow-200 text-yellow-800', 'Đã Quay': 'bg-blue-200 text-blue-800', 'Đang Edit': 'bg-orange-200 text-orange-800', 'Hoàn Thành': 'bg-green-500 text-white' };
@@ -6610,14 +6656,16 @@ export default function SimpleMarketingSystem() {
       <div className="p-6 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-2xl font-bold">🧾 Phiếu Thu/Chi</h2>
-          <div className="flex gap-2">
-            <button onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
-              ➕ Tạo Phiếu Thu
-            </button>
-            <button onClick={() => { setFormType('chi'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
-              ➕ Tạo Phiếu Chi
-            </button>
-          </div>
+          {canEditFinance() && (
+            <div className="flex gap-2">
+              <button onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
+                ➕ Tạo Phiếu Thu
+              </button>
+              <button onClick={() => { setFormType('chi'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
+                ➕ Tạo Phiếu Chi
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -6886,10 +6934,10 @@ export default function SimpleMarketingSystem() {
                       </div>
                     )}
                     <div className="flex gap-3">
-                      {selectedReceipt.status === 'pending' && (
+                      {selectedReceipt.status === 'pending' && canEditFinance() && (
                         <button onClick={() => setIsEditing(true)} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✏️ Sửa</button>
                       )}
-                      {selectedReceipt.status === 'pending' && canApprove && (
+                      {selectedReceipt.status === 'pending' && canEditFinance() && (
                         <button onClick={() => handleDelete(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
                       )}
                       <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
@@ -7089,14 +7137,16 @@ export default function SimpleMarketingSystem() {
       <div className="p-6 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-2xl font-bold">📋 Quản Lý Công Nợ</h2>
-          <div className="flex gap-2">
-            <button onClick={() => { setFormType('receivable'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
-              ➕ Phải Thu
-            </button>
-            <button onClick={() => { setFormType('payable'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
-              ➕ Phải Trả
-            </button>
-          </div>
+          {canEditFinance() && (
+            <div className="flex gap-2">
+              <button onClick={() => { setFormType('receivable'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
+                ➕ Phải Thu
+              </button>
+              <button onClick={() => { setFormType('payable'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
+                ➕ Phải Trả
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -7341,7 +7391,7 @@ export default function SimpleMarketingSystem() {
                     <button onClick={() => setShowPaymentModal(true)} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">💵 Ghi nhận thanh toán</button>
                   )}
                   <div className="flex gap-3">
-                    {canManage && selectedDebt.status !== 'paid' && (
+                    {canEditFinance() && selectedDebt.status !== 'paid' && (
                       <button onClick={() => handleDeleteDebt(selectedDebt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
                     )}
                     <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
@@ -8056,10 +8106,10 @@ export default function SimpleMarketingSystem() {
     ];
 
     const permissionLevels = [
-      { value: 0, label: 'Không có quyền', desc: 'Ẩn hoàn toàn', color: 'gray' },
-      { value: 1, label: 'Xem của mình', desc: 'Chỉ xem dữ liệu mình tạo', color: 'yellow' },
-      { value: 2, label: 'Xem tất cả', desc: 'Xem toàn bộ dữ liệu', color: 'blue' },
-      { value: 3, label: 'Toàn quyền', desc: 'Xem + Tạo/Sửa/Xóa + Duyệt', color: 'green' }
+      { value: 0, label: 'Không có quyền', desc: 'Ẩn hoàn toàn module', color: 'gray' },
+      { value: 1, label: 'Xem của mình', desc: 'Xem dữ liệu mình tạo/được gán', color: 'yellow' },
+      { value: 2, label: 'Xem tất cả', desc: 'Xem toàn bộ dữ liệu (không sửa/xóa)', color: 'blue' },
+      { value: 3, label: 'Toàn quyền', desc: 'Xem + Tạo + Sửa + Xóa (như Admin)', color: 'green' }
     ];
 
     const getRoleBadge = (role) => {
