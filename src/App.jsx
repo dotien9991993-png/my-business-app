@@ -4964,6 +4964,32 @@ export default function SimpleMarketingSystem() {
         }
 
         alert('✅ Nhập kho thành công!');
+        
+        // Hỏi tạo phiếu chi
+        const totalAmount = calculateTotal();
+        if (totalAmount > 0 && window.confirm(`Bạn có muốn tạo phiếu chi ${totalAmount.toLocaleString('vi-VN')}đ cho giao dịch nhập kho này không?`)) {
+          try {
+            const receiptNumber = 'PC-' + new Date().getFullYear() + String(new Date().getMonth() + 1).padStart(2, '0') + String(new Date().getDate()).padStart(2, '0') + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            await supabase.from('receipts_payments').insert([{
+              tenant_id: tenant.id,
+              receipt_number: receiptNumber,
+              type: 'chi',
+              amount: totalAmount,
+              description: `Nhập kho - ${transactionNumber}` + (formPartnerName ? ` - ${formPartnerName}` : ''),
+              category: 'Nhập hàng',
+              receipt_date: formDate,
+              note: formNote || `Liên kết phiếu nhập kho: ${transactionNumber}`,
+              status: 'pending',
+              created_by: currentUser.name,
+              created_at: new Date().toISOString()
+            }]);
+            alert('✅ Đã tạo phiếu chi chờ duyệt!');
+          } catch (err) {
+            console.error('Error creating receipt:', err);
+            alert('⚠️ Không thể tạo phiếu chi tự động. Vui lòng tạo thủ công.');
+          }
+        }
+        
         setShowCreateModal(false);
         resetForm();
         loadWarehouseData();
@@ -5400,6 +5426,32 @@ export default function SimpleMarketingSystem() {
         }
 
         alert('✅ Xuất kho thành công!');
+        
+        // Hỏi tạo phiếu thu
+        const totalAmount = calculateTotal();
+        if (totalAmount > 0 && window.confirm(`Bạn có muốn tạo phiếu thu ${totalAmount.toLocaleString('vi-VN')}đ cho giao dịch xuất kho này không?`)) {
+          try {
+            const receiptNumber = 'PT-' + new Date().getFullYear() + String(new Date().getMonth() + 1).padStart(2, '0') + String(new Date().getDate()).padStart(2, '0') + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            await supabase.from('receipts_payments').insert([{
+              tenant_id: tenant.id,
+              receipt_number: receiptNumber,
+              type: 'thu',
+              amount: totalAmount,
+              description: `Xuất kho - ${transactionNumber}` + (formPartnerName ? ` - ${formPartnerName}` : ''),
+              category: 'Bán tại cửa hàng',
+              receipt_date: formDate,
+              note: formNote || `Liên kết phiếu xuất kho: ${transactionNumber}`,
+              status: 'pending',
+              created_by: currentUser.name,
+              created_at: new Date().toISOString()
+            }]);
+            alert('✅ Đã tạo phiếu thu chờ duyệt!');
+          } catch (err) {
+            console.error('Error creating receipt:', err);
+            alert('⚠️ Không thể tạo phiếu thu tự động. Vui lòng tạo thủ công.');
+          }
+        }
+        
         setShowCreateModal(false);
         resetForm();
         loadWarehouseData();
