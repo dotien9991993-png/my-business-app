@@ -6055,7 +6055,7 @@ export default function SimpleMarketingSystem() {
               {(activeModule === 'media' ? [
                 { id: 'mytasks', l: '📝 Của Tôi', show: true },
                 { id: 'dashboard', l: '📊 Dashboard', show: true },
-                { id: 'tasks', l: '📋 Tasks', show: true },
+                { id: 'tasks', l: '🎬 Video', show: true },
                 { id: 'calendar', l: '📅 Lịch', show: true },
                 { id: 'report', l: '📈 Báo Cáo', show: true },
                 { id: 'performance', l: '📊 Hiệu Suất', show: true },
@@ -6199,7 +6199,7 @@ export default function SimpleMarketingSystem() {
           {(activeModule === 'media' ? [
             { id: 'mytasks', l: '📝 Của Tôi' },
             { id: 'dashboard', l: '📊 Dashboard' },
-            { id: 'tasks', l: '📋 Tasks' },
+            { id: 'tasks', l: '🎬 Video' },
             { id: 'calendar', l: '📅 Lịch' },
             { id: 'report', l: '📈 Báo Cáo' },
             { id: 'performance', l: '📊 Hiệu Suất' },
@@ -6237,7 +6237,7 @@ export default function SimpleMarketingSystem() {
           {(activeModule === 'media' ? [
             { id: 'mytasks', l: '📝 Của Tôi' },
             { id: 'dashboard', l: '📊 Dashboard' },
-            { id: 'tasks', l: '📋 Tasks' },
+            { id: 'tasks', l: '🎬 Video' },
             { id: 'calendar', l: '📅 Lịch' },
             { id: 'report', l: '📈 Báo Cáo' },
             { id: 'performance', l: '📊 Hiệu Suất' },
