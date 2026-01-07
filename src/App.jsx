@@ -5939,7 +5939,7 @@ export default function SimpleMarketingSystem() {
             {/* Module Selection */}
             <div className="p-4 border-b">
               <div className="text-xs font-semibold text-gray-500 mb-2">BỘ PHẬN</div>
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('media'))) && (
                 <button
                   onClick={() => {
                     navigateTo('media', 'dashboard');
@@ -5947,14 +5947,14 @@ export default function SimpleMarketingSystem() {
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
                     activeModule === 'media'
-                      ? 'bg-blue-100 text-blue-700'
+                      ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
                   }`}
                 >
                   🎬 Media
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
                 <button
                   onClick={() => {
                     navigateTo('warehouse', 'inventory');
@@ -5962,14 +5962,14 @@ export default function SimpleMarketingSystem() {
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
                     activeModule === 'warehouse'
-                      ? 'bg-amber-100 text-amber-700'
+                      ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
                   }`}
                 >
                   📦 Kho
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
                 <button
                   onClick={() => {
                     navigateTo('sales', 'orders');
@@ -5977,14 +5977,14 @@ export default function SimpleMarketingSystem() {
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
                     activeModule === 'sales'
-                      ? 'bg-pink-100 text-pink-700'
+                      ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
                   }`}
                 >
                   🛒 Sale
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
                 <button
                   onClick={() => {
                     navigateTo('technical', 'jobs');
@@ -5992,7 +5992,7 @@ export default function SimpleMarketingSystem() {
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
                     activeModule === 'technical'
-                      ? 'bg-orange-100 text-orange-700'
+                      ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
                   }`}
                 >
@@ -6131,7 +6131,7 @@ export default function SimpleMarketingSystem() {
       {/* Module Selector - Desktop Only */}
       <div className="hidden md:block bg-gradient-to-r from-green-700 to-green-800">
         <div className="max-w-7xl mx-auto px-6 flex gap-2">
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('media'))) && (
             <button
               onClick={() => navigateTo('media', 'dashboard')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
@@ -6143,7 +6143,7 @@ export default function SimpleMarketingSystem() {
               🎬 Media
             </button>
           )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
             <button
               onClick={() => navigateTo('warehouse', 'inventory')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
@@ -6155,7 +6155,7 @@ export default function SimpleMarketingSystem() {
               📦 Kho
             </button>
           )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
             <button
               onClick={() => navigateTo('sales', 'orders')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
