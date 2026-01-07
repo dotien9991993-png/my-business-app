@@ -3653,8 +3653,7 @@ export default function SimpleMarketingSystem() {
             platform: editPlatform.join(', '),
             priority: editPriority,
             dueDate: editDueDate,
-            description: editDescription,
-            updated_at: new Date().toISOString()
+            description: editDescription
           })
           .eq('id', selectedTask.id);
 
