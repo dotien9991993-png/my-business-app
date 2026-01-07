@@ -5841,7 +5841,7 @@ export default function SimpleMarketingSystem() {
               </svg>
             </button>
             <div className="flex items-center">
-              <img src="/logo.png?v=2" alt="Logo" className="h-10 w-auto" />
+              <img src="/logo.png" alt="Logo" className="h-10 w-10 rounded-lg object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
             </div>
             <div className="relative">
               <button
@@ -5862,9 +5862,9 @@ export default function SimpleMarketingSystem() {
           {/* Desktop Header */}
           <div className="hidden md:flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <img src={tenant.logo_url || "/logo.png?v=2"} alt={tenant.name} className="h-12 w-auto" />
+              <img src="/logo.png" alt={tenant.name} className="h-14 w-14 rounded-lg object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
               <div>
-                <h1 className="text-2xl font-bold">{tenant.name}</h1>
+                <h1 className="text-2xl font-bold text-green-800">{tenant.name}</h1>
                 <p className="text-gray-600 text-sm">{tenant.slogan || 'Làm việc hăng say, tiền ngay về túi'}</p>
               </div>
             </div>
@@ -5890,7 +5890,7 @@ export default function SimpleMarketingSystem() {
               {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin') && (
                 <button
                   onClick={() => setShowPermissionsModal(true)}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm"
+                  className="px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-lg font-medium text-sm"
                 >
                   🔐 Phân Quyền
                 </button>
@@ -6129,14 +6129,14 @@ export default function SimpleMarketingSystem() {
       )}
 
       {/* Module Selector - Desktop Only */}
-      <div className="hidden md:block bg-gradient-to-r from-blue-600 to-purple-600">
+      <div className="hidden md:block bg-gradient-to-r from-green-700 to-green-800">
         <div className="max-w-7xl mx-auto px-6 flex gap-2">
           {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
             <button
               onClick={() => navigateTo('media', 'dashboard')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
+              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
                 activeModule === 'media'
-                  ? 'bg-white text-blue-600'
+                  ? 'bg-white text-green-700'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -6146,9 +6146,9 @@ export default function SimpleMarketingSystem() {
           {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
             <button
               onClick={() => navigateTo('warehouse', 'inventory')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
+              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
                 activeModule === 'warehouse'
-                  ? 'bg-white text-amber-600'
+                  ? 'bg-white text-green-700'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -6158,9 +6158,9 @@ export default function SimpleMarketingSystem() {
           {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
             <button
               onClick={() => navigateTo('sales', 'orders')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
+              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
                 activeModule === 'sales'
-                  ? 'bg-white text-pink-600'
+                  ? 'bg-white text-green-700'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -6170,9 +6170,9 @@ export default function SimpleMarketingSystem() {
           {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
             <button
               onClick={() => navigateTo('technical', 'jobs')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
+              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
                 activeModule === 'technical'
-                  ? 'bg-white text-orange-600'
+                  ? 'bg-white text-green-700'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -6182,9 +6182,9 @@ export default function SimpleMarketingSystem() {
           {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
             <button
               onClick={() => navigateTo('finance', 'dashboard')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
+              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
                 activeModule === 'finance'
-                  ? 'bg-white text-green-600'
+                  ? 'bg-white text-green-700'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -6224,7 +6224,7 @@ export default function SimpleMarketingSystem() {
             { id: 'salaries', l: '💰 Lương' },
             { id: 'reports', l: '📈 Báo Cáo' }
           ] : []).map(t => (
-            <button key={t.id} onClick={() => navigateTo(activeModule, t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'}`}>
+            <button key={t.id} onClick={() => navigateTo(activeModule, t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600 hover:text-green-600'}`}>
               {t.l}
             </button>
           ))}
