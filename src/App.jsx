@@ -915,7 +915,7 @@ export default function SimpleMarketingSystem() {
   }, [visibleTasks]);
 
   const getStatusColor = (s) => {
-    const c = { 'Nháp': 'bg-gray-200 text-gray-700', 'Chờ Duyệt': 'bg-yellow-200 text-yellow-800', 'Đã Duyệt': 'bg-green-200 text-green-800', 'Đang Làm': 'bg-orange-200 text-orange-800', 'Hoàn Thành': 'bg-green-500 text-white' };
+    const c = { 'Nháp': 'bg-gray-200 text-gray-700', 'Chưa Quay': 'bg-yellow-200 text-yellow-800', 'Đã Quay': 'bg-blue-200 text-blue-800', 'Đang Edit': 'bg-orange-200 text-orange-800', 'Hoàn Thành': 'bg-green-500 text-white' };
     return c[s] || 'bg-gray-200';
   };
 
@@ -3278,7 +3278,7 @@ export default function SimpleMarketingSystem() {
       const completed = userTasks.filter(t => t.status === 'Hoàn Thành');
       const onTime = completed.filter(t => !t.isOverdue);
       const late = completed.filter(t => t.isOverdue);
-      const inProgress = userTasks.filter(t => ['Nháp', 'Chờ Duyệt', 'Đã Duyệt', 'Đang Làm'].includes(t.status));
+      const inProgress = userTasks.filter(t => ['Nháp', 'Chưa Quay', 'Đã Quay', 'Đang Edit'].includes(t.status));
       return {
         total: userTasks.length,
         completed: completed.length,
@@ -4029,7 +4029,7 @@ export default function SimpleMarketingSystem() {
             <div className="border-t pt-6">
               <h4 className="text-lg font-bold mb-3">🔄 Thay Đổi Trạng Thái</h4>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {['Nháp', 'Chờ Duyệt', 'Đã Duyệt', 'Đang Làm', 'Hoàn Thành'].map(s => (
+                {['Nháp', 'Chưa Quay', 'Đã Quay', 'Đang Edit', 'Hoàn Thành'].map(s => (
                   <button
                     key={s}
                     onClick={() => {
