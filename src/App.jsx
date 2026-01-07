@@ -85,6 +85,10 @@ export default function SimpleMarketingSystem() {
   const [debts, setDebts] = useState([]);
   const [salaries, setSalaries] = useState([]);
 
+  // Warehouse Module States
+  const [products, setProducts] = useState([]);
+  const [stockTransactions, setStockTransactions] = useState([]);
+
   // Notifications state
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -218,6 +222,7 @@ export default function SimpleMarketingSystem() {
     loadTasks();
     loadTechnicalJobs();
     loadFinanceData();
+    loadWarehouseData();
     loadPermissions();
     
     // Subscribe to realtime task changes
@@ -245,10 +250,18 @@ export default function SimpleMarketingSystem() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'debts' }, () => loadFinanceData())
       .subscribe();
 
+    // Subscribe to realtime warehouse changes
+    const warehouseChannel = supabase
+      .channel('warehouse-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_transactions' }, () => loadWarehouseData())
+      .subscribe();
+
     return () => {
       supabase.removeChannel(tasksChannel);
       supabase.removeChannel(jobsChannel);
       supabase.removeChannel(financeChannel);
+      supabase.removeChannel(warehouseChannel);
     };
   }, [tenant]);
 
@@ -373,6 +386,22 @@ export default function SimpleMarketingSystem() {
       if (salariesRes.data) setSalaries(salariesRes.data);
     } catch (error) {
       console.error('Error loading finance data:', error);
+    }
+  };
+
+  // Warehouse Data Loading
+  const loadWarehouseData = async () => {
+    if (!tenant) return;
+    try {
+      const [productsRes, transactionsRes] = await Promise.all([
+        supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name', { ascending: true }),
+        supabase.from('stock_transactions').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100)
+      ]);
+      
+      if (productsRes.data) setProducts(productsRes.data);
+      if (transactionsRes.data) setStockTransactions(transactionsRes.data);
+    } catch (error) {
+      console.error('Error loading warehouse data:', error);
     }
   };
 
@@ -4585,53 +4614,1243 @@ export default function SimpleMarketingSystem() {
   // WAREHOUSE MODULE COMPONENTS
   // =====================================
 
+  const warehouseCategories = [
+    '🎤 Micro',
+    '🔊 Loa', 
+    '🎚️ Mixer/Ampli',
+    '🎧 Tai nghe',
+    '📺 Màn hình/TV',
+    '🔌 Dây cáp/Phụ kiện',
+    '🛠️ Linh kiện sửa chữa',
+    '📦 Khác'
+  ];
+
   function WarehouseInventoryView() {
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterCategory, setFilterCategory] = useState('');
+    const [filterStock, setFilterStock] = useState(''); // all, low, out
+
+    // Form states
+    const [formSku, setFormSku] = useState('');
+    const [formName, setFormName] = useState('');
+    const [formCategory, setFormCategory] = useState('');
+    const [formUnit, setFormUnit] = useState('Cái');
+    const [formImportPrice, setFormImportPrice] = useState('');
+    const [formSellPrice, setFormSellPrice] = useState('');
+    const [formMinStock, setFormMinStock] = useState('5');
+    const [formLocation, setFormLocation] = useState('');
+    const [formDescription, setFormDescription] = useState('');
+
+    const resetForm = () => {
+      setFormSku('');
+      setFormName('');
+      setFormCategory('');
+      setFormUnit('Cái');
+      setFormImportPrice('');
+      setFormSellPrice('');
+      setFormMinStock('5');
+      setFormLocation('');
+      setFormDescription('');
+    };
+
+    const generateSku = () => {
+      const prefix = 'SP';
+      const timestamp = Date.now().toString().slice(-6);
+      return `${prefix}${timestamp}`;
+    };
+
+    const handleCreateProduct = async () => {
+      if (!formName) {
+        alert('Vui lòng nhập tên sản phẩm!');
+        return;
+      }
+      try {
+        const { error } = await supabase.from('products').insert([{
+          tenant_id: tenant.id,
+          sku: formSku || generateSku(),
+          name: formName,
+          category: formCategory,
+          unit: formUnit,
+          import_price: parseFloat(formImportPrice) || 0,
+          sell_price: parseFloat(formSellPrice) || 0,
+          stock_quantity: 0,
+          min_stock: parseInt(formMinStock) || 5,
+          location: formLocation,
+          description: formDescription,
+          created_by: currentUser.name
+        }]);
+        if (error) throw error;
+        alert('✅ Thêm sản phẩm thành công!');
+        setShowCreateModal(false);
+        resetForm();
+        loadWarehouseData();
+      } catch (error) {
+        alert('❌ Lỗi: ' + error.message);
+      }
+    };
+
+    const handleUpdateProduct = async () => {
+      if (!formName) {
+        alert('Vui lòng nhập tên sản phẩm!');
+        return;
+      }
+      try {
+        const { error } = await supabase.from('products').update({
+          sku: formSku,
+          name: formName,
+          category: formCategory,
+          unit: formUnit,
+          import_price: parseFloat(formImportPrice) || 0,
+          sell_price: parseFloat(formSellPrice) || 0,
+          min_stock: parseInt(formMinStock) || 5,
+          location: formLocation,
+          description: formDescription,
+          updated_at: new Date().toISOString()
+        }).eq('id', selectedProduct.id);
+        if (error) throw error;
+        alert('✅ Cập nhật thành công!');
+        setShowDetailModal(false);
+        loadWarehouseData();
+      } catch (error) {
+        alert('❌ Lỗi: ' + error.message);
+      }
+    };
+
+    const handleDeleteProduct = async (id) => {
+      if (!window.confirm('Xóa sản phẩm này?')) return;
+      try {
+        const { error } = await supabase.from('products').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        alert('✅ Đã xóa!');
+        setShowDetailModal(false);
+        loadWarehouseData();
+      } catch (error) {
+        alert('❌ Lỗi: ' + error.message);
+      }
+    };
+
+    const openDetail = (product) => {
+      setSelectedProduct(product);
+      setFormSku(product.sku);
+      setFormName(product.name);
+      setFormCategory(product.category || '');
+      setFormUnit(product.unit || 'Cái');
+      setFormImportPrice(product.import_price?.toString() || '');
+      setFormSellPrice(product.sell_price?.toString() || '');
+      setFormMinStock(product.min_stock?.toString() || '5');
+      setFormLocation(product.location || '');
+      setFormDescription(product.description || '');
+      setShowDetailModal(true);
+    };
+
+    const filteredProducts = products.filter(p => {
+      const matchSearch = !searchTerm || 
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.sku.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchCategory = !filterCategory || p.category === filterCategory;
+      const matchStock = !filterStock ||
+        (filterStock === 'low' && p.stock_quantity <= p.min_stock && p.stock_quantity > 0) ||
+        (filterStock === 'out' && p.stock_quantity === 0);
+      return matchSearch && matchCategory && matchStock;
+    });
+
+    const totalValue = products.reduce((sum, p) => sum + (p.stock_quantity * (p.import_price || 0)), 0);
+    const lowStockCount = products.filter(p => p.stock_quantity <= p.min_stock && p.stock_quantity > 0).length;
+    const outOfStockCount = products.filter(p => p.stock_quantity === 0).length;
+
+    const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
+
     return (
-      <div className="p-6">
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
-          <div className="text-6xl mb-4">📦</div>
-          <h2 className="text-2xl font-bold text-amber-800 mb-2">Quản Lý Tồn Kho</h2>
-          <p className="text-amber-600">Module Kho đang được phát triển...</p>
-          <p className="text-sm text-amber-500 mt-2">Sẽ bao gồm: Danh sách sản phẩm, số lượng tồn, cảnh báo hết hàng</p>
+      <div className="p-4 md:p-6 space-y-4">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl p-4 border-l-4 border-blue-500">
+            <div className="text-2xl font-bold text-blue-600">{products.length}</div>
+            <div className="text-gray-600 text-sm">Sản phẩm</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-green-500">
+            <div className="text-lg font-bold text-green-600">{formatCurrency(totalValue)}</div>
+            <div className="text-gray-600 text-sm">Tổng giá trị</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-yellow-500">
+            <div className="text-2xl font-bold text-yellow-600">{lowStockCount}</div>
+            <div className="text-gray-600 text-sm">Sắp hết</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-red-500">
+            <div className="text-2xl font-bold text-red-600">{outOfStockCount}</div>
+            <div className="text-gray-600 text-sm">Hết hàng</div>
+          </div>
         </div>
+
+        {/* Toolbar */}
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <div className="flex flex-col md:flex-row gap-3">
+            <input
+              type="text"
+              placeholder="🔍 Tìm sản phẩm..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 px-4 py-2 border rounded-lg"
+            />
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="px-4 py-2 border rounded-lg"
+            >
+              <option value="">Tất cả danh mục</option>
+              {warehouseCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <select
+              value={filterStock}
+              onChange={(e) => setFilterStock(e.target.value)}
+              className="px-4 py-2 border rounded-lg"
+            >
+              <option value="">Tất cả tồn kho</option>
+              <option value="low">⚠️ Sắp hết</option>
+              <option value="out">❌ Hết hàng</option>
+            </select>
+            <button
+              onClick={() => { resetForm(); setShowCreateModal(true); }}
+              className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium whitespace-nowrap"
+            >
+              ➕ Thêm SP
+            </button>
+          </div>
+        </div>
+
+        {/* Product List */}
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Mã SP</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Tên sản phẩm</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 hidden md:table-cell">Danh mục</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Tồn kho</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600 hidden md:table-cell">Giá nhập</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600 hidden md:table-cell">Giá bán</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                      {products.length === 0 ? 'Chưa có sản phẩm nào. Nhấn "Thêm SP" để bắt đầu!' : 'Không tìm thấy sản phẩm'}
+                    </td>
+                  </tr>
+                ) : filteredProducts.map(product => (
+                  <tr 
+                    key={product.id} 
+                    onClick={() => openDetail(product)}
+                    className="hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="px-4 py-3 font-mono text-sm text-blue-600">{product.sku}</td>
+                    <td className="px-4 py-3 font-medium">{product.name}</td>
+                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{product.category || '-'}</td>
+                    <td className="px-4 py-3 text-right font-bold">
+                      <span className={product.stock_quantity === 0 ? 'text-red-600' : product.stock_quantity <= product.min_stock ? 'text-yellow-600' : 'text-green-600'}>
+                        {product.stock_quantity}
+                      </span>
+                      <span className="text-gray-400 text-sm ml-1">{product.unit}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600 hidden md:table-cell">{formatCurrency(product.import_price)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 hidden md:table-cell">{formatCurrency(product.sell_price)}</td>
+                    <td className="px-4 py-3 text-center">
+                      {product.stock_quantity === 0 ? (
+                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs">Hết hàng</span>
+                      ) : product.stock_quantity <= product.min_stock ? (
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">Sắp hết</span>
+                      ) : (
+                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Còn hàng</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Create Modal */}
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b sticky top-0 bg-white">
+                <h2 className="text-xl font-bold">➕ Thêm Sản Phẩm Mới</h2>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Mã SP</label>
+                    <input
+                      type="text"
+                      value={formSku}
+                      onChange={(e) => setFormSku(e.target.value)}
+                      placeholder="Tự động nếu để trống"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Đơn vị</label>
+                    <select
+                      value={formUnit}
+                      onChange={(e) => setFormUnit(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    >
+                      <option>Cái</option>
+                      <option>Bộ</option>
+                      <option>Chiếc</option>
+                      <option>Cuộn</option>
+                      <option>Mét</option>
+                      <option>Hộp</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tên sản phẩm *</label>
+                  <input
+                    type="text"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="VD: Micro Shure SM58"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Danh mục</label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">Chọn danh mục</option>
+                    {warehouseCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Giá nhập</label>
+                    <input
+                      type="number"
+                      value={formImportPrice}
+                      onChange={(e) => setFormImportPrice(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Giá bán</label>
+                    <input
+                      type="number"
+                      value={formSellPrice}
+                      onChange={(e) => setFormSellPrice(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tồn tối thiểu</label>
+                    <input
+                      type="number"
+                      value={formMinStock}
+                      onChange={(e) => setFormMinStock(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Vị trí kho</label>
+                    <input
+                      type="text"
+                      value={formLocation}
+                      onChange={(e) => setFormLocation(e.target.value)}
+                      placeholder="VD: Kệ A1"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
+                  <textarea
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+              <div className="p-6 border-t flex gap-3 justify-end">
+                <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg">Hủy</button>
+                <button onClick={handleCreateProduct} className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg">Thêm</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Detail Modal */}
+        {showDetailModal && selectedProduct && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b sticky top-0 bg-white">
+                <h2 className="text-xl font-bold">📦 Chi Tiết Sản Phẩm</h2>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="bg-amber-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl font-bold text-amber-600">{selectedProduct.stock_quantity} <span className="text-lg">{selectedProduct.unit}</span></div>
+                  <div className="text-amber-700">Tồn kho hiện tại</div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Mã SP</label>
+                    <input
+                      type="text"
+                      value={formSku}
+                      onChange={(e) => setFormSku(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Đơn vị</label>
+                    <select
+                      value={formUnit}
+                      onChange={(e) => setFormUnit(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    >
+                      <option>Cái</option>
+                      <option>Bộ</option>
+                      <option>Chiếc</option>
+                      <option>Cuộn</option>
+                      <option>Mét</option>
+                      <option>Hộp</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tên sản phẩm *</label>
+                  <input
+                    type="text"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Danh mục</label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">Chọn danh mục</option>
+                    {warehouseCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Giá nhập</label>
+                    <input
+                      type="number"
+                      value={formImportPrice}
+                      onChange={(e) => setFormImportPrice(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Giá bán</label>
+                    <input
+                      type="number"
+                      value={formSellPrice}
+                      onChange={(e) => setFormSellPrice(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tồn tối thiểu</label>
+                    <input
+                      type="number"
+                      value={formMinStock}
+                      onChange={(e) => setFormMinStock(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Vị trí kho</label>
+                    <input
+                      type="text"
+                      value={formLocation}
+                      onChange={(e) => setFormLocation(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
+                  <textarea
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+              <div className="p-6 border-t flex gap-3 justify-between">
+                <button onClick={() => handleDeleteProduct(selectedProduct.id)} className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg">🗑️ Xóa</button>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 border rounded-lg">Đóng</button>
+                  <button onClick={handleUpdateProduct} className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg">💾 Lưu</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   function WarehouseImportView() {
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [selectedTransaction, setSelectedTransaction] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    // Form states
+    const [formPartnerName, setFormPartnerName] = useState('');
+    const [formPartnerPhone, setFormPartnerPhone] = useState('');
+    const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+    const [formNote, setFormNote] = useState('');
+    const [formItems, setFormItems] = useState([{ product_id: '', quantity: 1, unit_price: 0 }]);
+
+    const importTransactions = stockTransactions.filter(t => t.type === 'import');
+
+    const resetForm = () => {
+      setFormPartnerName('');
+      setFormPartnerPhone('');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormNote('');
+      setFormItems([{ product_id: '', quantity: 1, unit_price: 0 }]);
+    };
+
+    const generateTransactionNumber = () => {
+      const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      return `PN-${dateStr}-${random}`;
+    };
+
+    const addItem = () => {
+      setFormItems([...formItems, { product_id: '', quantity: 1, unit_price: 0 }]);
+    };
+
+    const removeItem = (index) => {
+      if (formItems.length > 1) {
+        setFormItems(formItems.filter((_, i) => i !== index));
+      }
+    };
+
+    const updateItem = (index, field, value) => {
+      const newItems = [...formItems];
+      newItems[index][field] = value;
+      if (field === 'product_id' && value) {
+        const product = products.find(p => p.id === value);
+        if (product) {
+          newItems[index].unit_price = product.import_price || 0;
+        }
+      }
+      setFormItems(newItems);
+    };
+
+    const calculateTotal = () => {
+      return formItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    };
+
+    const handleCreateImport = async () => {
+      const validItems = formItems.filter(item => item.product_id && item.quantity > 0);
+      if (validItems.length === 0) {
+        alert('Vui lòng chọn ít nhất 1 sản phẩm!');
+        return;
+      }
+
+      try {
+        const transactionNumber = generateTransactionNumber();
+        
+        // Create transaction
+        const { data: transaction, error: transError } = await supabase.from('stock_transactions').insert([{
+          tenant_id: tenant.id,
+          transaction_number: transactionNumber,
+          type: 'import',
+          transaction_date: formDate,
+          partner_name: formPartnerName,
+          partner_phone: formPartnerPhone,
+          total_amount: calculateTotal(),
+          note: formNote,
+          status: 'completed',
+          created_by: currentUser.name
+        }]).select().single();
+
+        if (transError) throw transError;
+
+        // Create transaction items
+        const itemsToInsert = validItems.map(item => {
+          const product = products.find(p => p.id === item.product_id);
+          return {
+            transaction_id: transaction.id,
+            product_id: item.product_id,
+            product_sku: product?.sku || '',
+            product_name: product?.name || '',
+            quantity: parseInt(item.quantity),
+            unit_price: parseFloat(item.unit_price),
+            total_price: item.quantity * item.unit_price
+          };
+        });
+
+        const { error: itemsError } = await supabase.from('stock_transaction_items').insert(itemsToInsert);
+        if (itemsError) throw itemsError;
+
+        // Update product stock quantities
+        for (const item of validItems) {
+          const product = products.find(p => p.id === item.product_id);
+          if (product) {
+            await supabase.from('products').update({
+              stock_quantity: product.stock_quantity + parseInt(item.quantity),
+              updated_at: new Date().toISOString()
+            }).eq('id', item.product_id);
+          }
+        }
+
+        alert('✅ Nhập kho thành công!');
+        setShowCreateModal(false);
+        resetForm();
+        loadWarehouseData();
+      } catch (error) {
+        alert('❌ Lỗi: ' + error.message);
+      }
+    };
+
+    const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
+
+    const filteredTransactions = importTransactions.filter(t => 
+      !searchTerm || 
+      t.transaction_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.partner_name && t.partner_name.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
     return (
-      <div className="p-6">
-        <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
-          <div className="text-6xl mb-4">📥</div>
-          <h2 className="text-2xl font-bold text-green-800 mb-2">Nhập Kho</h2>
-          <p className="text-green-600">Module đang được phát triển...</p>
-          <p className="text-sm text-green-500 mt-2">Sẽ bao gồm: Tạo phiếu nhập, quét barcode, nhập từ nhà cung cấp</p>
+      <div className="p-4 md:p-6 space-y-4">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl p-4 border-l-4 border-green-500">
+            <div className="text-2xl font-bold text-green-600">{importTransactions.length}</div>
+            <div className="text-gray-600 text-sm">Phiếu nhập</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-blue-500">
+            <div className="text-lg font-bold text-blue-600">
+              {formatCurrency(importTransactions.reduce((sum, t) => sum + (t.total_amount || 0), 0))}
+            </div>
+            <div className="text-gray-600 text-sm">Tổng giá trị nhập</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-purple-500 col-span-2 md:col-span-1">
+            <div className="text-2xl font-bold text-purple-600">
+              {importTransactions.filter(t => {
+                const today = new Date().toISOString().split('T')[0];
+                return t.transaction_date === today;
+              }).length}
+            </div>
+            <div className="text-gray-600 text-sm">Nhập hôm nay</div>
+          </div>
         </div>
+
+        {/* Toolbar */}
+        <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-3">
+          <input
+            type="text"
+            placeholder="🔍 Tìm phiếu nhập..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 px-4 py-2 border rounded-lg"
+          />
+          <button
+            onClick={() => { resetForm(); setShowCreateModal(true); }}
+            className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium whitespace-nowrap"
+          >
+            📥 Tạo Phiếu Nhập
+          </button>
+        </div>
+
+        {/* Transactions List */}
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Mã phiếu</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Ngày</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 hidden md:table-cell">Nhà cung cấp</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Tổng tiền</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 hidden md:table-cell">Người tạo</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                      Chưa có phiếu nhập nào
+                    </td>
+                  </tr>
+                ) : filteredTransactions.map(trans => (
+                  <tr key={trans.id} className="hover:bg-gray-50 cursor-pointer">
+                    <td className="px-4 py-3 font-mono text-sm text-green-600">{trans.transaction_number}</td>
+                    <td className="px-4 py-3">{new Date(trans.transaction_date).toLocaleDateString('vi-VN')}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">{trans.partner_name || '-'}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatCurrency(trans.total_amount)}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">{trans.created_by}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Hoàn thành</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Create Modal */}
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b sticky top-0 bg-white">
+                <h2 className="text-xl font-bold">📥 Tạo Phiếu Nhập Kho</h2>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nhà cung cấp</label>
+                    <input
+                      type="text"
+                      value={formPartnerName}
+                      onChange={(e) => setFormPartnerName(e.target.value)}
+                      placeholder="Tên NCC"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">SĐT</label>
+                    <input
+                      type="text"
+                      value={formPartnerPhone}
+                      onChange={(e) => setFormPartnerPhone(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ngày nhập</label>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+
+                {/* Items */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Sản phẩm nhập</label>
+                    <button onClick={addItem} className="text-sm text-green-600 hover:text-green-700">+ Thêm dòng</button>
+                  </div>
+                  <div className="space-y-2">
+                    {formItems.map((item, index) => (
+                      <div key={index} className="flex gap-2 items-center">
+                        <select
+                          value={item.product_id}
+                          onChange={(e) => updateItem(index, 'product_id', e.target.value)}
+                          className="flex-1 px-3 py-2 border rounded-lg"
+                        >
+                          <option value="">Chọn sản phẩm</option>
+                          {products.map(p => (
+                            <option key={p.id} value={p.id}>{p.sku} - {p.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                          placeholder="SL"
+                          className="w-20 px-3 py-2 border rounded-lg"
+                          min="1"
+                        />
+                        <input
+                          type="number"
+                          value={item.unit_price}
+                          onChange={(e) => updateItem(index, 'unit_price', e.target.value)}
+                          placeholder="Đơn giá"
+                          className="w-32 px-3 py-2 border rounded-lg"
+                        />
+                        {formItems.length > 1 && (
+                          <button onClick={() => removeItem(index)} className="text-red-500 hover:text-red-700 px-2">✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-green-50 rounded-lg p-4 text-right">
+                  <span className="text-gray-600">Tổng tiền: </span>
+                  <span className="text-2xl font-bold text-green-600">{formatCurrency(calculateTotal())}</span>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
+                  <textarea
+                    value={formNote}
+                    onChange={(e) => setFormNote(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+              <div className="p-6 border-t flex gap-3 justify-end">
+                <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg">Hủy</button>
+                <button onClick={handleCreateImport} className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">📥 Nhập Kho</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   function WarehouseExportView() {
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    // Form states
+    const [formPartnerName, setFormPartnerName] = useState('');
+    const [formPartnerPhone, setFormPartnerPhone] = useState('');
+    const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+    const [formNote, setFormNote] = useState('');
+    const [formItems, setFormItems] = useState([{ product_id: '', quantity: 1, unit_price: 0 }]);
+
+    const exportTransactions = stockTransactions.filter(t => t.type === 'export');
+
+    const resetForm = () => {
+      setFormPartnerName('');
+      setFormPartnerPhone('');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormNote('');
+      setFormItems([{ product_id: '', quantity: 1, unit_price: 0 }]);
+    };
+
+    const generateTransactionNumber = () => {
+      const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      return `PX-${dateStr}-${random}`;
+    };
+
+    const addItem = () => {
+      setFormItems([...formItems, { product_id: '', quantity: 1, unit_price: 0 }]);
+    };
+
+    const removeItem = (index) => {
+      if (formItems.length > 1) {
+        setFormItems(formItems.filter((_, i) => i !== index));
+      }
+    };
+
+    const updateItem = (index, field, value) => {
+      const newItems = [...formItems];
+      newItems[index][field] = value;
+      if (field === 'product_id' && value) {
+        const product = products.find(p => p.id === value);
+        if (product) {
+          newItems[index].unit_price = product.sell_price || 0;
+        }
+      }
+      setFormItems(newItems);
+    };
+
+    const calculateTotal = () => {
+      return formItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    };
+
+    const handleCreateExport = async () => {
+      const validItems = formItems.filter(item => item.product_id && item.quantity > 0);
+      if (validItems.length === 0) {
+        alert('Vui lòng chọn ít nhất 1 sản phẩm!');
+        return;
+      }
+
+      // Check stock
+      for (const item of validItems) {
+        const product = products.find(p => p.id === item.product_id);
+        if (product && product.stock_quantity < item.quantity) {
+          alert(`❌ Sản phẩm "${product.name}" chỉ còn ${product.stock_quantity} ${product.unit}!`);
+          return;
+        }
+      }
+
+      try {
+        const transactionNumber = generateTransactionNumber();
+        
+        // Create transaction
+        const { data: transaction, error: transError } = await supabase.from('stock_transactions').insert([{
+          tenant_id: tenant.id,
+          transaction_number: transactionNumber,
+          type: 'export',
+          transaction_date: formDate,
+          partner_name: formPartnerName,
+          partner_phone: formPartnerPhone,
+          total_amount: calculateTotal(),
+          note: formNote,
+          status: 'completed',
+          created_by: currentUser.name
+        }]).select().single();
+
+        if (transError) throw transError;
+
+        // Create transaction items
+        const itemsToInsert = validItems.map(item => {
+          const product = products.find(p => p.id === item.product_id);
+          return {
+            transaction_id: transaction.id,
+            product_id: item.product_id,
+            product_sku: product?.sku || '',
+            product_name: product?.name || '',
+            quantity: parseInt(item.quantity),
+            unit_price: parseFloat(item.unit_price),
+            total_price: item.quantity * item.unit_price
+          };
+        });
+
+        const { error: itemsError } = await supabase.from('stock_transaction_items').insert(itemsToInsert);
+        if (itemsError) throw itemsError;
+
+        // Update product stock quantities
+        for (const item of validItems) {
+          const product = products.find(p => p.id === item.product_id);
+          if (product) {
+            await supabase.from('products').update({
+              stock_quantity: product.stock_quantity - parseInt(item.quantity),
+              updated_at: new Date().toISOString()
+            }).eq('id', item.product_id);
+          }
+        }
+
+        alert('✅ Xuất kho thành công!');
+        setShowCreateModal(false);
+        resetForm();
+        loadWarehouseData();
+      } catch (error) {
+        alert('❌ Lỗi: ' + error.message);
+      }
+    };
+
+    const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
+
+    const filteredTransactions = exportTransactions.filter(t => 
+      !searchTerm || 
+      t.transaction_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.partner_name && t.partner_name.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
     return (
-      <div className="p-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
-          <div className="text-6xl mb-4">📤</div>
-          <h2 className="text-2xl font-bold text-blue-800 mb-2">Xuất Kho</h2>
-          <p className="text-blue-600">Module đang được phát triển...</p>
-          <p className="text-sm text-blue-500 mt-2">Sẽ bao gồm: Tạo phiếu xuất, xuất theo đơn hàng, xuất nội bộ</p>
+      <div className="p-4 md:p-6 space-y-4">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl p-4 border-l-4 border-blue-500">
+            <div className="text-2xl font-bold text-blue-600">{exportTransactions.length}</div>
+            <div className="text-gray-600 text-sm">Phiếu xuất</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-green-500">
+            <div className="text-lg font-bold text-green-600">
+              {formatCurrency(exportTransactions.reduce((sum, t) => sum + (t.total_amount || 0), 0))}
+            </div>
+            <div className="text-gray-600 text-sm">Tổng giá trị xuất</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-purple-500 col-span-2 md:col-span-1">
+            <div className="text-2xl font-bold text-purple-600">
+              {exportTransactions.filter(t => {
+                const today = new Date().toISOString().split('T')[0];
+                return t.transaction_date === today;
+              }).length}
+            </div>
+            <div className="text-gray-600 text-sm">Xuất hôm nay</div>
+          </div>
         </div>
+
+        {/* Toolbar */}
+        <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-3">
+          <input
+            type="text"
+            placeholder="🔍 Tìm phiếu xuất..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 px-4 py-2 border rounded-lg"
+          />
+          <button
+            onClick={() => { resetForm(); setShowCreateModal(true); }}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium whitespace-nowrap"
+          >
+            📤 Tạo Phiếu Xuất
+          </button>
+        </div>
+
+        {/* Transactions List */}
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Mã phiếu</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Ngày</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 hidden md:table-cell">Khách hàng</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Tổng tiền</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 hidden md:table-cell">Người tạo</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                      Chưa có phiếu xuất nào
+                    </td>
+                  </tr>
+                ) : filteredTransactions.map(trans => (
+                  <tr key={trans.id} className="hover:bg-gray-50 cursor-pointer">
+                    <td className="px-4 py-3 font-mono text-sm text-blue-600">{trans.transaction_number}</td>
+                    <td className="px-4 py-3">{new Date(trans.transaction_date).toLocaleDateString('vi-VN')}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">{trans.partner_name || '-'}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatCurrency(trans.total_amount)}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">{trans.created_by}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs">Hoàn thành</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Create Modal */}
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b sticky top-0 bg-white">
+                <h2 className="text-xl font-bold">📤 Tạo Phiếu Xuất Kho</h2>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Khách hàng</label>
+                    <input
+                      type="text"
+                      value={formPartnerName}
+                      onChange={(e) => setFormPartnerName(e.target.value)}
+                      placeholder="Tên KH"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">SĐT</label>
+                    <input
+                      type="text"
+                      value={formPartnerPhone}
+                      onChange={(e) => setFormPartnerPhone(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ngày xuất</label>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+
+                {/* Items */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Sản phẩm xuất</label>
+                    <button onClick={addItem} className="text-sm text-blue-600 hover:text-blue-700">+ Thêm dòng</button>
+                  </div>
+                  <div className="space-y-2">
+                    {formItems.map((item, index) => {
+                      const product = products.find(p => p.id === item.product_id);
+                      return (
+                        <div key={index} className="flex gap-2 items-center">
+                          <select
+                            value={item.product_id}
+                            onChange={(e) => updateItem(index, 'product_id', e.target.value)}
+                            className="flex-1 px-3 py-2 border rounded-lg"
+                          >
+                            <option value="">Chọn sản phẩm</option>
+                            {products.filter(p => p.stock_quantity > 0).map(p => (
+                              <option key={p.id} value={p.id}>{p.sku} - {p.name} (Tồn: {p.stock_quantity})</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                            placeholder="SL"
+                            className="w-20 px-3 py-2 border rounded-lg"
+                            min="1"
+                            max={product?.stock_quantity || 999}
+                          />
+                          <input
+                            type="number"
+                            value={item.unit_price}
+                            onChange={(e) => updateItem(index, 'unit_price', e.target.value)}
+                            placeholder="Đơn giá"
+                            className="w-32 px-3 py-2 border rounded-lg"
+                          />
+                          {formItems.length > 1 && (
+                            <button onClick={() => removeItem(index)} className="text-red-500 hover:text-red-700 px-2">✕</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 rounded-lg p-4 text-right">
+                  <span className="text-gray-600">Tổng tiền: </span>
+                  <span className="text-2xl font-bold text-blue-600">{formatCurrency(calculateTotal())}</span>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
+                  <textarea
+                    value={formNote}
+                    onChange={(e) => setFormNote(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+              <div className="p-6 border-t flex gap-3 justify-end">
+                <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg">Hủy</button>
+                <button onClick={handleCreateExport} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">📤 Xuất Kho</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   function WarehouseHistoryView() {
+    const [filterType, setFilterType] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
+
+    const filteredTransactions = stockTransactions.filter(t => {
+      const matchType = !filterType || t.type === filterType;
+      const matchSearch = !searchTerm || 
+        t.transaction_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.partner_name && t.partner_name.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchType && matchSearch;
+    });
+
+    const totalImport = stockTransactions.filter(t => t.type === 'import').reduce((sum, t) => sum + (t.total_amount || 0), 0);
+    const totalExport = stockTransactions.filter(t => t.type === 'export').reduce((sum, t) => sum + (t.total_amount || 0), 0);
+
     return (
-      <div className="p-6">
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
-          <div className="text-6xl mb-4">📋</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Lịch Sử Kho</h2>
-          <p className="text-gray-600">Module đang được phát triển...</p>
-          <p className="text-sm text-gray-500 mt-2">Sẽ bao gồm: Lịch sử nhập/xuất, biến động tồn kho, báo cáo</p>
+      <div className="p-4 md:p-6 space-y-4">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl p-4 border-l-4 border-gray-500">
+            <div className="text-2xl font-bold text-gray-600">{stockTransactions.length}</div>
+            <div className="text-gray-600 text-sm">Tổng giao dịch</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-green-500">
+            <div className="text-2xl font-bold text-green-600">{stockTransactions.filter(t => t.type === 'import').length}</div>
+            <div className="text-gray-600 text-sm">Phiếu nhập</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-blue-500">
+            <div className="text-2xl font-bold text-blue-600">{stockTransactions.filter(t => t.type === 'export').length}</div>
+            <div className="text-gray-600 text-sm">Phiếu xuất</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border-l-4 border-purple-500">
+            <div className={`text-lg font-bold ${totalExport > totalImport ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(totalExport - totalImport)}
+            </div>
+            <div className="text-gray-600 text-sm">Chênh lệch</div>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-3">
+          <input
+            type="text"
+            placeholder="🔍 Tìm kiếm..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 px-4 py-2 border rounded-lg"
+          />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-4 py-2 border rounded-lg"
+          >
+            <option value="">Tất cả loại</option>
+            <option value="import">📥 Nhập kho</option>
+            <option value="export">📤 Xuất kho</option>
+          </select>
+        </div>
+
+        {/* Timeline */}
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <h3 className="font-bold text-lg mb-4">📋 Lịch sử giao dịch</h3>
+          <div className="space-y-3">
+            {filteredTransactions.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">Chưa có giao dịch nào</div>
+            ) : filteredTransactions.map(trans => (
+              <div key={trans.id} className={`flex items-start gap-4 p-4 rounded-lg ${trans.type === 'import' ? 'bg-green-50' : 'bg-blue-50'}`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${trans.type === 'import' ? 'bg-green-500' : 'bg-blue-500'} text-white text-lg`}>
+                  {trans.type === 'import' ? '📥' : '📤'}
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className={`font-mono text-sm ${trans.type === 'import' ? 'text-green-600' : 'text-blue-600'}`}>
+                        {trans.transaction_number}
+                      </span>
+                      <div className="font-medium">{trans.partner_name || (trans.type === 'import' ? 'Nhập kho' : 'Xuất kho')}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-bold ${trans.type === 'import' ? 'text-green-600' : 'text-blue-600'}`}>
+                        {trans.type === 'import' ? '+' : '-'}{formatCurrency(trans.total_amount)}
+                      </div>
+                      <div className="text-sm text-gray-500">{new Date(trans.transaction_date).toLocaleDateString('vi-VN')}</div>
+                    </div>
+                  </div>
+                  {trans.note && <div className="text-sm text-gray-600 mt-1">{trans.note}</div>}
+                  <div className="text-xs text-gray-400 mt-1">Bởi: {trans.created_by}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
