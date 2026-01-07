@@ -167,9 +167,9 @@ export default function SimpleMarketingSystem() {
   ]);
 
   const [automations, setAutomations] = useState([
-    { id: 1, name: 'Auto-approve', trigger: 'Task hoàn thành', action: 'Chuyển Chờ Duyệt', active: true },
+    { id: 1, name: 'Auto-approve', trigger: 'Video hoàn thành', action: 'Chuyển Chờ Duyệt', active: true },
     { id: 2, name: 'Nhắc deadline', trigger: 'Trước 24h', action: 'Gửi Slack', active: true },
-    { id: 3, name: 'Task quá hạn', trigger: 'Quá deadline', action: 'Email Manager', active: false }
+    { id: 3, name: 'Video quá hạn', trigger: 'Quá deadline', action: 'Email Manager', active: false }
   ]);
 
   const [integrations, setIntegrations] = useState({
@@ -456,7 +456,7 @@ export default function SimpleMarketingSystem() {
         addNotification({
           type: 'assigned',
           taskId: null,
-          title: '📋 Task mới',
+          title: '📋 Video mới',
           message: `${currentUser.name} đã giao task cho bạn: "${title}"`,
           read: false,
           createdAt: new Date().toISOString()
@@ -1764,7 +1764,7 @@ export default function SimpleMarketingSystem() {
 
       <div className="grid md:grid-cols-4 gap-6">
         {[
-          { l: 'Tổng Tasks', v: visibleTasks.length, i: '📊', c: 'blue' },
+          { l: 'Tổng Video', v: visibleTasks.length, i: '📊', c: 'blue' },
           { l: 'Hoàn Thành', v: visibleTasks.filter(t => t.status === 'Hoàn Thành').length, i: '✅', c: 'green' },
           { l: 'Đang Làm', v: visibleTasks.filter(t => t.status === 'Đang Làm').length, i: '⏳', c: 'yellow' },
           { l: 'Quá Hạn', v: visibleTasks.filter(t => t.isOverdue).length, i: '⚠️', c: 'red' }
@@ -1805,7 +1805,7 @@ export default function SimpleMarketingSystem() {
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-xl shadow">
-          <h3 className="text-lg font-bold mb-4">📊 Trạng thái Tasks</h3>
+          <h3 className="text-lg font-bold mb-4">📊 Trạng thái Video</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -1839,7 +1839,7 @@ export default function SimpleMarketingSystem() {
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow">
-        <h3 className="text-lg font-bold mb-4">🎯 Tasks Gần Nhất</h3>
+        <h3 className="text-lg font-bold mb-4">🎯 Video Gần Nhất</h3>
         <div className="space-y-3">
           {visibleTasks.slice(0, 5).map(task => (
             <div 
@@ -1960,12 +1960,12 @@ export default function SimpleMarketingSystem() {
     return (
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">📋 Quản Lý Tasks</h2>
+          <h2 className="text-2xl font-bold">📋 Quản Lý Video</h2>
           <button
             onClick={() => setShowCreateTaskModal(true)}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >
-            ➕ Tạo Task Mới
+            ➕ Tạo Video Mới
           </button>
         </div>
 
@@ -2168,7 +2168,7 @@ export default function SimpleMarketingSystem() {
 
     return (
       <div className="p-6">
-        <h2 className="text-2xl font-bold mb-6">📅 Lịch Tasks</h2>
+        <h2 className="text-2xl font-bold mb-6">📅 Lịch Video</h2>
         
         <div className="bg-white p-6 rounded-xl shadow">
           <div className="flex justify-between items-center mb-6">
@@ -2228,7 +2228,7 @@ export default function SimpleMarketingSystem() {
         </div>
 
         <div className="mt-6 bg-white p-6 rounded-xl shadow">
-          <h3 className="text-lg font-bold mb-4">📌 Tasks Sắp Tới</h3>
+          <h3 className="text-lg font-bold mb-4">📌 Video Sắp Tới</h3>
           <div className="space-y-3">
             {visibleTasks
               .filter(t => new Date(t.dueDate) >= today)
@@ -2445,7 +2445,7 @@ export default function SimpleMarketingSystem() {
             <div className="text-3xl font-bold mb-1">
               {filteredTasks.filter(t => t.status === 'Hoàn Thành').length}
             </div>
-            <div className="text-sm text-gray-600">Tasks Hoàn Thành</div>
+            <div className="text-sm text-gray-600">Video Hoàn Thành</div>
             <div className="text-xs text-gray-400 mt-1">
               Kỳ trước: {compareWithPrevious.previous}
             </div>
@@ -2466,7 +2466,7 @@ export default function SimpleMarketingSystem() {
             <div className="text-3xl font-bold mb-1">
               {filteredTasks.filter(t => t.isOverdue).length}
             </div>
-            <div className="text-sm text-gray-600">Tasks Quá Hạn</div>
+            <div className="text-sm text-gray-600">Video Quá Hạn</div>
           </div>
         </div>
 
@@ -2566,7 +2566,7 @@ export default function SimpleMarketingSystem() {
           <h3 className="text-lg font-bold mb-4">📋 Tổng Quan Theo Thời Gian</h3>
           <div className="grid md:grid-cols-4 gap-4">
             <div>
-              <div className="text-sm text-gray-600">Tổng Tasks</div>
+              <div className="text-sm text-gray-600">Tổng Video</div>
               <div className="text-2xl font-bold">{filteredTasks.length}</div>
             </div>
             <div>
@@ -3349,9 +3349,9 @@ export default function SimpleMarketingSystem() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 shadow-lg">
-            <div className="text-sm opacity-90 mb-2">Tổng Tasks</div>
+            <div className="text-sm opacity-90 mb-2">Tổng Video</div>
             <div className="text-4xl font-bold mb-2">{myMetrics?.total || 0}</div>
-            <div className="text-sm opacity-75">Tasks được giao</div>
+            <div className="text-sm opacity-75">Video được giao</div>
           </div>
           <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6 shadow-lg">
             <div className="text-sm opacity-90 mb-2">Hoàn Thành</div>
@@ -3366,7 +3366,7 @@ export default function SimpleMarketingSystem() {
           <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl p-6 shadow-lg">
             <div className="text-sm opacity-90 mb-2">Đang Làm</div>
             <div className="text-4xl font-bold mb-2">{myMetrics?.inProgress || 0}</div>
-            <div className="text-sm opacity-75">Tasks đang xử lý</div>
+            <div className="text-sm opacity-75">Video đang xử lý</div>
           </div>
         </div>
 
@@ -3378,7 +3378,7 @@ export default function SimpleMarketingSystem() {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="created" fill="#3b82f6" name="Tasks mới" />
+              <Bar dataKey="created" fill="#3b82f6" name="Video mới" />
               <Bar dataKey="completed" fill="#10b981" name="Hoàn thành" />
             </BarChart>
           </ResponsiveContainer>
@@ -3476,7 +3476,7 @@ export default function SimpleMarketingSystem() {
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
           <div className="sticky top-0 bg-white p-6 border-b">
-            <h2 className="text-2xl font-bold">➕ Tạo Task Mới</h2>
+            <h2 className="text-2xl font-bold">➕ Tạo Video Mới</h2>
           </div>
 
           <div className="p-6 space-y-4">
@@ -3596,7 +3596,7 @@ export default function SimpleMarketingSystem() {
                 }}
                 className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
               >
-                ✅ Tạo Task
+                ✅ Tạo Video
               </button>
             </div>
           </div>
@@ -3671,7 +3671,7 @@ export default function SimpleMarketingSystem() {
         });
       } catch (error) {
         console.error('Error updating task:', error);
-        alert('❌ Lỗi khi cập nhật task!');
+        alert('❌ Lỗi khi cập nhật video!');
       }
     };
 
@@ -3710,20 +3710,20 @@ export default function SimpleMarketingSystem() {
           addNotification({
             type: 'assigned',
             taskId: selectedTask.id,
-            title: '📋 Task được chuyển giao',
-            message: `${currentUser.name} đã chuyển task "${selectedTask.title}" cho bạn`,
+            title: '📋 Video được chuyển giao',
+            message: `${currentUser.name} đã chuyển video "${selectedTask.title}" cho bạn`,
             read: false,
             createdAt: new Date().toISOString()
           });
         }
 
         setShowReassign(false);
-        alert('✅ Đã chuyển giao task!');
+        alert('✅ Đã chuyển giao video!');
         await loadTasks();
         setShowModal(false);
       } catch (error) {
         console.error('Error reassigning task:', error);
-        alert('❌ Lỗi khi chuyển giao task!');
+        alert('❌ Lỗi khi chuyển giao video!');
       }
     };
 
@@ -3785,7 +3785,7 @@ export default function SimpleMarketingSystem() {
             {/* Edit Task Form */}
             {showEditTask && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <h4 className="font-bold text-lg mb-3 text-blue-900">✏️ Chỉnh Sửa Task</h4>
+                <h4 className="font-bold text-lg mb-3 text-blue-900">✏️ Chỉnh Sửa Video</h4>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Tiêu đề *</label>
@@ -3863,7 +3863,7 @@ export default function SimpleMarketingSystem() {
 
             {showReassign && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <h4 className="font-bold text-lg mb-3 text-yellow-900">🔄 Chuyển Giao Task</h4>
+                <h4 className="font-bold text-lg mb-3 text-yellow-900">🔄 Chuyển Giao Video</h4>
                 <div className="space-y-3">
                   <select
                     value={newAssignee}
