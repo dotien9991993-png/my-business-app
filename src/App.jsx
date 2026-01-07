@@ -3916,7 +3916,7 @@ export default function SimpleMarketingSystem() {
                 className="h-32 w-auto"
               />
             </div>
-            <h1 className="text-3xl font-bold mb-2">Marketing Hoàng Nam Audio</h1>
+            <h1 className="text-3xl font-bold mb-2">Hoàng Nam Audio</h1>
             <p className="text-gray-600">Làm việc hăng say, tiền ngay về túi</p>
           </div>
           
@@ -3991,76 +3991,11 @@ export default function SimpleMarketingSystem() {
             <div className="flex items-center gap-4">
               <img src="/logo.png?v=2" alt="Hoàng Nam Audio" className="h-12 w-auto" />
               <div>
-                <h1 className="text-2xl font-bold">Marketing Hoàng Nam Audio</h1>
+                <h1 className="text-2xl font-bold">Hoàng Nam Audio</h1>
                 <p className="text-gray-600 text-sm">Làm việc hăng say, tiền ngay về túi</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              {/* Admin Menu Dropdown */}
-              {currentUser.role === 'Admin' || currentUser.role === 'admin' && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowAdminMenu(!showAdminMenu)}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
-                  >
-                    <span>⚙️ Admin</span>
-                    <svg className={`w-4 h-4 transition-transform ${showAdminMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  
-                  {showAdminMenu && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-10" 
-                        onClick={() => setShowAdminMenu(false)}
-                      />
-                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border z-20 overflow-hidden">
-                        <button
-                          onClick={() => {
-                            navigateTo('media', 'automation');
-                            setShowAdminMenu(false);
-                          }}
-                          className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3 border-b"
-                        >
-                          <span className="text-xl">⚙️</span>
-                          <div>
-                            <div className="font-medium">Automation</div>
-                            <div className="text-xs text-gray-500">Tự động hóa công việc</div>
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => {
-                            navigateTo('media', 'users');
-                            setShowAdminMenu(false);
-                          }}
-                          className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3 border-b"
-                        >
-                          <span className="text-xl">👥</span>
-                          <div>
-                            <div className="font-medium">Users</div>
-                            <div className="text-xs text-gray-500">Quản lý người dùng</div>
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowPermissionsModal(true);
-                            setShowAdminMenu(false);
-                          }}
-                          className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3"
-                        >
-                          <span className="text-xl">🔐</span>
-                          <div>
-                            <div className="font-medium">Phân Quyền</div>
-                            <div className="text-xs text-gray-500">Quản lý quyền truy cập</div>
-                          </div>
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              
               <div className="relative">
                 <button
                   onClick={() => setShowNotifications(!showNotifications)}
