@@ -4035,581 +4035,6 @@ export default function SimpleMarketingSystem() {
     );
   };
 
-  // Loading tenant
-  if (tenantLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-          <div className="animate-spin text-6xl mb-4">⚙️</div>
-          <h2 className="text-xl font-bold text-gray-800">Đang tải...</h2>
-          <p className="text-gray-500 mt-2">Vui lòng chờ trong giây lát</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Tenant error (không tìm thấy hoặc hết hạn)
-  if (tenantError) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-red-500 via-orange-500 to-yellow-500 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-xl font-bold text-red-600 mb-2">Không thể truy cập</h2>
-          <p className="text-gray-600 mb-6">{tenantError}</p>
-          <div className="text-sm text-gray-500">
-            <p>Liên hệ hỗ trợ:</p>
-            <p className="font-medium">support@yourdomain.com</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-          <div className="text-center mb-8">
-            <div className="flex justify-center mb-4">
-              <img 
-                src={tenant.logo_url || "/logo.png?v=2"} 
-                alt={tenant.name} 
-                className="h-32 w-auto"
-              />
-            </div>
-            <h1 className="text-3xl font-bold mb-2">{tenant.name}</h1>
-            <p className="text-gray-600">{tenant.slogan || 'Làm việc hăng say, tiền ngay về túi'}</p>
-          </div>
-          
-          <div className="space-y-4">
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-lg"
-            >
-              🔐 Đăng Nhập
-            </button>
-            <button
-              onClick={() => setShowRegisterModal(true)}
-              className="w-full px-6 py-4 bg-white hover:bg-gray-50 text-blue-600 border-2 border-blue-600 rounded-xl font-medium text-lg"
-            >
-              📝 Đăng Ký
-            </button>
-          </div>
-
-          <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-            <div className="text-sm font-medium mb-2">✨ Tính năng:</div>
-            <ul className="text-sm text-gray-600 space-y-1">
-              <li>✅ Quản lý tasks & deadline</li>
-              <li>✅ Theo dõi tiến độ team</li>
-              <li>✅ Báo cáo & phân tích</li>
-              <li>✅ Automation & templates</li>
-            </ul>
-          </div>
-        </div>
-
-        {showLoginModal && <LoginModal />}
-        {showRegisterModal && <RegisterModal />}
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-white shadow sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4">
-          {/* Mobile Header */}
-          <div className="flex md:hidden justify-between items-center">
-            <button
-              onClick={() => setShowMobileSidebar(!showMobileSidebar)}
-              className="p-2 hover:bg-gray-100 rounded-lg"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <div className="flex items-center">
-              <img src="/logo.png?v=2" alt="Logo" className="h-10 w-auto" />
-            </div>
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative p-2 hover:bg-gray-100 rounded-full"
-              >
-                <span className="text-xl">🔔</span>
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </button>
-              <NotificationsDropdown />
-            </div>
-          </div>
-
-          {/* Desktop Header */}
-          <div className="hidden md:flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <img src={tenant.logo_url || "/logo.png?v=2"} alt={tenant.name} className="h-12 w-auto" />
-              <div>
-                <h1 className="text-2xl font-bold">{tenant.name}</h1>
-                <p className="text-gray-600 text-sm">{tenant.slogan || 'Làm việc hăng say, tiền ngay về túi'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <button
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                  <span className="text-2xl">🔔</span>
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </button>
-                <NotificationsDropdown />
-              </div>
-              <div className="text-right">
-                <div className="font-medium">{currentUser.name}</div>
-                <div className="text-sm text-gray-600">{currentUser.role} • {currentUser.team}</div>
-              </div>
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin') && (
-                <button
-                  onClick={() => setShowPermissionsModal(true)}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm"
-                >
-                  🔐 Phân Quyền
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setIsLoggedIn(false);
-                  setCurrentUser(null);
-                  setActiveTab('dashboard');
-                  localStorage.removeItem(`${tenant.slug}_user`);
-                  localStorage.removeItem(`${tenant.slug}_loggedIn`);
-                }}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm"
-              >
-                🚪 Đăng xuất
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Sidebar */}
-      {showMobileSidebar && (
-        <>
-          <div 
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            onClick={() => setShowMobileSidebar(false)}
-          />
-          <div className="fixed left-0 top-0 bottom-0 w-80 bg-white z-50 shadow-xl md:hidden overflow-y-auto">
-            <div className="p-4 border-b bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-xl font-bold">Menu</h2>
-                <button
-                  onClick={() => setShowMobileSidebar(false)}
-                  className="p-1 hover:bg-white/20 rounded"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="text-sm opacity-90">{currentUser.name}</div>
-              <div className="text-xs opacity-75">{currentUser.role} • {currentUser.team}</div>
-            </div>
-
-            {/* Module Selection */}
-            <div className="p-4 border-b">
-              <div className="text-xs font-semibold text-gray-500 mb-2">BỘ PHẬN</div>
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
-                <button
-                  onClick={() => {
-                    navigateTo('media', 'dashboard');
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
-                    activeModule === 'media'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  🎬 Media
-                </button>
-              )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
-                <button
-                  onClick={() => {
-                    navigateTo('warehouse', 'inventory');
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
-                    activeModule === 'warehouse'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  📦 Kho
-                </button>
-              )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
-                <button
-                  onClick={() => {
-                    navigateTo('sales', 'orders');
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
-                    activeModule === 'sales'
-                      ? 'bg-pink-100 text-pink-700'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  🛒 Sale
-                </button>
-              )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
-                <button
-                  onClick={() => {
-                    navigateTo('technical', 'jobs');
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
-                    activeModule === 'technical'
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  🔧 Kỹ Thuật
-                </button>
-              )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
-                <button
-                  onClick={() => {
-                    navigateTo('finance', 'dashboard');
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
-                    activeModule === 'finance'
-                      ? 'bg-green-100 text-green-700'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  💰 Tài Chính
-                </button>
-              )}
-            </div>
-
-            {/* Admin Functions */}
-            {currentUser.role === 'Admin' || currentUser.role === 'admin' && (
-              <div className="p-4 border-b bg-purple-50">
-                <div className="text-xs font-semibold text-purple-700 mb-2">ADMIN</div>
-                <button
-                  onClick={() => {
-                    navigateTo('media', 'automation');
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
-                    activeTab === 'automation'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-white hover:bg-purple-100'
-                  }`}
-                >
-                  ⚙️ Automation
-                </button>
-                <button
-                  onClick={() => {
-                    navigateTo('media', 'users');
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
-                    activeTab === 'users'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-white hover:bg-purple-100'
-                  }`}
-                >
-                  👥 Users
-                </button>
-              </div>
-            )}
-
-            {/* Tabs Navigation */}
-            <div className="p-4">
-              <div className="text-xs font-semibold text-gray-500 mb-2">CHỨC NĂNG</div>
-              {(activeModule === 'media' ? [
-                { id: 'mytasks', l: '📝 Của Tôi', show: true },
-                { id: 'dashboard', l: '📊 Dashboard', show: true },
-                { id: 'tasks', l: '📋 Tasks', show: true },
-                { id: 'calendar', l: '📅 Lịch', show: true },
-                { id: 'report', l: '📈 Báo Cáo', show: true },
-                { id: 'performance', l: '📊 Hiệu Suất', show: true },
-                { id: 'integrations', l: '🔗 Tích Hợp', show: true }
-              ] : activeModule === 'warehouse' ? [
-                { id: 'inventory', l: '📦 Tồn Kho', show: true },
-                { id: 'import', l: '📥 Nhập Kho', show: true },
-                { id: 'export', l: '📤 Xuất Kho', show: true },
-                { id: 'history', l: '📋 Lịch Sử', show: true }
-              ] : activeModule === 'sales' ? [
-                { id: 'orders', l: '🛒 Đơn Hàng', show: true },
-                { id: 'customers', l: '👥 Khách Hàng', show: true },
-                { id: 'products', l: '📱 Sản Phẩm', show: true },
-                { id: 'report', l: '📈 Báo Cáo', show: true }
-              ] : activeModule === 'technical' ? [
-                { id: 'jobs', l: '📋 Công Việc', show: true },
-                { id: 'integrations', l: '🔗 Tích Hợp', show: true }
-              ] : activeModule === 'finance' ? [
-                { id: 'dashboard', l: '📊 Tổng Quan', show: true },
-                { id: 'receipts', l: '🧾 Thu/Chi', show: true },
-                { id: 'debts', l: '📋 Công Nợ', show: true },
-                { id: 'salaries', l: '💰 Lương', show: true },
-                { id: 'reports', l: '📈 Báo Cáo', show: true }
-              ] : []).filter(t => t.show).map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    navigateTo(activeModule, t.id);
-                    setShowMobileSidebar(false);
-                  }}
-                  className={`w-full px-4 py-3 rounded-lg mb-1 text-left font-medium ${
-                    activeTab === t.id
-                      ? 'bg-blue-600 text-white'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  {t.l}
-                </button>
-              ))}
-            </div>
-
-            {/* Admin Buttons */}
-            <div className="p-4 border-t space-y-2">
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin') && (
-                <button
-                  onClick={() => {
-                    setShowPermissionsModal(true);
-                    setShowMobileSidebar(false);
-                  }}
-                  className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium"
-                >
-                  🔐 Phân Quyền
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setIsLoggedIn(false);
-                  setCurrentUser(null);
-                  setActiveTab('dashboard');
-                  localStorage.removeItem(`${tenant.slug}_user`);
-                  localStorage.removeItem(`${tenant.slug}_loggedIn`);
-                  setShowMobileSidebar(false);
-                }}
-                className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
-              >
-                🚪 Đăng xuất
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Module Selector - Desktop Only */}
-      <div className="hidden md:block bg-gradient-to-r from-blue-600 to-purple-600">
-        <div className="max-w-7xl mx-auto px-6 flex gap-2">
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
-            <button
-              onClick={() => navigateTo('media', 'dashboard')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
-                activeModule === 'media'
-                  ? 'bg-white text-blue-600'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              🎬 Media
-            </button>
-          )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
-            <button
-              onClick={() => navigateTo('warehouse', 'inventory')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
-                activeModule === 'warehouse'
-                  ? 'bg-white text-amber-600'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              📦 Kho
-            </button>
-          )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
-            <button
-              onClick={() => navigateTo('sales', 'orders')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
-                activeModule === 'sales'
-                  ? 'bg-white text-pink-600'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              🛒 Sale
-            </button>
-          )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
-            <button
-              onClick={() => navigateTo('technical', 'jobs')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
-                activeModule === 'technical'
-                  ? 'bg-white text-orange-600'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              🔧 Kỹ Thuật
-            </button>
-          )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
-            <button
-              onClick={() => navigateTo('finance', 'dashboard')}
-              className={`px-6 py-4 font-bold text-lg transition-all ${
-                activeModule === 'finance'
-                  ? 'bg-white text-green-600'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              💰 Tài Chính
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="hidden md:block bg-white border-b">
-        <div className="max-w-7xl mx-auto px-6 flex gap-2 overflow-x-auto">
-          {(activeModule === 'media' ? [
-            { id: 'mytasks', l: '📝 Của Tôi' },
-            { id: 'dashboard', l: '📊 Dashboard' },
-            { id: 'tasks', l: '📋 Tasks' },
-            { id: 'calendar', l: '📅 Lịch' },
-            { id: 'report', l: '📈 Báo Cáo' },
-            { id: 'performance', l: '📊 Hiệu Suất' },
-            { id: 'integrations', l: '🔗 Tích Hợp' }
-          ] : activeModule === 'warehouse' ? [
-            { id: 'inventory', l: '📦 Tồn Kho' },
-            { id: 'import', l: '📥 Nhập Kho' },
-            { id: 'export', l: '📤 Xuất Kho' },
-            { id: 'history', l: '📋 Lịch Sử' }
-          ] : activeModule === 'sales' ? [
-            { id: 'orders', l: '🛒 Đơn Hàng' },
-            { id: 'customers', l: '👥 Khách Hàng' },
-            { id: 'products', l: '📱 Sản Phẩm' },
-            { id: 'report', l: '📈 Báo Cáo' }
-          ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc' },
-            { id: 'integrations', l: '🔗 Tích Hợp' }
-          ] : activeModule === 'finance' ? [
-            { id: 'dashboard', l: '📊 Tổng Quan' },
-            { id: 'receipts', l: '🧾 Thu/Chi' },
-            { id: 'debts', l: '📋 Công Nợ' },
-            { id: 'salaries', l: '💰 Lương' },
-            { id: 'reports', l: '📈 Báo Cáo' }
-          ] : []).map(t => (
-            <button key={t.id} onClick={() => navigateTo(activeModule, t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'}`}>
-              {t.l}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Mobile Title Bar */}
-      <div className="md:hidden bg-white border-b px-4 py-3 sticky top-[52px] z-30">
-        <h2 className="font-bold text-lg">
-          {(activeModule === 'media' ? [
-            { id: 'mytasks', l: '📝 Của Tôi' },
-            { id: 'dashboard', l: '📊 Dashboard' },
-            { id: 'tasks', l: '📋 Tasks' },
-            { id: 'calendar', l: '📅 Lịch' },
-            { id: 'report', l: '📈 Báo Cáo' },
-            { id: 'performance', l: '📊 Hiệu Suất' },
-            { id: 'integrations', l: '🔗 Tích Hợp' },
-            { id: 'automation', l: '⚙️ Automation' },
-            { id: 'users', l: '👥 Users' }
-          ] : activeModule === 'warehouse' ? [
-            { id: 'inventory', l: '📦 Tồn Kho' },
-            { id: 'import', l: '📥 Nhập Kho' },
-            { id: 'export', l: '📤 Xuất Kho' },
-            { id: 'history', l: '📋 Lịch Sử' }
-          ] : activeModule === 'sales' ? [
-            { id: 'orders', l: '🛒 Đơn Hàng' },
-            { id: 'customers', l: '👥 Khách Hàng' },
-            { id: 'products', l: '📱 Sản Phẩm' },
-            { id: 'report', l: '📈 Báo Cáo' }
-          ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc' },
-            { id: 'integrations', l: '🔗 Tích Hợp' }
-          ] : activeModule === 'finance' ? [
-            { id: 'dashboard', l: '📊 Tổng Quan' },
-            { id: 'receipts', l: '🧾 Thu/Chi' },
-            { id: 'debts', l: '📋 Công Nợ' },
-            { id: 'salaries', l: '💰 Lương' },
-            { id: 'reports', l: '📈 Báo Cáo' }
-          ] : []).find(t => t.id === activeTab)?.l || ''}
-        </h2>
-      </div>
-
-      <div className="max-w-7xl mx-auto pb-20 md:pb-0">
-        {activeModule === 'media' && (
-          <>
-            {activeTab === 'mytasks' && <MyTasksView />}
-            {activeTab === 'dashboard' && <DashboardView />}
-            {activeTab === 'tasks' && <TasksView />}
-            {activeTab === 'calendar' && <CalendarView />}
-            {activeTab === 'report' && <ReportView />}
-            {activeTab === 'integrations' && <IntegrationsView />}
-            {activeTab === 'automation' && <AutomationView />}
-            {activeTab === 'users' && <UserManagementView />}
-            {activeTab === 'performance' && <PerformanceView />}
-          </>
-        )}
-        {activeModule === 'warehouse' && (
-          <>
-            {activeTab === 'inventory' && <WarehouseInventoryView />}
-            {activeTab === 'import' && <WarehouseImportView />}
-            {activeTab === 'export' && <WarehouseExportView />}
-            {activeTab === 'history' && <WarehouseHistoryView />}
-          </>
-        )}
-        {activeModule === 'sales' && (
-          <>
-            {activeTab === 'orders' && <SalesOrdersView />}
-            {activeTab === 'customers' && <SalesCustomersView />}
-            {activeTab === 'products' && <SalesProductsView />}
-            {activeTab === 'report' && <SalesReportView />}
-          </>
-        )}
-        {activeModule === 'technical' && (
-          <>
-            {activeTab === 'jobs' && <TechnicalJobsView />}
-            {activeTab === 'integrations' && <IntegrationsView />}
-          </>
-        )}
-        {activeModule === 'finance' && (
-          <>
-            {activeTab === 'dashboard' && <FinanceDashboard />}
-            {activeTab === 'receipts' && <ReceiptsView />}
-            {activeTab === 'debts' && <DebtsView />}
-            {activeTab === 'salaries' && <SalariesView />}
-            {activeTab === 'reports' && <ReportsView />}
-          </>
-        )}
-      </div>
-
-      {showModal && <TaskModal />}
-      {showCreateTaskModal && <CreateTaskModal />}
-      {showCreateJobModal && <CreateJobModal />}
-      {showJobModal && <JobDetailModal />}
-      {showPermissionsModal && <PermissionsModal />}
-    </div>
-  );
-
   // =====================================
   // WAREHOUSE MODULE COMPONENTS
   // =====================================
@@ -5855,6 +5280,581 @@ export default function SimpleMarketingSystem() {
       </div>
     );
   }
+  // Loading tenant
+  if (tenantLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="animate-spin text-6xl mb-4">⚙️</div>
+          <h2 className="text-xl font-bold text-gray-800">Đang tải...</h2>
+          <p className="text-gray-500 mt-2">Vui lòng chờ trong giây lát</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Tenant error (không tìm thấy hoặc hết hạn)
+  if (tenantError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-500 via-orange-500 to-yellow-500 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-xl font-bold text-red-600 mb-2">Không thể truy cập</h2>
+          <p className="text-gray-600 mb-6">{tenantError}</p>
+          <div className="text-sm text-gray-500">
+            <p>Liên hệ hỗ trợ:</p>
+            <p className="font-medium">support@yourdomain.com</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+          <div className="text-center mb-8">
+            <div className="flex justify-center mb-4">
+              <img 
+                src={tenant.logo_url || "/logo.png?v=2"} 
+                alt={tenant.name} 
+                className="h-32 w-auto"
+              />
+            </div>
+            <h1 className="text-3xl font-bold mb-2">{tenant.name}</h1>
+            <p className="text-gray-600">{tenant.slogan || 'Làm việc hăng say, tiền ngay về túi'}</p>
+          </div>
+          
+          <div className="space-y-4">
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-lg"
+            >
+              🔐 Đăng Nhập
+            </button>
+            <button
+              onClick={() => setShowRegisterModal(true)}
+              className="w-full px-6 py-4 bg-white hover:bg-gray-50 text-blue-600 border-2 border-blue-600 rounded-xl font-medium text-lg"
+            >
+              📝 Đăng Ký
+            </button>
+          </div>
+
+          <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+            <div className="text-sm font-medium mb-2">✨ Tính năng:</div>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>✅ Quản lý tasks & deadline</li>
+              <li>✅ Theo dõi tiến độ team</li>
+              <li>✅ Báo cáo & phân tích</li>
+              <li>✅ Automation & templates</li>
+            </ul>
+          </div>
+        </div>
+
+        {showLoginModal && <LoginModal />}
+        {showRegisterModal && <RegisterModal />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-white shadow sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4">
+          {/* Mobile Header */}
+          <div className="flex md:hidden justify-between items-center">
+            <button
+              onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="flex items-center">
+              <img src="/logo.png?v=2" alt="Logo" className="h-10 w-auto" />
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 hover:bg-gray-100 rounded-full"
+              >
+                <span className="text-xl">🔔</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              <NotificationsDropdown />
+            </div>
+          </div>
+
+          {/* Desktop Header */}
+          <div className="hidden md:flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <img src={tenant.logo_url || "/logo.png?v=2"} alt={tenant.name} className="h-12 w-auto" />
+              <div>
+                <h1 className="text-2xl font-bold">{tenant.name}</h1>
+                <p className="text-gray-600 text-sm">{tenant.slogan || 'Làm việc hăng say, tiền ngay về túi'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <span className="text-2xl">🔔</span>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                <NotificationsDropdown />
+              </div>
+              <div className="text-right">
+                <div className="font-medium">{currentUser.name}</div>
+                <div className="text-sm text-gray-600">{currentUser.role} • {currentUser.team}</div>
+              </div>
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin') && (
+                <button
+                  onClick={() => setShowPermissionsModal(true)}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm"
+                >
+                  🔐 Phân Quyền
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setIsLoggedIn(false);
+                  setCurrentUser(null);
+                  setActiveTab('dashboard');
+                  localStorage.removeItem(`${tenant.slug}_user`);
+                  localStorage.removeItem(`${tenant.slug}_loggedIn`);
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm"
+              >
+                🚪 Đăng xuất
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Sidebar */}
+      {showMobileSidebar && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setShowMobileSidebar(false)}
+          />
+          <div className="fixed left-0 top-0 bottom-0 w-80 bg-white z-50 shadow-xl md:hidden overflow-y-auto">
+            <div className="p-4 border-b bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xl font-bold">Menu</h2>
+                <button
+                  onClick={() => setShowMobileSidebar(false)}
+                  className="p-1 hover:bg-white/20 rounded"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="text-sm opacity-90">{currentUser.name}</div>
+              <div className="text-xs opacity-75">{currentUser.role} • {currentUser.team}</div>
+            </div>
+
+            {/* Module Selection */}
+            <div className="p-4 border-b">
+              <div className="text-xs font-semibold text-gray-500 mb-2">BỘ PHẬN</div>
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
+                <button
+                  onClick={() => {
+                    navigateTo('media', 'dashboard');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                    activeModule === 'media'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  🎬 Media
+                </button>
+              )}
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+                <button
+                  onClick={() => {
+                    navigateTo('warehouse', 'inventory');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                    activeModule === 'warehouse'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  📦 Kho
+                </button>
+              )}
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+                <button
+                  onClick={() => {
+                    navigateTo('sales', 'orders');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                    activeModule === 'sales'
+                      ? 'bg-pink-100 text-pink-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  🛒 Sale
+                </button>
+              )}
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
+                <button
+                  onClick={() => {
+                    navigateTo('technical', 'jobs');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                    activeModule === 'technical'
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  🔧 Kỹ Thuật
+                </button>
+              )}
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
+                <button
+                  onClick={() => {
+                    navigateTo('finance', 'dashboard');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
+                    activeModule === 'finance'
+                      ? 'bg-green-100 text-green-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  💰 Tài Chính
+                </button>
+              )}
+            </div>
+
+            {/* Admin Functions */}
+            {currentUser.role === 'Admin' || currentUser.role === 'admin' && (
+              <div className="p-4 border-b bg-purple-50">
+                <div className="text-xs font-semibold text-purple-700 mb-2">ADMIN</div>
+                <button
+                  onClick={() => {
+                    navigateTo('media', 'automation');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                    activeTab === 'automation'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white hover:bg-purple-100'
+                  }`}
+                >
+                  ⚙️ Automation
+                </button>
+                <button
+                  onClick={() => {
+                    navigateTo('media', 'users');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
+                    activeTab === 'users'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white hover:bg-purple-100'
+                  }`}
+                >
+                  👥 Users
+                </button>
+              </div>
+            )}
+
+            {/* Tabs Navigation */}
+            <div className="p-4">
+              <div className="text-xs font-semibold text-gray-500 mb-2">CHỨC NĂNG</div>
+              {(activeModule === 'media' ? [
+                { id: 'mytasks', l: '📝 Của Tôi', show: true },
+                { id: 'dashboard', l: '📊 Dashboard', show: true },
+                { id: 'tasks', l: '📋 Tasks', show: true },
+                { id: 'calendar', l: '📅 Lịch', show: true },
+                { id: 'report', l: '📈 Báo Cáo', show: true },
+                { id: 'performance', l: '📊 Hiệu Suất', show: true },
+                { id: 'integrations', l: '🔗 Tích Hợp', show: true }
+              ] : activeModule === 'warehouse' ? [
+                { id: 'inventory', l: '📦 Tồn Kho', show: true },
+                { id: 'import', l: '📥 Nhập Kho', show: true },
+                { id: 'export', l: '📤 Xuất Kho', show: true },
+                { id: 'history', l: '📋 Lịch Sử', show: true }
+              ] : activeModule === 'sales' ? [
+                { id: 'orders', l: '🛒 Đơn Hàng', show: true },
+                { id: 'customers', l: '👥 Khách Hàng', show: true },
+                { id: 'products', l: '📱 Sản Phẩm', show: true },
+                { id: 'report', l: '📈 Báo Cáo', show: true }
+              ] : activeModule === 'technical' ? [
+                { id: 'jobs', l: '📋 Công Việc', show: true },
+                { id: 'integrations', l: '🔗 Tích Hợp', show: true }
+              ] : activeModule === 'finance' ? [
+                { id: 'dashboard', l: '📊 Tổng Quan', show: true },
+                { id: 'receipts', l: '🧾 Thu/Chi', show: true },
+                { id: 'debts', l: '📋 Công Nợ', show: true },
+                { id: 'salaries', l: '💰 Lương', show: true },
+                { id: 'reports', l: '📈 Báo Cáo', show: true }
+              ] : []).filter(t => t.show).map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    navigateTo(activeModule, t.id);
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-1 text-left font-medium ${
+                    activeTab === t.id
+                      ? 'bg-blue-600 text-white'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  {t.l}
+                </button>
+              ))}
+            </div>
+
+            {/* Admin Buttons */}
+            <div className="p-4 border-t space-y-2">
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin') && (
+                <button
+                  onClick={() => {
+                    setShowPermissionsModal(true);
+                    setShowMobileSidebar(false);
+                  }}
+                  className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium"
+                >
+                  🔐 Phân Quyền
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setIsLoggedIn(false);
+                  setCurrentUser(null);
+                  setActiveTab('dashboard');
+                  localStorage.removeItem(`${tenant.slug}_user`);
+                  localStorage.removeItem(`${tenant.slug}_loggedIn`);
+                  setShowMobileSidebar(false);
+                }}
+                className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
+              >
+                🚪 Đăng xuất
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Module Selector - Desktop Only */}
+      <div className="hidden md:block bg-gradient-to-r from-blue-600 to-purple-600">
+        <div className="max-w-7xl mx-auto px-6 flex gap-2">
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
+            <button
+              onClick={() => navigateTo('media', 'dashboard')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'media'
+                  ? 'bg-white text-blue-600'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              🎬 Media
+            </button>
+          )}
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+            <button
+              onClick={() => navigateTo('warehouse', 'inventory')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'warehouse'
+                  ? 'bg-white text-amber-600'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              📦 Kho
+            </button>
+          )}
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+            <button
+              onClick={() => navigateTo('sales', 'orders')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'sales'
+                  ? 'bg-white text-pink-600'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              🛒 Sale
+            </button>
+          )}
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
+            <button
+              onClick={() => navigateTo('technical', 'jobs')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'technical'
+                  ? 'bg-white text-orange-600'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              🔧 Kỹ Thuật
+            </button>
+          )}
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
+            <button
+              onClick={() => navigateTo('finance', 'dashboard')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'finance'
+                  ? 'bg-white text-green-600'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              💰 Tài Chính
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="hidden md:block bg-white border-b">
+        <div className="max-w-7xl mx-auto px-6 flex gap-2 overflow-x-auto">
+          {(activeModule === 'media' ? [
+            { id: 'mytasks', l: '📝 Của Tôi' },
+            { id: 'dashboard', l: '📊 Dashboard' },
+            { id: 'tasks', l: '📋 Tasks' },
+            { id: 'calendar', l: '📅 Lịch' },
+            { id: 'report', l: '📈 Báo Cáo' },
+            { id: 'performance', l: '📊 Hiệu Suất' },
+            { id: 'integrations', l: '🔗 Tích Hợp' }
+          ] : activeModule === 'warehouse' ? [
+            { id: 'inventory', l: '📦 Tồn Kho' },
+            { id: 'import', l: '📥 Nhập Kho' },
+            { id: 'export', l: '📤 Xuất Kho' },
+            { id: 'history', l: '📋 Lịch Sử' }
+          ] : activeModule === 'sales' ? [
+            { id: 'orders', l: '🛒 Đơn Hàng' },
+            { id: 'customers', l: '👥 Khách Hàng' },
+            { id: 'products', l: '📱 Sản Phẩm' },
+            { id: 'report', l: '📈 Báo Cáo' }
+          ] : activeModule === 'technical' ? [
+            { id: 'jobs', l: '📋 Công Việc' },
+            { id: 'integrations', l: '🔗 Tích Hợp' }
+          ] : activeModule === 'finance' ? [
+            { id: 'dashboard', l: '📊 Tổng Quan' },
+            { id: 'receipts', l: '🧾 Thu/Chi' },
+            { id: 'debts', l: '📋 Công Nợ' },
+            { id: 'salaries', l: '💰 Lương' },
+            { id: 'reports', l: '📈 Báo Cáo' }
+          ] : []).map(t => (
+            <button key={t.id} onClick={() => navigateTo(activeModule, t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'}`}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mobile Title Bar */}
+      <div className="md:hidden bg-white border-b px-4 py-3 sticky top-[52px] z-30">
+        <h2 className="font-bold text-lg">
+          {(activeModule === 'media' ? [
+            { id: 'mytasks', l: '📝 Của Tôi' },
+            { id: 'dashboard', l: '📊 Dashboard' },
+            { id: 'tasks', l: '📋 Tasks' },
+            { id: 'calendar', l: '📅 Lịch' },
+            { id: 'report', l: '📈 Báo Cáo' },
+            { id: 'performance', l: '📊 Hiệu Suất' },
+            { id: 'integrations', l: '🔗 Tích Hợp' },
+            { id: 'automation', l: '⚙️ Automation' },
+            { id: 'users', l: '👥 Users' }
+          ] : activeModule === 'warehouse' ? [
+            { id: 'inventory', l: '📦 Tồn Kho' },
+            { id: 'import', l: '📥 Nhập Kho' },
+            { id: 'export', l: '📤 Xuất Kho' },
+            { id: 'history', l: '📋 Lịch Sử' }
+          ] : activeModule === 'sales' ? [
+            { id: 'orders', l: '🛒 Đơn Hàng' },
+            { id: 'customers', l: '👥 Khách Hàng' },
+            { id: 'products', l: '📱 Sản Phẩm' },
+            { id: 'report', l: '📈 Báo Cáo' }
+          ] : activeModule === 'technical' ? [
+            { id: 'jobs', l: '📋 Công Việc' },
+            { id: 'integrations', l: '🔗 Tích Hợp' }
+          ] : activeModule === 'finance' ? [
+            { id: 'dashboard', l: '📊 Tổng Quan' },
+            { id: 'receipts', l: '🧾 Thu/Chi' },
+            { id: 'debts', l: '📋 Công Nợ' },
+            { id: 'salaries', l: '💰 Lương' },
+            { id: 'reports', l: '📈 Báo Cáo' }
+          ] : []).find(t => t.id === activeTab)?.l || ''}
+        </h2>
+      </div>
+
+      <div className="max-w-7xl mx-auto pb-20 md:pb-0">
+        {activeModule === 'media' && (
+          <>
+            {activeTab === 'mytasks' && <MyTasksView />}
+            {activeTab === 'dashboard' && <DashboardView />}
+            {activeTab === 'tasks' && <TasksView />}
+            {activeTab === 'calendar' && <CalendarView />}
+            {activeTab === 'report' && <ReportView />}
+            {activeTab === 'integrations' && <IntegrationsView />}
+            {activeTab === 'automation' && <AutomationView />}
+            {activeTab === 'users' && <UserManagementView />}
+            {activeTab === 'performance' && <PerformanceView />}
+          </>
+        )}
+        {activeModule === 'warehouse' && (
+          <>
+            {activeTab === 'inventory' && <WarehouseInventoryView />}
+            {activeTab === 'import' && <WarehouseImportView />}
+            {activeTab === 'export' && <WarehouseExportView />}
+            {activeTab === 'history' && <WarehouseHistoryView />}
+          </>
+        )}
+        {activeModule === 'sales' && (
+          <>
+            {activeTab === 'orders' && <SalesOrdersView />}
+            {activeTab === 'customers' && <SalesCustomersView />}
+            {activeTab === 'products' && <SalesProductsView />}
+            {activeTab === 'report' && <SalesReportView />}
+          </>
+        )}
+        {activeModule === 'technical' && (
+          <>
+            {activeTab === 'jobs' && <TechnicalJobsView />}
+            {activeTab === 'integrations' && <IntegrationsView />}
+          </>
+        )}
+        {activeModule === 'finance' && (
+          <>
+            {activeTab === 'dashboard' && <FinanceDashboard />}
+            {activeTab === 'receipts' && <ReceiptsView />}
+            {activeTab === 'debts' && <DebtsView />}
+            {activeTab === 'salaries' && <SalariesView />}
+            {activeTab === 'reports' && <ReportsView />}
+          </>
+        )}
+      </div>
+
+      {showModal && <TaskModal />}
+      {showCreateTaskModal && <CreateTaskModal />}
+      {showCreateJobModal && <CreateJobModal />}
+      {showJobModal && <JobDetailModal />}
+      {showPermissionsModal && <PermissionsModal />}
+    </div>
+  );
+
 
   // =====================================
   // SALES MODULE COMPONENTS
