@@ -24,15 +24,27 @@ const useHashRouter = () => {
 // Get tenant slug from subdomain
 const getTenantSlug = () => {
   const hostname = window.location.hostname;
+  
   // localhost hoặc IP -> dùng default tenant
   if (hostname === 'localhost' || hostname === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
     return 'hoangnamaudio'; // Default cho development
   }
-  // subdomain.domain.com -> lấy subdomain
+  
+  // Vercel default domain (xxx.vercel.app) -> dùng default tenant
+  if (hostname.endsWith('.vercel.app')) {
+    return 'hoangnamaudio';
+  }
+  
+  // Custom domain với subdomain: hoangnamaudio.yourdomain.com
   const parts = hostname.split('.');
   if (parts.length >= 3) {
-    return parts[0]; // hoangnamaudio.yourdomain.com -> hoangnamaudio
+    // Bỏ qua www
+    if (parts[0] === 'www') {
+      return 'hoangnamaudio'; // www.domain.com -> default
+    }
+    return parts[0]; // hoangnamaudio.domain.com -> hoangnamaudio
   }
+  
   // domain.com without subdomain -> default
   return 'hoangnamaudio';
 };
