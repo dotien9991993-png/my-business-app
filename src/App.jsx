@@ -4039,16 +4039,6 @@ export default function SimpleMarketingSystem() {
   // WAREHOUSE MODULE COMPONENTS
   // =====================================
 
-  const warehouseCategories = [
-    '🎤 Micro',
-    '🔊 Loa', 
-    '🎚️ Mixer/Ampli',
-    '🎧 Tai nghe',
-    '📺 Màn hình/TV',
-    '🔌 Dây cáp/Phụ kiện',
-    '🛠️ Linh kiện sửa chữa',
-    '📦 Khác'
-  ];
 
   const warehouseCategories = [
     '🎤 Micro',
