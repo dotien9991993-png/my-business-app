@@ -6726,7 +6726,8 @@ export default function SimpleMarketingSystem() {
       }
     };
 
-    const canApprove = currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin' || currentUser.role === 'Manager';
+    // Chỉ Admin hoặc Level 3 mới được duyệt
+    const canApprove = currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions?.finance || 0) >= 3;
     const totalThu = filteredReceipts.filter(r => r.type === 'thu').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
     const totalChi = filteredReceipts.filter(r => r.type === 'chi').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
 
