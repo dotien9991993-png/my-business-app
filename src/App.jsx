@@ -1,8 +1,29 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from './supabaseClient';
 
+// Simple hash-based router
+const useHashRouter = () => {
+  const [hash, setHash] = useState(window.location.hash.slice(1) || '');
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setHash(window.location.hash.slice(1) || '');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const navigate = useCallback((path) => {
+    window.location.hash = path;
+  }, []);
+
+  return { path: hash, navigate };
+};
+
 export default function SimpleMarketingSystem() {
+  const { path, navigate } = useHashRouter();
+  
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -35,6 +56,29 @@ export default function SimpleMarketingSystem() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Sync URL with activeModule and activeTab
+  useEffect(() => {
+    if (path && isLoggedIn) {
+      const parts = path.split('/').filter(Boolean);
+      if (parts.length >= 1) {
+        const module = parts[0];
+        const tab = parts[1] || 'dashboard';
+        
+        if (['marketing', 'technical', 'finance'].includes(module)) {
+          setActiveModule(module);
+          setActiveTab(tab);
+        }
+      }
+    }
+  }, [path, isLoggedIn]);
+
+  // Update URL when module/tab changes
+  const navigateTo = useCallback((module, tab) => {
+    setActiveModule(module);
+    setActiveTab(tab);
+    navigate(`${module}/${tab}`);
+  }, [navigate]);
 
   // Permission helper: Check if user has full access to finance
   const hasFinanceFullAccess = () => {
@@ -77,13 +121,17 @@ export default function SimpleMarketingSystem() {
         const user = JSON.parse(savedUser);
         setCurrentUser(user);
         setIsLoggedIn(true);
+        // Set default route if no hash
+        if (!window.location.hash) {
+          navigate('marketing/dashboard');
+        }
       } catch (error) {
         console.error('Error restoring session:', error);
         localStorage.removeItem('marketingSystemUser');
         localStorage.removeItem('marketingSystemLoggedIn');
       }
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     loadUsers();
@@ -659,6 +707,9 @@ export default function SimpleMarketingSystem() {
       // Lưu session vào localStorage
       localStorage.setItem('marketingSystemUser', JSON.stringify(data));
       localStorage.setItem('marketingSystemLoggedIn', 'true');
+      
+      // Navigate to default page
+      navigate('marketing/dashboard');
     } catch (error) {
       console.error('Error logging in:', error);
       alert('❌ Lỗi khi đăng nhập!');
@@ -3967,8 +4018,7 @@ export default function SimpleMarketingSystem() {
                       <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border z-20 overflow-hidden">
                         <button
                           onClick={() => {
-                            setActiveModule('marketing');
-                            setActiveTab('automation');
+                            navigateTo('marketing', 'automation');
                             setShowAdminMenu(false);
                           }}
                           className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3 border-b"
@@ -3981,8 +4031,7 @@ export default function SimpleMarketingSystem() {
                         </button>
                         <button
                           onClick={() => {
-                            setActiveModule('marketing');
-                            setActiveTab('users');
+                            navigateTo('marketing', 'users');
                             setShowAdminMenu(false);
                           }}
                           className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3 border-b"
@@ -4085,8 +4134,7 @@ export default function SimpleMarketingSystem() {
               {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('marketing'))) && (
                 <button
                   onClick={() => {
-                    setActiveModule('marketing');
-                    setActiveTab('dashboard');
+                    navigateTo('marketing', 'dashboard');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
@@ -4101,8 +4149,7 @@ export default function SimpleMarketingSystem() {
               {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && (currentUser.departments.includes('technical') || currentUser.departments.includes('sales')))) && (
                 <button
                   onClick={() => {
-                    setActiveModule('technical');
-                    setActiveTab('jobs');
+                    navigateTo('technical', 'jobs');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
@@ -4117,8 +4164,7 @@ export default function SimpleMarketingSystem() {
               {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
                 <button
                   onClick={() => {
-                    setActiveModule('finance');
-                    setActiveTab('dashboard');
+                    navigateTo('finance', 'dashboard');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
@@ -4138,8 +4184,7 @@ export default function SimpleMarketingSystem() {
                 <div className="text-xs font-semibold text-purple-700 mb-2">ADMIN</div>
                 <button
                   onClick={() => {
-                    setActiveModule('marketing');
-                    setActiveTab('automation');
+                    navigateTo('marketing', 'automation');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
@@ -4152,8 +4197,7 @@ export default function SimpleMarketingSystem() {
                 </button>
                 <button
                   onClick={() => {
-                    setActiveModule('marketing');
-                    setActiveTab('users');
+                    navigateTo('marketing', 'users');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
@@ -4191,7 +4235,7 @@ export default function SimpleMarketingSystem() {
                 <button
                   key={t.id}
                   onClick={() => {
-                    setActiveTab(t.id);
+                    navigateTo(activeModule, t.id);
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-1 text-left font-medium ${
@@ -4241,10 +4285,7 @@ export default function SimpleMarketingSystem() {
         <div className="max-w-7xl mx-auto px-6 flex gap-2">
           {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('marketing'))) && (
             <button
-              onClick={() => {
-                setActiveModule('marketing');
-                setActiveTab('dashboard');
-              }}
+              onClick={() => navigateTo('marketing', 'dashboard')}
               className={`px-8 py-4 font-bold text-lg transition-all ${
                 activeModule === 'marketing'
                   ? 'bg-white text-blue-600'
@@ -4256,10 +4297,7 @@ export default function SimpleMarketingSystem() {
           )}
           {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && (currentUser.departments.includes('technical') || currentUser.departments.includes('sales')))) && (
             <button
-              onClick={() => {
-                setActiveModule('technical');
-                setActiveTab('jobs');
-              }}
+              onClick={() => navigateTo('technical', 'jobs')}
               className={`px-8 py-4 font-bold text-lg transition-all ${
                 activeModule === 'technical'
                   ? 'bg-white text-orange-600'
@@ -4271,10 +4309,7 @@ export default function SimpleMarketingSystem() {
           )}
           {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
             <button
-              onClick={() => {
-                setActiveModule('finance');
-                setActiveTab('dashboard');
-              }}
+              onClick={() => navigateTo('finance', 'dashboard')}
               className={`px-8 py-4 font-bold text-lg transition-all ${
                 activeModule === 'finance'
                   ? 'bg-white text-green-600'
@@ -4307,7 +4342,7 @@ export default function SimpleMarketingSystem() {
             { id: 'salaries', l: '💰 Lương' },
             { id: 'reports', l: '📈 Báo Cáo' }
           ] : []).map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'}`}>
+            <button key={t.id} onClick={() => navigateTo(activeModule, t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600'}`}>
               {t.l}
             </button>
           ))}
