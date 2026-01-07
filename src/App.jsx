@@ -3612,8 +3612,69 @@ export default function SimpleMarketingSystem() {
     const [showAddLink, setShowAddLink] = useState(false);
     const [showReassign, setShowReassign] = useState(false);
     const [newAssignee, setNewAssignee] = useState('');
+    const [showEditTask, setShowEditTask] = useState(false);
+    const [editTitle, setEditTitle] = useState('');
+    const [editPlatform, setEditPlatform] = useState([]);
+    const [editPriority, setEditPriority] = useState('');
+    const [editDueDate, setEditDueDate] = useState('');
+    const [editDescription, setEditDescription] = useState('');
 
     if (!selectedTask) return null;
+
+    const platforms = ['Facebook', 'Instagram', 'TikTok', 'Blog', 'Ads', 'Email'];
+
+    const openEditMode = () => {
+      setEditTitle(selectedTask.title || '');
+      setEditPlatform(selectedTask.platform ? selectedTask.platform.split(', ') : []);
+      setEditPriority(selectedTask.priority || '');
+      setEditDueDate(selectedTask.dueDate || '');
+      setEditDescription(selectedTask.description || '');
+      setShowEditTask(true);
+    };
+
+    const toggleEditPlatform = (plat) => {
+      if (editPlatform.includes(plat)) {
+        setEditPlatform(editPlatform.filter(p => p !== plat));
+      } else {
+        setEditPlatform([...editPlatform, plat]);
+      }
+    };
+
+    const saveEditTask = async () => {
+      if (!editTitle || editPlatform.length === 0 || !editPriority || !editDueDate) {
+        alert('⚠️ Vui lòng điền đầy đủ thông tin!');
+        return;
+      }
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .update({
+            title: editTitle,
+            platform: editPlatform.join(', '),
+            priority: editPriority,
+            dueDate: editDueDate,
+            description: editDescription,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedTask.id);
+
+        if (error) throw error;
+        alert('✅ Cập nhật task thành công!');
+        setShowEditTask(false);
+        await loadTasks();
+        setSelectedTask({
+          ...selectedTask,
+          title: editTitle,
+          platform: editPlatform.join(', '),
+          priority: editPriority,
+          dueDate: editDueDate,
+          description: editDescription
+        });
+      } catch (error) {
+        console.error('Error updating task:', error);
+        alert('❌ Lỗi khi cập nhật task!');
+      }
+    };
 
     const getPlatformIcon = (type) => {
       const icons = {
@@ -3704,16 +3765,103 @@ export default function SimpleMarketingSystem() {
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-white/80 hover:text-white text-2xl ml-4"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={openEditMode}
+                  className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium"
+                >
+                  ✏️ Sửa
+                </button>
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="text-white/80 hover:text-white text-2xl ml-2"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Edit Task Form */}
+            {showEditTask && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <h4 className="font-bold text-lg mb-3 text-blue-900">✏️ Chỉnh Sửa Task</h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Tiêu đề *</label>
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Platform *</label>
+                    <div className="flex flex-wrap gap-2">
+                      {platforms.map(plat => (
+                        <button
+                          key={plat}
+                          onClick={() => toggleEditPlatform(plat)}
+                          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${editPlatform.includes(plat) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                        >
+                          {plat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Độ ưu tiên *</label>
+                      <select
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="Thấp">Thấp</option>
+                        <option value="Trung bình">Trung bình</option>
+                        <option value="Cao">Cao</option>
+                        <option value="Khẩn cấp">Khẩn cấp</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Deadline *</label>
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Mô tả</label>
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowEditTask(false)}
+                      className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      onClick={saveEditTask}
+                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                    >
+                      💾 Lưu thay đổi
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {showReassign && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                 <h4 className="font-bold text-lg mb-3 text-yellow-900">🔄 Chuyển Giao Task</h4>
