@@ -6925,7 +6925,7 @@ export default function SimpleMarketingSystem() {
                       <div className="text-yellow-800">{selectedReceipt.note}</div>
                     </div>
                   )}
-                  {selectedReceipt.status === 'approved' && (
+                  {selectedReceipt.status === 'approved' && !(currentUser.role === 'Admin' || currentUser.role === 'admin') && (
                     <div className="p-3 bg-gray-100 rounded-lg text-center">
                       <span className="text-gray-500 text-sm">🔒 Phiếu đã duyệt - Không thể chỉnh sửa</span>
                     </div>
@@ -6941,7 +6941,8 @@ export default function SimpleMarketingSystem() {
                       {selectedReceipt.status === 'pending' && canEditFinance() && (
                         <button onClick={() => setIsEditing(true)} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✏️ Sửa</button>
                       )}
-                      {selectedReceipt.status === 'pending' && canEditFinance() && (
+                      {/* Admin có thể xóa mọi phiếu, user khác chỉ xóa được phiếu pending */}
+                      {((currentUser.role === 'Admin' || currentUser.role === 'admin') || (selectedReceipt.status === 'pending' && canEditFinance())) && (
                         <button onClick={() => handleDelete(selectedReceipt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
                       )}
                       <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
