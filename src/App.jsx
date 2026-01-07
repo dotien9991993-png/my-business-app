@@ -5065,7 +5065,34 @@ export default function SimpleMarketingSystem() {
 
   function WarehouseExportView() {
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [selectedTransaction, setSelectedTransaction] = useState(null);
+    const [transactionItems, setTransactionItems] = useState([]);
+    const [loadingItems, setLoadingItems] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+
+    // Load transaction items
+    const loadTransactionItems = async (transactionId) => {
+      setLoadingItems(true);
+      try {
+        const { data, error } = await supabase
+          .from('stock_transaction_items')
+          .select('*')
+          .eq('transaction_id', transactionId);
+        if (error) throw error;
+        setTransactionItems(data || []);
+      } catch (error) {
+        console.error('Error loading items:', error);
+        setTransactionItems([]);
+      }
+      setLoadingItems(false);
+    };
+
+    const openDetail = async (trans) => {
+      setSelectedTransaction(trans);
+      await loadTransactionItems(trans.id);
+      setShowDetailModal(true);
+    };
 
     // Form states
     const [formPartnerName, setFormPartnerName] = useState('');
@@ -5260,8 +5287,8 @@ export default function SimpleMarketingSystem() {
                     </td>
                   </tr>
                 ) : filteredTransactions.map(trans => (
-                  <tr key={trans.id} className="hover:bg-gray-50 cursor-pointer">
-                    <td className="px-4 py-3 font-mono text-sm text-blue-600">{trans.transaction_number}</td>
+                  <tr key={trans.id} onClick={() => openDetail(trans)} className="hover:bg-blue-50 cursor-pointer transition-colors">
+                    <td className="px-4 py-3 font-mono text-sm text-blue-600 font-medium">{trans.transaction_number}</td>
                     <td className="px-4 py-3">{new Date(trans.transaction_date).toLocaleDateString('vi-VN')}</td>
                     <td className="px-4 py-3 hidden md:table-cell">{trans.partner_name || '-'}</td>
                     <td className="px-4 py-3 text-right font-medium">{formatCurrency(trans.total_amount)}</td>
@@ -5379,6 +5406,95 @@ export default function SimpleMarketingSystem() {
               <div className="p-6 border-t flex gap-3 justify-end">
                 <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg">Hủy</button>
                 <button onClick={handleCreateExport} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">📤 Xuất Kho</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Detail Modal */}
+        {showDetailModal && selectedTransaction && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b sticky top-0 bg-white z-10">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-xl font-bold text-blue-700">📤 Chi Tiết Phiếu Xuất</h2>
+                    <p className="text-gray-500 font-mono text-sm mt-1">{selectedTransaction.transaction_number}</p>
+                  </div>
+                  <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                {/* Info */}
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4">
+                  <div>
+                    <div className="text-xs text-gray-500">Ngày xuất</div>
+                    <div className="font-medium">{new Date(selectedTransaction.transaction_date).toLocaleDateString('vi-VN')}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Người tạo</div>
+                    <div className="font-medium">{selectedTransaction.created_by}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Khách hàng</div>
+                    <div className="font-medium">{selectedTransaction.partner_name || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">SĐT</div>
+                    <div className="font-medium">{selectedTransaction.partner_phone || '-'}</div>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <div>
+                  <h3 className="font-medium text-gray-700 mb-2">📦 Danh sách sản phẩm</h3>
+                  <div className="border rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">Sản phẩm</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-600">SL</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-600">Đơn giá</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-600">Thành tiền</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {loadingItems ? (
+                          <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500">Đang tải...</td></tr>
+                        ) : transactionItems.length === 0 ? (
+                          <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500">Không có dữ liệu</td></tr>
+                        ) : transactionItems.map(item => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <div className="font-medium">{item.product_name}</div>
+                              <div className="text-xs text-gray-500">{item.product_sku}</div>
+                            </td>
+                            <td className="px-4 py-3 text-right font-medium">{item.quantity}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(item.unit_price)}</td>
+                            <td className="px-4 py-3 text-right font-medium text-blue-600">{formatCurrency(item.total_price)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-blue-50">
+                        <tr>
+                          <td colSpan="3" className="px-4 py-3 text-right font-bold">Tổng cộng:</td>
+                          <td className="px-4 py-3 text-right font-bold text-blue-600 text-lg">{formatCurrency(selectedTransaction.total_amount)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Note */}
+                {selectedTransaction.note && (
+                  <div className="bg-yellow-50 rounded-xl p-4">
+                    <div className="text-xs text-yellow-600 mb-1">📝 Ghi chú</div>
+                    <div className="text-gray-700">{selectedTransaction.note}</div>
+                  </div>
+                )}
+              </div>
+              <div className="p-6 border-t bg-gray-50 flex justify-end">
+                <button onClick={() => setShowDetailModal(false)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
               </div>
             </div>
           </div>
