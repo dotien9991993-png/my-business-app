@@ -160,11 +160,32 @@ export default function SimpleMarketingSystem() {
     return (currentUser.permissions?.finance || 0) >= 2;
   };
 
-  // Check if user can edit finance data (level 3)
+  // Check if user can create finance data (level 1 or 3)
+  // Level 1: Tạo mới (chỉ xem/sửa/xóa cái mình tạo)
+  // Level 2: Chỉ xem, không tạo
+  // Level 3: Full quyền
+  const canCreateFinance = () => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
+    const level = currentUser.permissions?.finance || 0;
+    return level === 1 || level >= 3; // Level 1 hoặc Level 3 được tạo
+  };
+
+  // Check if user can edit/delete finance data (level 3 hoặc level 1 với data của mình)
   const canEditFinance = () => {
     if (!currentUser) return false;
     if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
     return (currentUser.permissions?.finance || 0) >= 3;
+  };
+  
+  // Check if user can edit their own finance data (level 1)
+  const canEditOwnFinance = (createdBy) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
+    const level = currentUser.permissions?.finance || 0;
+    if (level >= 3) return true;
+    if (level === 1 && createdBy === currentUser.name) return true;
+    return false;
   };
 
   const [templates] = useState([
@@ -6713,7 +6734,7 @@ export default function SimpleMarketingSystem() {
       <div className="p-6 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-2xl font-bold">🧾 Phiếu Thu/Chi</h2>
-          {canEditFinance() && (
+          {canCreateFinance() && (
             <div className="flex gap-2">
               <button onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
                 ➕ Tạo Phiếu Thu
@@ -6991,12 +7012,12 @@ export default function SimpleMarketingSystem() {
                       </div>
                     )}
                     <div className="flex gap-3">
-                      {selectedReceipt.status === 'pending' && canEditFinance() && (
+                      {selectedReceipt.status === 'pending' && canEditOwnFinance(selectedReceipt.created_by) && (
                         <button onClick={() => setIsEditing(true)} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✏️ Sửa</button>
                       )}
                       <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
                       {/* Menu 3 chấm chứa nút Xóa */}
-                      {((currentUser.role === 'Admin' || currentUser.role === 'admin') || (selectedReceipt.status === 'pending' && canEditFinance())) && (
+                      {((currentUser.role === 'Admin' || currentUser.role === 'admin') || (selectedReceipt.status === 'pending' && canEditOwnFinance(selectedReceipt.created_by))) && (
                         <div className="relative">
                           <button 
                             onClick={() => setShowMoreMenu(!showMoreMenu)} 
@@ -7221,7 +7242,7 @@ export default function SimpleMarketingSystem() {
       <div className="p-6 space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-2xl font-bold">📋 Quản Lý Công Nợ</h2>
-          {canEditFinance() && (
+          {canCreateFinance() && (
             <div className="flex gap-2">
               <button onClick={() => { setFormType('receivable'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
                 ➕ Phải Thu
@@ -7471,11 +7492,11 @@ export default function SimpleMarketingSystem() {
                   </div>
                 )}
                 <div className="space-y-3 pt-4">
-                  {selectedDebt.status !== 'paid' && (
+                  {selectedDebt.status !== 'paid' && canCreateFinance() && (
                     <button onClick={() => setShowPaymentModal(true)} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">💵 Ghi nhận thanh toán</button>
                   )}
                   <div className="flex gap-3">
-                    {canEditFinance() && selectedDebt.status !== 'paid' && (
+                    {canEditOwnFinance(selectedDebt.created_by) && selectedDebt.status !== 'paid' && (
                       <button onClick={() => handleDeleteDebt(selectedDebt.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
                     )}
                     <button onClick={() => setShowDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
