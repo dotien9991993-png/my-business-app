@@ -6039,79 +6039,24 @@ export default function SimpleMarketingSystem() {
   }
 
   function PermissionsModal() {
-    const [localUsers, setLocalUsers] = useState([]);
+    const [selectedUser, setSelectedUser] = useState(null);
     const [saving, setSaving] = useState(false);
 
     const departments = [
-      { id: 'management', name: 'Quản lý' },
-      { id: 'media', name: 'Media' },
-      { id: 'livestream', name: 'Livestream' },
-      { id: 'warehouse', name: 'Kho' },
-      { id: 'technical', name: 'Kỹ thuật' },
-      { id: 'sales', name: 'Kinh doanh' }
+      { id: 'marketing', name: '📱 Marketing', desc: 'Quản lý nội dung, chiến dịch' },
+      { id: 'media', name: '🎬 Media', desc: 'Sản xuất video, hình ảnh' },
+      { id: 'livestream', name: '🎥 Livestream', desc: 'Phát sóng trực tiếp' },
+      { id: 'warehouse', name: '📦 Kho', desc: 'Quản lý hàng hóa, xuất nhập' },
+      { id: 'technical', name: '🔧 Kỹ thuật', desc: 'Lắp đặt, sửa chữa, bảo trì' },
+      { id: 'finance', name: '💰 Tài chính', desc: 'Thu chi, công nợ, lương' }
     ];
 
-    const permissions = [
-      { id: 'marketing', name: '📱 Marketing', color: 'blue' },
-      { id: 'media', name: '🎬 Media', color: 'purple' },
-      { id: 'livestream', name: '🎥 Livestream', color: 'pink' },
-      { id: 'warehouse', name: '📦 Kho', color: 'orange' },
-      { id: 'technical', name: '🔧 Kỹ thuật', color: 'green' },
-      { id: 'finance', name: '💰 Tài chính', color: 'yellow' }
+    const permissionLevels = [
+      { value: 0, label: 'Không có quyền', desc: 'Ẩn hoàn toàn', color: 'gray' },
+      { value: 1, label: 'Xem của mình', desc: 'Chỉ xem dữ liệu mình tạo', color: 'yellow' },
+      { value: 2, label: 'Xem tất cả', desc: 'Xem toàn bộ dữ liệu', color: 'blue' },
+      { value: 3, label: 'Toàn quyền', desc: 'Xem + Tạo/Sửa/Xóa + Duyệt', color: 'green' }
     ];
-
-    useEffect(() => {
-      // Clone users with their current permissions
-      const usersWithPerms = allUsers.map(u => ({
-        ...u,
-        department: u.department || u.team || 'management',
-        perms: u.permissions || permissions.reduce((acc, p) => {
-          acc[p.id] = u.role === 'Admin' || u.role === 'admin' || u.role === 'Manager';
-          return acc;
-        }, {})
-      }));
-      setLocalUsers(usersWithPerms);
-    }, [allUsers]);
-
-    const handleDepartmentChange = async (userId, dept) => {
-      setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, department: dept } : u));
-      
-      try {
-        setSaving(true);
-        const { error } = await supabase
-          .from('users')
-          .update({ department: dept })
-          .eq('id', userId);
-        if (error) throw error;
-        loadUsers();
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
-      } finally {
-        setSaving(false);
-      }
-    };
-
-    const handlePermToggle = async (userId, permId, checked) => {
-      const user = localUsers.find(u => u.id === userId);
-      if (user?.role === 'Admin' || user?.role === 'admin') return;
-
-      const newPerms = { ...user.perms, [permId]: checked };
-      setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, perms: newPerms } : u));
-
-      try {
-        setSaving(true);
-        const { error } = await supabase
-          .from('users')
-          .update({ permissions: newPerms })
-          .eq('id', userId);
-        if (error) throw error;
-        loadUsers();
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
-      } finally {
-        setSaving(false);
-      }
-    };
 
     const getRoleBadge = (role) => {
       if (role === 'Admin' || role === 'admin') return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">Admin</span>;
@@ -6119,25 +6064,24 @@ export default function SimpleMarketingSystem() {
       return <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">Member</span>;
     };
 
-    const selectAll = (userId) => {
-      const user = localUsers.find(u => u.id === userId);
-      if (user?.role === 'Admin' || user?.role === 'admin') return;
-      
-      const allChecked = permissions.every(p => user.perms[p.id]);
-      const newPerms = permissions.reduce((acc, p) => { acc[p.id] = !allChecked; return acc; }, {});
-      handleBulkPermUpdate(userId, newPerms);
+    const getUserDepartments = (user) => {
+      if (user.role === 'Admin' || user.role === 'admin') return 'Tất cả (Toàn quyền)';
+      const perms = user.permissions || {};
+      const depts = departments.filter(d => perms[d.id] && perms[d.id] > 0);
+      if (depts.length === 0) return <span className="text-gray-400">Chưa phân quyền</span>;
+      return depts.map(d => d.name.split(' ')[0]).join(', ');
     };
 
-    const handleBulkPermUpdate = async (userId, newPerms) => {
-      setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, perms: newPerms } : u));
+    const handleSavePermissions = async (userId, newPermissions) => {
       try {
         setSaving(true);
         const { error } = await supabase
           .from('users')
-          .update({ permissions: newPerms })
+          .update({ permissions: newPermissions })
           .eq('id', userId);
         if (error) throw error;
-        loadUsers();
+        await loadUsers();
+        setSelectedUser(prev => prev ? { ...prev, permissions: newPermissions } : null);
       } catch (error) {
         alert('Lỗi: ' + error.message);
       } finally {
@@ -6145,121 +6089,233 @@ export default function SimpleMarketingSystem() {
       }
     };
 
+    // User Detail Modal
+    const UserPermissionDetail = ({ user, onClose }) => {
+      const [localPerms, setLocalPerms] = useState(user.permissions || {});
+      const isAdmin = user.role === 'Admin' || user.role === 'admin';
+
+      const handleToggleDept = (deptId) => {
+        if (isAdmin) return;
+        const current = localPerms[deptId] || 0;
+        const newPerms = { ...localPerms, [deptId]: current > 0 ? 0 : 1 };
+        setLocalPerms(newPerms);
+        handleSavePermissions(user.id, newPerms);
+      };
+
+      const handleLevelChange = (deptId, level) => {
+        if (isAdmin) return;
+        const newPerms = { ...localPerms, [deptId]: level };
+        setLocalPerms(newPerms);
+        handleSavePermissions(user.id, newPerms);
+      };
+
+      const selectAllDepts = () => {
+        if (isAdmin) return;
+        const allEnabled = departments.every(d => localPerms[d.id] > 0);
+        const newPerms = {};
+        departments.forEach(d => { newPerms[d.id] = allEnabled ? 0 : 1; });
+        setLocalPerms(newPerms);
+        handleSavePermissions(user.id, newPerms);
+      };
+
+      const getLevelColor = (level) => {
+        if (level === 0) return 'bg-gray-100 text-gray-500';
+        if (level === 1) return 'bg-yellow-100 text-yellow-700';
+        if (level === 2) return 'bg-blue-100 text-blue-700';
+        return 'bg-green-100 text-green-700';
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-5 border-b bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    🔐 Phân quyền: {user.name}
+                  </h2>
+                  <p className="text-white/80 text-sm mt-1">{user.email} • {getRoleBadge(user.role)}</p>
+                </div>
+                <button onClick={onClose} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg flex items-center justify-center">×</button>
+              </div>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-3">
+              {isAdmin ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                  <div className="text-4xl mb-2">👑</div>
+                  <div className="font-medium text-red-800">Admin có toàn quyền tất cả bộ phận</div>
+                  <div className="text-sm text-red-600">Không thể thay đổi quyền Admin</div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-gray-600">Chọn bộ phận và cấp quyền:</span>
+                    <button onClick={selectAllDepts} className="text-sm text-blue-600 hover:underline">
+                      {departments.every(d => localPerms[d.id] > 0) ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                    </button>
+                  </div>
+
+                  {departments.map(dept => {
+                    const level = localPerms[dept.id] || 0;
+                    const isEnabled = level > 0;
+
+                    return (
+                      <div key={dept.id} className={`border rounded-xl overflow-hidden transition-all ${isEnabled ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200 bg-gray-50'}`}>
+                        <div 
+                          className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                          onClick={() => handleToggleDept(dept.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isEnabled}
+                              onChange={() => {}}
+                              className="w-5 h-5 rounded border-gray-300 text-blue-600 cursor-pointer"
+                            />
+                            <div>
+                              <div className="font-medium">{dept.name}</div>
+                              <div className="text-xs text-gray-500">{dept.desc}</div>
+                            </div>
+                          </div>
+                          {isEnabled && (
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${getLevelColor(level)}`}>
+                              {permissionLevels.find(p => p.value === level)?.label}
+                            </span>
+                          )}
+                        </div>
+
+                        {isEnabled && (
+                          <div className="px-4 pb-4 pt-2 border-t bg-white">
+                            <div className="text-xs text-gray-500 mb-2">Cấp quyền:</div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {permissionLevels.filter(p => p.value > 0).map(p => (
+                                <label 
+                                  key={p.value}
+                                  className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${
+                                    level === p.value 
+                                      ? `border-${p.color}-400 bg-${p.color}-50` 
+                                      : 'border-gray-200 hover:border-gray-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`level-${dept.id}`}
+                                    checked={level === p.value}
+                                    onChange={() => handleLevelChange(dept.id, p.value)}
+                                    className="text-blue-600"
+                                  />
+                                  <div>
+                                    <div className="text-sm font-medium">{p.label}</div>
+                                    <div className="text-xs text-gray-500">{p.desc}</div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+              {saving && <span className="text-blue-600 text-sm animate-pulse">💾 Đang lưu...</span>}
+              {!saving && <span className="text-green-600 text-sm">✓ Tự động lưu</span>}
+              <button onClick={onClose} className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium">
+                ✓ Xong
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
           <div className="p-6 border-b bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex justify-between items-center">
             <div>
-              <h2 className="text-xl font-bold">🔐 Phân Quyền & Bộ Phận</h2>
-              <p className="text-white/80 text-sm">Quản lý bộ phận và quyền truy cập cho từng thành viên</p>
+              <h2 className="text-xl font-bold">🔐 Quản Lý Phân Quyền</h2>
+              <p className="text-white/80 text-sm">Nhấn vào từng user để phân quyền chi tiết</p>
             </div>
-            <div className="flex items-center gap-3">
-              {saving && <span className="text-white/80 text-sm animate-pulse">💾 Đang lưu...</span>}
-              <button onClick={() => setShowPermissionsModal(false)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg flex items-center justify-center">×</button>
-            </div>
+            <button onClick={() => setShowPermissionsModal(false)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg flex items-center justify-center">×</button>
           </div>
           
           <div className="p-6 overflow-y-auto flex-1">
             <div className="bg-white rounded-xl border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700 whitespace-nowrap">Người dùng</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700 whitespace-nowrap">Role</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700 whitespace-nowrap">Bộ phận</th>
-                      {permissions.map(p => (
-                        <th key={p.id} className="px-2 py-3 text-center font-medium text-gray-700 whitespace-nowrap text-sm">{p.name}</th>
-                      ))}
-                      <th className="px-2 py-3 text-center font-medium text-gray-700 whitespace-nowrap text-sm">Tất cả</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {localUsers.map(user => {
-                      const isAdmin = user.role === 'Admin' || user.role === 'admin';
-                      return (
-                        <tr key={user.id} className={isAdmin ? 'bg-red-50/30' : 'hover:bg-gray-50'}>
-                          <td className="px-4 py-3">
-                            <div className="font-medium">{user.name}</div>
-                            <div className="text-xs text-gray-500">{user.email}</div>
-                          </td>
-                          <td className="px-4 py-3">{getRoleBadge(user.role)}</td>
-                          <td className="px-4 py-3">
-                            {isAdmin ? (
-                              <span className="text-sm text-gray-500">Tất cả</span>
-                            ) : (
-                              <select
-                                value={user.department || ''}
-                                onChange={(e) => handleDepartmentChange(user.id, e.target.value)}
-                                className="px-2 py-1.5 border rounded text-sm bg-white min-w-[120px]"
-                              >
-                                <option value="">-- Chọn --</option>
-                                {departments.map(d => (
-                                  <option key={d.id} value={d.id}>{d.name}</option>
-                                ))}
-                              </select>
-                            )}
-                          </td>
-                          {permissions.map(p => (
-                            <td key={p.id} className="px-2 py-3 text-center">
-                              {isAdmin ? (
-                                <span className="text-green-500 text-lg">✓</span>
-                              ) : (
-                                <label className="cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={user.perms?.[p.id] || false}
-                                    onChange={(e) => handlePermToggle(user.id, p.id, e.target.checked)}
-                                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                  />
-                                </label>
-                              )}
-                            </td>
-                          ))}
-                          <td className="px-2 py-3 text-center">
-                            {!isAdmin && (
-                              <button
-                                onClick={() => selectAll(user.id)}
-                                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
-                              >
-                                {permissions.every(p => user.perms?.[p.id]) ? 'Bỏ hết' : 'Chọn hết'}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Người dùng</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Bộ phận được phân quyền</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-700">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {allUsers.map(user => {
+                    const isAdmin = user.role === 'Admin' || user.role === 'admin';
+                    return (
+                      <tr key={user.id} className={`${isAdmin ? 'bg-red-50/30' : 'hover:bg-gray-50'} cursor-pointer`} onClick={() => setSelectedUser(user)}>
+                        <td className="px-4 py-4">
+                          <div className="font-medium">{user.name}</div>
+                          <div className="text-xs text-gray-500">{user.email}</div>
+                        </td>
+                        <td className="px-4 py-4">{getRoleBadge(user.role)}</td>
+                        <td className="px-4 py-4">
+                          <div className="text-sm">{getUserDepartments(user)}</div>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setSelectedUser(user); }}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+                          >
+                            ⚙️ Phân quyền
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <h3 className="font-medium text-blue-800 mb-2">📌 Hướng dẫn quyền:</h3>
-                <ul className="text-sm text-blue-700 space-y-1">
-                  <li>✓ <strong>Tích = Có quyền</strong> truy cập module đó</li>
-                  <li>✗ <strong>Không tích = Ẩn</strong> module với user đó</li>
-                  <li>• Admin luôn có tất cả quyền</li>
-                </ul>
-              </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <h3 className="font-medium text-yellow-800 mb-2">📋 Bộ phận:</h3>
-                <ul className="text-sm text-yellow-700 space-y-1">
-                  <li>• Chọn bộ phận chính của nhân viên</li>
-                  <li>• Quyền truy cập độc lập với bộ phận</li>
-                  <li>• Thay đổi được lưu tự động</li>
-                </ul>
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <h3 className="font-medium text-blue-800 mb-2">📌 Hướng dẫn cấp quyền:</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded bg-gray-300"></span>
+                  <span>Không có quyền</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded bg-yellow-400"></span>
+                  <span>Xem của mình</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded bg-blue-400"></span>
+                  <span>Xem tất cả</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded bg-green-400"></span>
+                  <span>Toàn quyền</span>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="p-4 border-t bg-gray-50 flex justify-end">
-            <button onClick={() => setShowPermissionsModal(false)} className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium">
-              ✓ Xong
+            <button onClick={() => setShowPermissionsModal(false)} className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium">
+              Đóng
             </button>
           </div>
         </div>
+
+        {selectedUser && (
+          <UserPermissionDetail user={selectedUser} onClose={() => setSelectedUser(null)} />
+        )}
       </div>
     );
   }
