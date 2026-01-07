@@ -5939,7 +5939,7 @@ export default function SimpleMarketingSystem() {
             {/* Module Selection */}
             <div className="p-4 border-b">
               <div className="text-xs font-semibold text-gray-500 mb-2">BỘ PHẬN</div>
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.media > 0)) && (
                 <button
                   onClick={() => {
                     navigateTo('media', 'dashboard');
@@ -5954,7 +5954,7 @@ export default function SimpleMarketingSystem() {
                   🎬 Media
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.warehouse > 0)) && (
                 <button
                   onClick={() => {
                     navigateTo('warehouse', 'inventory');
@@ -5969,7 +5969,7 @@ export default function SimpleMarketingSystem() {
                   📦 Kho
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.sales > 0)) && (
                 <button
                   onClick={() => {
                     navigateTo('sales', 'orders');
@@ -5984,7 +5984,7 @@ export default function SimpleMarketingSystem() {
                   🛒 Sale
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.technical > 0)) && (
                 <button
                   onClick={() => {
                     navigateTo('technical', 'jobs');
@@ -5999,7 +5999,7 @@ export default function SimpleMarketingSystem() {
                   🔧 Kỹ Thuật
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
+              {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.finance > 0)) && (
                 <button
                   onClick={() => {
                     navigateTo('finance', 'dashboard');
@@ -6131,7 +6131,7 @@ export default function SimpleMarketingSystem() {
       {/* Module Selector - Desktop Only */}
       <div className="hidden md:block bg-gradient-to-r from-green-700 to-green-800">
         <div className="max-w-7xl mx-auto px-6 flex gap-2">
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.media > 0)) && (
             <button
               onClick={() => navigateTo('media', 'dashboard')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
@@ -6143,7 +6143,7 @@ export default function SimpleMarketingSystem() {
               🎬 Media
             </button>
           )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.warehouse > 0)) && (
             <button
               onClick={() => navigateTo('warehouse', 'inventory')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
@@ -6155,7 +6155,7 @@ export default function SimpleMarketingSystem() {
               📦 Kho
             </button>
           )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.sales > 0)) && (
             <button
               onClick={() => navigateTo('sales', 'orders')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
@@ -6167,7 +6167,7 @@ export default function SimpleMarketingSystem() {
               🛒 Sale
             </button>
           )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.technical > 0)) && (
             <button
               onClick={() => navigateTo('technical', 'jobs')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
@@ -6179,7 +6179,7 @@ export default function SimpleMarketingSystem() {
               🔧 Kỹ Thuật
             </button>
           )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
+          {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.finance > 0)) && (
             <button
               onClick={() => navigateTo('finance', 'dashboard')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
