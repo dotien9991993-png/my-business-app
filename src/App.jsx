@@ -28,7 +28,7 @@ export default function SimpleMarketingSystem() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [activeModule, setActiveModule] = useState('marketing');
+  const [activeModule, setActiveModule] = useState('media');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedTask, setSelectedTask] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -65,7 +65,7 @@ export default function SimpleMarketingSystem() {
         const module = parts[0];
         const tab = parts[1] || 'dashboard';
         
-        if (['marketing', 'technical', 'finance'].includes(module)) {
+        if (['media', 'warehouse', 'sales', 'technical', 'finance'].includes(module)) {
           setActiveModule(module);
           setActiveTab(tab);
         }
@@ -123,7 +123,7 @@ export default function SimpleMarketingSystem() {
         setIsLoggedIn(true);
         // Set default route if no hash
         if (!window.location.hash) {
-          navigate('marketing/dashboard');
+          navigate('media/dashboard');
         }
       } catch (error) {
         console.error('Error restoring session:', error);
@@ -709,7 +709,7 @@ export default function SimpleMarketingSystem() {
       localStorage.setItem('marketingSystemLoggedIn', 'true');
       
       // Navigate to default page
-      navigate('marketing/dashboard');
+      navigate('media/dashboard');
     } catch (error) {
       console.error('Error logging in:', error);
       alert('❌ Lỗi khi đăng nhập!');
@@ -2807,9 +2807,9 @@ export default function SimpleMarketingSystem() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex gap-1 flex-wrap">
-                      {user.departments && user.departments.includes('marketing') && (
+                      {user.departments && user.departments.includes('media') && (
                         <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
-                          📱 Marketing
+                          🎬 Media
                         </span>
                       )}
                       {user.departments && user.departments.includes('technical') && (
@@ -2992,12 +2992,12 @@ export default function SimpleMarketingSystem() {
             <label className="flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
               <input
                 type="checkbox"
-                checked={departments.includes('marketing')}
-                onChange={() => toggleDepartment('marketing')}
+                checked={departments.includes('media')}
+                onChange={() => toggleDepartment('media')}
                 className="w-5 h-5 text-blue-600"
               />
               <div className="flex-1">
-                <div className="font-medium">📱 Marketing</div>
+                <div className="font-medium">🎬 Media</div>
                 <div className="text-sm text-gray-500">Quản lý tasks marketing, content, ads</div>
               </div>
             </label>
@@ -4018,7 +4018,7 @@ export default function SimpleMarketingSystem() {
                       <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border z-20 overflow-hidden">
                         <button
                           onClick={() => {
-                            navigateTo('marketing', 'automation');
+                            navigateTo('media', 'automation');
                             setShowAdminMenu(false);
                           }}
                           className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3 border-b"
@@ -4031,7 +4031,7 @@ export default function SimpleMarketingSystem() {
                         </button>
                         <button
                           onClick={() => {
-                            navigateTo('marketing', 'users');
+                            navigateTo('media', 'users');
                             setShowAdminMenu(false);
                           }}
                           className="w-full px-4 py-3 text-left hover:bg-purple-50 flex items-center gap-3 border-b"
@@ -4131,28 +4131,58 @@ export default function SimpleMarketingSystem() {
             {/* Module Selection */}
             <div className="p-4 border-b">
               <div className="text-xs font-semibold text-gray-500 mb-2">BỘ PHẬN</div>
-              {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('marketing'))) && (
+              {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
                 <button
                   onClick={() => {
-                    navigateTo('marketing', 'dashboard');
+                    navigateTo('media', 'dashboard');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
-                    activeModule === 'marketing'
+                    activeModule === 'media'
                       ? 'bg-blue-100 text-blue-700'
                       : 'hover:bg-gray-100'
                   }`}
                 >
-                  📱 Marketing
+                  🎬 Media
                 </button>
               )}
-              {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && (currentUser.departments.includes('technical') || currentUser.departments.includes('sales')))) && (
+              {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+                <button
+                  onClick={() => {
+                    navigateTo('warehouse', 'inventory');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                    activeModule === 'warehouse'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  📦 Kho
+                </button>
+              )}
+              {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+                <button
+                  onClick={() => {
+                    navigateTo('sales', 'orders');
+                    setShowMobileSidebar(false);
+                  }}
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                    activeModule === 'sales'
+                      ? 'bg-pink-100 text-pink-700'
+                      : 'hover:bg-gray-100'
+                  }`}
+                >
+                  🛒 Sale
+                </button>
+              )}
+              {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
                 <button
                   onClick={() => {
                     navigateTo('technical', 'jobs');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
+                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
                     activeModule === 'technical'
                       ? 'bg-orange-100 text-orange-700'
                       : 'hover:bg-gray-100'
@@ -4184,7 +4214,7 @@ export default function SimpleMarketingSystem() {
                 <div className="text-xs font-semibold text-purple-700 mb-2">ADMIN</div>
                 <button
                   onClick={() => {
-                    navigateTo('marketing', 'automation');
+                    navigateTo('media', 'automation');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
@@ -4197,7 +4227,7 @@ export default function SimpleMarketingSystem() {
                 </button>
                 <button
                   onClick={() => {
-                    navigateTo('marketing', 'users');
+                    navigateTo('media', 'users');
                     setShowMobileSidebar(false);
                   }}
                   className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
@@ -4214,7 +4244,7 @@ export default function SimpleMarketingSystem() {
             {/* Tabs Navigation */}
             <div className="p-4">
               <div className="text-xs font-semibold text-gray-500 mb-2">CHỨC NĂNG</div>
-              {(activeModule === 'marketing' ? [
+              {(activeModule === 'media' ? [
                 { id: 'mytasks', l: '📝 Của Tôi', show: true },
                 { id: 'dashboard', l: '📊 Dashboard', show: true },
                 { id: 'tasks', l: '📋 Tasks', show: true },
@@ -4222,6 +4252,16 @@ export default function SimpleMarketingSystem() {
                 { id: 'report', l: '📈 Báo Cáo', show: true },
                 { id: 'performance', l: '📊 Hiệu Suất', show: true },
                 { id: 'integrations', l: '🔗 Tích Hợp', show: true }
+              ] : activeModule === 'warehouse' ? [
+                { id: 'inventory', l: '📦 Tồn Kho', show: true },
+                { id: 'import', l: '📥 Nhập Kho', show: true },
+                { id: 'export', l: '📤 Xuất Kho', show: true },
+                { id: 'history', l: '📋 Lịch Sử', show: true }
+              ] : activeModule === 'sales' ? [
+                { id: 'orders', l: '🛒 Đơn Hàng', show: true },
+                { id: 'customers', l: '👥 Khách Hàng', show: true },
+                { id: 'products', l: '📱 Sản Phẩm', show: true },
+                { id: 'report', l: '📈 Báo Cáo', show: true }
               ] : activeModule === 'technical' ? [
                 { id: 'jobs', l: '📋 Công Việc', show: true },
                 { id: 'integrations', l: '🔗 Tích Hợp', show: true }
@@ -4283,22 +4323,46 @@ export default function SimpleMarketingSystem() {
       {/* Module Selector - Desktop Only */}
       <div className="hidden md:block bg-gradient-to-r from-blue-600 to-purple-600">
         <div className="max-w-7xl mx-auto px-6 flex gap-2">
-          {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('marketing'))) && (
+          {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('media'))) && (
             <button
-              onClick={() => navigateTo('marketing', 'dashboard')}
-              className={`px-8 py-4 font-bold text-lg transition-all ${
-                activeModule === 'marketing'
+              onClick={() => navigateTo('media', 'dashboard')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'media'
                   ? 'bg-white text-blue-600'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
-              📱 Marketing
+              🎬 Media
             </button>
           )}
-          {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && (currentUser.departments.includes('technical') || currentUser.departments.includes('sales')))) && (
+          {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('warehouse'))) && (
+            <button
+              onClick={() => navigateTo('warehouse', 'inventory')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'warehouse'
+                  ? 'bg-white text-amber-600'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              📦 Kho
+            </button>
+          )}
+          {(currentUser.role === 'Admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+            <button
+              onClick={() => navigateTo('sales', 'orders')}
+              className={`px-6 py-4 font-bold text-lg transition-all ${
+                activeModule === 'sales'
+                  ? 'bg-white text-pink-600'
+                  : 'text-white/80 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              🛒 Sale
+            </button>
+          )}
+          {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('technical'))) && (
             <button
               onClick={() => navigateTo('technical', 'jobs')}
-              className={`px-8 py-4 font-bold text-lg transition-all ${
+              className={`px-6 py-4 font-bold text-lg transition-all ${
                 activeModule === 'technical'
                   ? 'bg-white text-orange-600'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
@@ -4310,7 +4374,7 @@ export default function SimpleMarketingSystem() {
           {(currentUser.role === 'Admin' || currentUser.role === 'Manager' || (currentUser.departments && currentUser.departments.includes('finance'))) && (
             <button
               onClick={() => navigateTo('finance', 'dashboard')}
-              className={`px-8 py-4 font-bold text-lg transition-all ${
+              className={`px-6 py-4 font-bold text-lg transition-all ${
                 activeModule === 'finance'
                   ? 'bg-white text-green-600'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
@@ -4324,7 +4388,7 @@ export default function SimpleMarketingSystem() {
 
       <div className="hidden md:block bg-white border-b">
         <div className="max-w-7xl mx-auto px-6 flex gap-2 overflow-x-auto">
-          {(activeModule === 'marketing' ? [
+          {(activeModule === 'media' ? [
             { id: 'mytasks', l: '📝 Của Tôi' },
             { id: 'dashboard', l: '📊 Dashboard' },
             { id: 'tasks', l: '📋 Tasks' },
@@ -4332,6 +4396,16 @@ export default function SimpleMarketingSystem() {
             { id: 'report', l: '📈 Báo Cáo' },
             { id: 'performance', l: '📊 Hiệu Suất' },
             { id: 'integrations', l: '🔗 Tích Hợp' }
+          ] : activeModule === 'warehouse' ? [
+            { id: 'inventory', l: '📦 Tồn Kho' },
+            { id: 'import', l: '📥 Nhập Kho' },
+            { id: 'export', l: '📤 Xuất Kho' },
+            { id: 'history', l: '📋 Lịch Sử' }
+          ] : activeModule === 'sales' ? [
+            { id: 'orders', l: '🛒 Đơn Hàng' },
+            { id: 'customers', l: '👥 Khách Hàng' },
+            { id: 'products', l: '📱 Sản Phẩm' },
+            { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
             { id: 'jobs', l: '📋 Công Việc' },
             { id: 'integrations', l: '🔗 Tích Hợp' }
@@ -4352,7 +4426,7 @@ export default function SimpleMarketingSystem() {
       {/* Mobile Title Bar */}
       <div className="md:hidden bg-white border-b px-4 py-3 sticky top-[52px] z-30">
         <h2 className="font-bold text-lg">
-          {(activeModule === 'marketing' ? [
+          {(activeModule === 'media' ? [
             { id: 'mytasks', l: '📝 Của Tôi' },
             { id: 'dashboard', l: '📊 Dashboard' },
             { id: 'tasks', l: '📋 Tasks' },
@@ -4362,6 +4436,16 @@ export default function SimpleMarketingSystem() {
             { id: 'integrations', l: '🔗 Tích Hợp' },
             { id: 'automation', l: '⚙️ Automation' },
             { id: 'users', l: '👥 Users' }
+          ] : activeModule === 'warehouse' ? [
+            { id: 'inventory', l: '📦 Tồn Kho' },
+            { id: 'import', l: '📥 Nhập Kho' },
+            { id: 'export', l: '📤 Xuất Kho' },
+            { id: 'history', l: '📋 Lịch Sử' }
+          ] : activeModule === 'sales' ? [
+            { id: 'orders', l: '🛒 Đơn Hàng' },
+            { id: 'customers', l: '👥 Khách Hàng' },
+            { id: 'products', l: '📱 Sản Phẩm' },
+            { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
             { id: 'jobs', l: '📋 Công Việc' },
             { id: 'integrations', l: '🔗 Tích Hợp' }
@@ -4376,7 +4460,7 @@ export default function SimpleMarketingSystem() {
       </div>
 
       <div className="max-w-7xl mx-auto pb-20 md:pb-0">
-        {activeModule === 'marketing' && (
+        {activeModule === 'media' && (
           <>
             {activeTab === 'mytasks' && <MyTasksView />}
             {activeTab === 'dashboard' && <DashboardView />}
@@ -4387,6 +4471,22 @@ export default function SimpleMarketingSystem() {
             {activeTab === 'automation' && <AutomationView />}
             {activeTab === 'users' && <UserManagementView />}
             {activeTab === 'performance' && <PerformanceView />}
+          </>
+        )}
+        {activeModule === 'warehouse' && (
+          <>
+            {activeTab === 'inventory' && <WarehouseInventoryView />}
+            {activeTab === 'import' && <WarehouseImportView />}
+            {activeTab === 'export' && <WarehouseExportView />}
+            {activeTab === 'history' && <WarehouseHistoryView />}
+          </>
+        )}
+        {activeModule === 'sales' && (
+          <>
+            {activeTab === 'orders' && <SalesOrdersView />}
+            {activeTab === 'customers' && <SalesCustomersView />}
+            {activeTab === 'products' && <SalesProductsView />}
+            {activeTab === 'report' && <SalesReportView />}
           </>
         )}
         {activeModule === 'technical' && (
@@ -4413,6 +4513,118 @@ export default function SimpleMarketingSystem() {
       {showPermissionsModal && <PermissionsModal />}
     </div>
   );
+
+  // =====================================
+  // WAREHOUSE MODULE COMPONENTS
+  // =====================================
+
+  function WarehouseInventoryView() {
+    return (
+      <div className="p-6">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">📦</div>
+          <h2 className="text-2xl font-bold text-amber-800 mb-2">Quản Lý Tồn Kho</h2>
+          <p className="text-amber-600">Module Kho đang được phát triển...</p>
+          <p className="text-sm text-amber-500 mt-2">Sẽ bao gồm: Danh sách sản phẩm, số lượng tồn, cảnh báo hết hàng</p>
+        </div>
+      </div>
+    );
+  }
+
+  function WarehouseImportView() {
+    return (
+      <div className="p-6">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">📥</div>
+          <h2 className="text-2xl font-bold text-green-800 mb-2">Nhập Kho</h2>
+          <p className="text-green-600">Module đang được phát triển...</p>
+          <p className="text-sm text-green-500 mt-2">Sẽ bao gồm: Tạo phiếu nhập, quét barcode, nhập từ nhà cung cấp</p>
+        </div>
+      </div>
+    );
+  }
+
+  function WarehouseExportView() {
+    return (
+      <div className="p-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">📤</div>
+          <h2 className="text-2xl font-bold text-blue-800 mb-2">Xuất Kho</h2>
+          <p className="text-blue-600">Module đang được phát triển...</p>
+          <p className="text-sm text-blue-500 mt-2">Sẽ bao gồm: Tạo phiếu xuất, xuất theo đơn hàng, xuất nội bộ</p>
+        </div>
+      </div>
+    );
+  }
+
+  function WarehouseHistoryView() {
+    return (
+      <div className="p-6">
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">📋</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Lịch Sử Kho</h2>
+          <p className="text-gray-600">Module đang được phát triển...</p>
+          <p className="text-sm text-gray-500 mt-2">Sẽ bao gồm: Lịch sử nhập/xuất, biến động tồn kho, báo cáo</p>
+        </div>
+      </div>
+    );
+  }
+
+  // =====================================
+  // SALES MODULE COMPONENTS
+  // =====================================
+
+  function SalesOrdersView() {
+    return (
+      <div className="p-6">
+        <div className="bg-pink-50 border border-pink-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">🛒</div>
+          <h2 className="text-2xl font-bold text-pink-800 mb-2">Quản Lý Đơn Hàng</h2>
+          <p className="text-pink-600">Module Sale đang được phát triển...</p>
+          <p className="text-sm text-pink-500 mt-2">Sẽ bao gồm: Danh sách đơn hàng, trạng thái, xử lý đơn</p>
+        </div>
+      </div>
+    );
+  }
+
+  function SalesCustomersView() {
+    return (
+      <div className="p-6">
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">👥</div>
+          <h2 className="text-2xl font-bold text-purple-800 mb-2">Quản Lý Khách Hàng</h2>
+          <p className="text-purple-600">Module đang được phát triển...</p>
+          <p className="text-sm text-purple-500 mt-2">Sẽ bao gồm: Danh sách khách hàng, lịch sử mua hàng, chăm sóc</p>
+        </div>
+      </div>
+    );
+  }
+
+  function SalesProductsView() {
+    return (
+      <div className="p-6">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">📱</div>
+          <h2 className="text-2xl font-bold text-indigo-800 mb-2">Danh Mục Sản Phẩm</h2>
+          <p className="text-indigo-600">Module đang được phát triển...</p>
+          <p className="text-sm text-indigo-500 mt-2">Sẽ bao gồm: Danh sách sản phẩm, giá bán, khuyến mãi</p>
+        </div>
+      </div>
+    );
+  }
+
+  function SalesReportView() {
+    return (
+      <div className="p-6">
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-8 text-center">
+          <div className="text-6xl mb-4">📈</div>
+          <h2 className="text-2xl font-bold text-orange-800 mb-2">Báo Cáo Bán Hàng</h2>
+          <p className="text-orange-600">Module đang được phát triển...</p>
+          <p className="text-sm text-orange-500 mt-2">Sẽ bao gồm: Doanh thu, top sản phẩm, phân tích khách hàng</p>
+        </div>
+      </div>
+    );
+  }
 
   // =====================================
   // FINANCE MODULE COMPONENTS
@@ -6078,10 +6290,9 @@ export default function SimpleMarketingSystem() {
     const [saving, setSaving] = useState(false);
 
     const departments = [
-      { id: 'marketing', name: '📱 Marketing', desc: 'Quản lý nội dung, chiến dịch' },
-      { id: 'media', name: '🎬 Media', desc: 'Sản xuất video, hình ảnh' },
-      { id: 'livestream', name: '🎥 Livestream', desc: 'Phát sóng trực tiếp' },
-      { id: 'warehouse', name: '📦 Kho', desc: 'Quản lý hàng hóa, xuất nhập' },
+      { id: 'media', name: '🎬 Media', desc: 'Sản xuất video, hình ảnh, nội dung' },
+      { id: 'warehouse', name: '📦 Kho', desc: 'Quản lý hàng hóa, xuất nhập kho' },
+      { id: 'sales', name: '🛒 Sale', desc: 'Bán hàng, chăm sóc khách hàng' },
       { id: 'technical', name: '🔧 Kỹ thuật', desc: 'Lắp đặt, sửa chữa, bảo trì' },
       { id: 'finance', name: '💰 Tài chính', desc: 'Thu chi, công nợ, lương' }
     ];
