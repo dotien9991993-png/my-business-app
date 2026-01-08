@@ -2,6 +2,39 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from './supabaseClient';
 
+// ============ VIETNAM TIMEZONE HELPERS ============
+// Lấy ngày giờ hiện tại theo múi giờ Việt Nam (UTC+7)
+const getVietnamDate = () => {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+};
+
+// Lấy ngày hôm nay theo định dạng YYYY-MM-DD (múi giờ VN)
+const getTodayVN = () => {
+  const vn = getVietnamDate();
+  return vn.getFullYear() + '-' + String(vn.getMonth() + 1).padStart(2, '0') + '-' + String(vn.getDate()).padStart(2, '0');
+};
+
+// Lấy datetime hiện tại theo ISO format nhưng với múi giờ VN
+const getNowVN = () => {
+  const vn = getVietnamDate();
+  return vn.toISOString();
+};
+
+// Format datetime cho hiển thị
+const formatDateTimeVN = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+};
+
+// Format date cho hiển thị
+const formatDateVN = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+};
+// ============ END TIMEZONE HELPERS ============
+
 // Simple hash-based router
 const useHashRouter = () => {
   const [hash, setHash] = useState(window.location.hash.slice(1) || '');
@@ -1956,8 +1989,7 @@ export default function SimpleMarketingSystem() {
     // Helper: Get date range based on filter (Vietnam timezone UTC+7)
     const getDateRange = () => {
       // Get current date in Vietnam timezone (UTC+7)
-      const now = new Date();
-      const vietnamTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+      const vietnamTime = getVietnamDate();
       const today = new Date(vietnamTime.getFullYear(), vietnamTime.getMonth(), vietnamTime.getDate());
       
       switch(dateFilter) {
@@ -2001,9 +2033,9 @@ export default function SimpleMarketingSystem() {
         const range = getDateRange();
         if (!range) return false;
         
-        // Parse task date in Vietnam timezone
-        const taskDateStr = new Date(t.dueDate);
-        const taskDate = new Date(taskDateStr.getFullYear(), taskDateStr.getMonth(), taskDateStr.getDate());
+        // Parse task date - chuyển về ngày thuần túy để so sánh
+        const taskDateParts = t.dueDate.split('-');
+        const taskDate = new Date(parseInt(taskDateParts[0]), parseInt(taskDateParts[1]) - 1, parseInt(taskDateParts[2]));
         
         if (dateFilter === 'overdue') {
           // Overdue: deadline < today AND not completed
@@ -3548,7 +3580,7 @@ export default function SimpleMarketingSystem() {
     const [title, setTitle] = useState('');
     const [platform, setPlatform] = useState([]);
     const [priority, setPriority] = useState('');
-    const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
+    const [dueDate, setDueDate] = useState(getTodayVN());
     const [description, setDescription] = useState('');
     const [assignee, setAssignee] = useState(currentUser.name);
     const [videoCategory, setVideoCategory] = useState('');
@@ -3646,11 +3678,11 @@ export default function SimpleMarketingSystem() {
                     onClick={() => setVideoCategory(videoCategory === cat.id ? '' : cat.id)}
                     className={`px-3 py-2 rounded-lg border-2 font-medium transition-all ${
                       videoCategory === cat.id
-                        ? cat.color === 'purple' ? 'bg-purple-100 border-purple-500 text-purple-700'
-                        : cat.color === 'blue' ? 'bg-blue-100 border-blue-500 text-blue-700'
-                        : cat.color === 'green' ? 'bg-green-100 border-green-500 text-green-700'
-                        : cat.color === 'orange' ? 'bg-orange-100 border-orange-500 text-orange-700'
-                        : 'bg-yellow-100 border-yellow-500 text-yellow-700'
+                        ? (cat.color === 'purple' ? 'bg-purple-100 border-purple-500 text-purple-700'
+                          : cat.color === 'blue' ? 'bg-blue-100 border-blue-500 text-blue-700'
+                          : cat.color === 'green' ? 'bg-green-100 border-green-500 text-green-700'
+                          : cat.color === 'orange' ? 'bg-orange-100 border-orange-500 text-orange-700'
+                          : 'bg-yellow-100 border-yellow-500 text-yellow-700')
                         : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-400'
                     }`}
                   >
@@ -4474,7 +4506,7 @@ export default function SimpleMarketingSystem() {
         await supabase.from('stock_transactions').insert([{
           tenant_id: tenant.id, transaction_number: `ADJ-${Date.now()}`,
           type: adjustType === 'subtract' ? 'export' : 'import',
-          transaction_date: new Date().toISOString().split('T')[0],
+          transaction_date: getTodayVN(),
           partner_name: 'Điều chỉnh tồn kho', total_amount: 0,
           note: `${adjustReason || 'Điều chỉnh'} - ${selectedProduct.name}: ${selectedProduct.stock_quantity} → ${newQuantity}`,
           status: 'completed', created_by: currentUser.name
@@ -4957,7 +4989,7 @@ export default function SimpleMarketingSystem() {
     // Form states
     const [formPartnerName, setFormPartnerName] = useState('');
     const [formPartnerPhone, setFormPartnerPhone] = useState('');
-    const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+    const [formDate, setFormDate] = useState(getTodayVN());
     const [formNote, setFormNote] = useState('');
     const [formItems, setFormItems] = useState([{ product_id: '', quantity: 1, unit_price: 0 }]);
 
@@ -4966,7 +4998,7 @@ export default function SimpleMarketingSystem() {
     const resetForm = () => {
       setFormPartnerName('');
       setFormPartnerPhone('');
-      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormDate(getTodayVN());
       setFormNote('');
       setFormItems([{ product_id: '', quantity: 1, unit_price: 0 }]);
     };
@@ -5117,7 +5149,7 @@ export default function SimpleMarketingSystem() {
           <div className="bg-white rounded-xl p-4 border-l-4 border-purple-500 col-span-2 md:col-span-1">
             <div className="text-2xl font-bold text-purple-600">
               {importTransactions.filter(t => {
-                const today = new Date().toISOString().split('T')[0];
+                const today = getTodayVN();
                 return t.transaction_date === today;
               }).length}
             </div>
@@ -5410,7 +5442,7 @@ export default function SimpleMarketingSystem() {
     // Form states
     const [formPartnerName, setFormPartnerName] = useState('');
     const [formPartnerPhone, setFormPartnerPhone] = useState('');
-    const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+    const [formDate, setFormDate] = useState(getTodayVN());
     const [formNote, setFormNote] = useState('');
     const [formItems, setFormItems] = useState([{ product_id: '', quantity: 1, unit_price: 0 }]);
 
@@ -5419,7 +5451,7 @@ export default function SimpleMarketingSystem() {
     const resetForm = () => {
       setFormPartnerName('');
       setFormPartnerPhone('');
-      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormDate(getTodayVN());
       setFormNote('');
       setFormItems([{ product_id: '', quantity: 1, unit_price: 0 }]);
     };
@@ -5579,7 +5611,7 @@ export default function SimpleMarketingSystem() {
           <div className="bg-white rounded-xl p-4 border-l-4 border-purple-500 col-span-2 md:col-span-1">
             <div className="text-2xl font-bold text-purple-600">
               {exportTransactions.filter(t => {
-                const today = new Date().toISOString().split('T')[0];
+                const today = getTodayVN();
                 return t.transaction_date === today;
               }).length}
             </div>
@@ -6652,7 +6684,7 @@ export default function SimpleMarketingSystem() {
     const [formAmount, setFormAmount] = useState('');
     const [formDescription, setFormDescription] = useState('');
     const [formCategory, setFormCategory] = useState('');
-    const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+    const [formDate, setFormDate] = useState(getTodayVN());
     const [formNote, setFormNote] = useState('');
 
     const categories = {
@@ -6685,7 +6717,7 @@ export default function SimpleMarketingSystem() {
       setFormAmount('');
       setFormDescription('');
       setFormCategory('');
-      setFormDate(new Date().toISOString().split('T')[0]);
+      setFormDate(getTodayVN());
       setFormNote('');
     };
 
@@ -6695,7 +6727,7 @@ export default function SimpleMarketingSystem() {
       setFormAmount(receipt.amount.toString());
       setFormDescription(receipt.description || '');
       setFormCategory(receipt.category || '');
-      setFormDate(receipt.receipt_date ? receipt.receipt_date.split('T')[0] : new Date().toISOString().split('T')[0]);
+      setFormDate(receipt.receipt_date ? receipt.receipt_date.split('T')[0] : getTodayVN());
       setFormNote(receipt.note || '');
       setIsEditing(false);
       setShowDetailModal(true);
@@ -7271,7 +7303,7 @@ export default function SimpleMarketingSystem() {
           amount: amount,
           description: (receiptType === 'thu' ? 'Thu nợ từ ' : 'Trả nợ cho ') + selectedDebt.partner_name,
           category: receiptType === 'thu' ? 'Thu nợ khách' : 'Trả nợ NCC',
-          receipt_date: new Date().toISOString().split('T')[0],
+          receipt_date: getTodayVN(),
           note: 'Thanh toán công nợ ' + selectedDebt.debt_number + (paymentNote ? ' - ' + paymentNote : ''),
           status: 'approved',
           created_by: currentUser.name,
@@ -7815,7 +7847,7 @@ export default function SimpleMarketingSystem() {
           amount: salary.total_salary,
           description: 'Trả lương T' + salary.month + '/' + salary.year + ' - ' + salary.employee_name,
           category: 'Lương nhân viên',
-          receipt_date: new Date().toISOString().split('T')[0],
+          receipt_date: getTodayVN(),
           note: 'Tự động từ bảng lương',
           status: 'approved',
           created_by: currentUser.name,
