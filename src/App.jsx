@@ -4074,20 +4074,6 @@ export default function SimpleMarketingSystem() {
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowEditTask(false)}
-                      className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      onClick={saveEditTask}
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
-                    >
-                      💾 Lưu thay đổi
-                    </button>
-                  </div>
                 </div>
               </div>
             )}
@@ -4380,7 +4366,10 @@ export default function SimpleMarketingSystem() {
           <div className="p-6 border-t bg-gray-50 sticky bottom-0">
             <div className="flex gap-3">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowEditTask(false);
+                  setShowModal(false);
+                }}
                 className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
               >
                 Đóng
@@ -4397,15 +4386,14 @@ export default function SimpleMarketingSystem() {
                   🗑️ Xóa
                 </button>
               )}
-              <button
-                onClick={() => {
-                  alert('✅ Đã lưu thay đổi!');
-                  setShowModal(false);
-                }}
-                className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
-              >
-                💾 Lưu
-              </button>
+              {showEditTask && (
+                <button
+                  onClick={saveEditTask}
+                  className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                >
+                  💾 Lưu
+                </button>
+              )}
             </div>
           </div>
         </div>
