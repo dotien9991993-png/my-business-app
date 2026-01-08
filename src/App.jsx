@@ -4983,6 +4983,35 @@ export default function SimpleMarketingSystem() {
                   </div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label><textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg" /></div>
                 </div>
+
+                {/* Thông tin hệ thống */}
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <h3 className="font-medium text-purple-700 mb-3">🕐 Thông tin hệ thống</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Người tạo:</span>
+                      <span className="ml-2 font-medium text-gray-800">{selectedProduct.created_by || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Ngày tạo:</span>
+                      <span className="ml-2 font-medium text-gray-800">
+                        {selectedProduct.created_at ? formatDateTimeVN(selectedProduct.created_at) : 'N/A'}
+                      </span>
+                    </div>
+                    {selectedProduct.updated_at && (
+                      <>
+                        <div>
+                          <span className="text-gray-500">Cập nhật lần cuối:</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-800">
+                            {formatDateTimeVN(selectedProduct.updated_at)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="p-6 border-t bg-gray-50 flex gap-3 justify-between sticky bottom-0">
                 <button onClick={() => handleDeleteProduct(selectedProduct.id)} className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg">🗑️ Xóa</button>
