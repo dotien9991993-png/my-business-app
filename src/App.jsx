@@ -1034,7 +1034,7 @@ export default function SimpleMarketingSystem() {
       { name: 'Hoàn Thành', value: tasksToUse.filter(t => t.status === 'Hoàn Thành').length, color: '#6b7280' }
     ].filter(s => s.value > 0);
 
-    const teamStats = ['Content', 'Design', 'Livestream', 'Kho'].map(t => ({
+    const teamStats = ['Content', 'Edit Video', 'Livestream', 'Kho'].map(t => ({
       name: t,
       completed: tasksToUse.filter(x => x.team === t && x.status === 'Hoàn Thành').length,
       inProgress: tasksToUse.filter(x => x.team === t && x.status === 'Đang Làm').length
@@ -1090,7 +1090,7 @@ export default function SimpleMarketingSystem() {
   const getTeamColor = (t) => {
     const c = { 
       'Content': 'bg-blue-100 text-blue-700', 
-      'Design': 'bg-purple-100 text-purple-700', 
+      'Edit Video': 'bg-purple-100 text-purple-700', 
       'Livestream': 'bg-pink-100 text-pink-700',
       'Kho': 'bg-orange-100 text-orange-700'
     };
@@ -1826,7 +1826,7 @@ export default function SimpleMarketingSystem() {
               >
                 <option value="">Chọn team</option>
                 <option value="Content">Content</option>
-                <option value="Design">Design</option>
+                <option value="Edit Video">Edit Video</option>
                 <option value="Livestream">Livestream</option>
                 <option value="Kho">Kho</option>
               </select>
@@ -2163,7 +2163,7 @@ export default function SimpleMarketingSystem() {
               >
                 <option value="all">Tất cả</option>
                 <option value="Content">Content</option>
-                <option value="Design">Design</option>
+                <option value="Edit Video">Edit Video</option>
                 <option value="Livestream">Livestream</option>
                 <option value="Kho">Kho</option>
               </select>
@@ -2529,7 +2529,7 @@ export default function SimpleMarketingSystem() {
         { name: 'Hoàn Thành', value: filteredTasks.filter(t => t.status === 'Hoàn Thành').length, color: '#6b7280' }
       ].filter(s => s.value > 0);
 
-      const teamStats = ['Content', 'Design', 'Livestream', 'Kho'].map(t => ({
+      const teamStats = ['Content', 'Edit Video', 'Livestream', 'Kho'].map(t => ({
         name: t,
         completed: filteredTasks.filter(x => x.team === t && x.status === 'Hoàn Thành').length,
         inProgress: filteredTasks.filter(x => x.team === t && x.status === 'Đang Làm').length
@@ -3138,7 +3138,7 @@ export default function SimpleMarketingSystem() {
                           team === 'Content' ? 'bg-blue-100 text-blue-700' :
                           team === 'Kỹ Thuật' ? 'bg-orange-100 text-orange-700' :
                           team === 'Sale' ? 'bg-green-100 text-green-700' :
-                          team === 'Design' ? 'bg-purple-100 text-purple-700' :
+                          team === 'Edit Video' ? 'bg-purple-100 text-purple-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
                           {team}
@@ -3630,7 +3630,7 @@ export default function SimpleMarketingSystem() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-sm ${user.team === 'Content' ? 'bg-blue-100 text-blue-700' : user.team === 'Design' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                      <span className={`px-3 py-1 rounded-full text-sm ${user.team === 'Content' ? 'bg-blue-100 text-blue-700' : user.team === 'Edit Video' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
                         {user.team}
                       </span>
                     </td>
@@ -6385,8 +6385,7 @@ export default function SimpleMarketingSystem() {
                 { id: 'tasks', l: '🎬 Video', tabKey: 'videos' },
                 { id: 'calendar', l: '📅 Lịch', tabKey: 'calendar' },
                 { id: 'report', l: '📈 Báo Cáo', tabKey: 'report' },
-                { id: 'performance', l: '📊 Hiệu Suất' },
-                { id: 'integrations', l: '🔗 Tích Hợp' }
+                { id: 'performance', l: '📊 Hiệu Suất' }
               ] : activeModule === 'warehouse' ? [
                 { id: 'inventory', l: '📦 Tồn Kho', tabKey: 'inventory' },
                 { id: 'import', l: '📥 Nhập Kho', tabKey: 'import' },
@@ -6398,8 +6397,7 @@ export default function SimpleMarketingSystem() {
                 { id: 'products', l: '📱 Sản Phẩm' },
                 { id: 'report', l: '📈 Báo Cáo' }
               ] : activeModule === 'technical' ? [
-                { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' },
-                { id: 'integrations', l: '🔗 Tích Hợp' }
+                { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' }
               ] : activeModule === 'finance' ? [
                 { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
                 { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
@@ -6529,8 +6527,7 @@ export default function SimpleMarketingSystem() {
             { id: 'tasks', l: '🎬 Video', tabKey: 'videos' },
             { id: 'calendar', l: '📅 Lịch', tabKey: 'calendar' },
             { id: 'report', l: '📈 Báo Cáo', tabKey: 'report' },
-            { id: 'performance', l: '📊 Hiệu Suất' },
-            { id: 'integrations', l: '🔗 Tích Hợp' }
+            { id: 'performance', l: '📊 Hiệu Suất' }
           ] : activeModule === 'warehouse' ? [
             { id: 'inventory', l: '📦 Tồn Kho', tabKey: 'inventory' },
             { id: 'import', l: '📥 Nhập Kho', tabKey: 'import' },
@@ -6542,8 +6539,7 @@ export default function SimpleMarketingSystem() {
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' },
-            { id: 'integrations', l: '🔗 Tích Hợp' }
+            { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' }
           ] : activeModule === 'finance' ? [
             { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
             { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
@@ -6568,7 +6564,6 @@ export default function SimpleMarketingSystem() {
             { id: 'calendar', l: '📅 Lịch' },
             { id: 'report', l: '📈 Báo Cáo' },
             { id: 'performance', l: '📊 Hiệu Suất' },
-            { id: 'integrations', l: '🔗 Tích Hợp' },
             { id: 'automation', l: '⚙️ Automation' },
             { id: 'users', l: '👥 Users' }
           ] : activeModule === 'warehouse' ? [
@@ -6582,8 +6577,7 @@ export default function SimpleMarketingSystem() {
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc' },
-            { id: 'integrations', l: '🔗 Tích Hợp' }
+            { id: 'jobs', l: '📋 Công Việc' }
           ] : activeModule === 'finance' ? [
             { id: 'dashboard', l: '📊 Tổng Quan' },
             { id: 'receipts', l: '🧾 Thu/Chi' },
