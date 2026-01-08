@@ -6811,11 +6811,20 @@ export default function SimpleMarketingSystem() {
   // =====================================
 
   function FinanceDashboard() {
-    const totalReceipts = receiptsPayments
+    // Check permission level
+    const financeLevel = getPermissionLevel('finance');
+    const canViewAll = financeLevel >= 2 || currentUser.role === 'Admin' || currentUser.role === 'admin';
+    
+    // Lọc dữ liệu theo quyền: Level 1 chỉ xem của mình, Level 2+ xem tất cả
+    const visibleReceipts = canViewAll 
+      ? receiptsPayments 
+      : receiptsPayments.filter(r => r.created_by === currentUser.name);
+    
+    const totalReceipts = visibleReceipts
       .filter(r => r.type === 'thu' && r.status === 'approved')
       .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
     
-    const totalPayments = receiptsPayments
+    const totalPayments = visibleReceipts
       .filter(r => r.type === 'chi' && r.status === 'approved')
       .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
     
@@ -6823,7 +6832,14 @@ export default function SimpleMarketingSystem() {
 
     return (
       <div className="p-6 space-y-6">
-        <h2 className="text-2xl font-bold">💰 Tổng Quan Tài Chính</h2>
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">💰 Tổng Quan Tài Chính</h2>
+          {!canViewAll && (
+            <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+              📋 Dữ liệu của bạn
+            </span>
+          )}
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-green-50 p-6 rounded-xl border border-green-200">
@@ -6853,7 +6869,7 @@ export default function SimpleMarketingSystem() {
         <div className="bg-white rounded-xl border shadow-sm p-6">
           <h3 className="font-bold text-lg mb-4">📊 Chi Tiết Gần Đây</h3>
           <div className="space-y-2">
-            {receiptsPayments.slice(0, 5).map(r => (
+            {visibleReceipts.slice(0, 5).map(r => (
               <div key={r.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                 <div>
                   <div className="font-medium">{r.receipt_number}</div>
@@ -6864,7 +6880,7 @@ export default function SimpleMarketingSystem() {
                 </div>
               </div>
             ))}
-            {receiptsPayments.length === 0 && (
+            {visibleReceipts.length === 0 && (
               <p className="text-gray-500 text-center py-4">Chưa có giao dịch nào</p>
             )}
           </div>
