@@ -6317,33 +6317,33 @@ export default function SimpleMarketingSystem() {
             <div className="p-4">
               <div className="text-xs font-semibold text-gray-500 mb-2">CHỨC NĂNG</div>
               {(activeModule === 'media' ? [
-                { id: 'mytasks', l: '📝 Của Tôi', show: true },
-                { id: 'dashboard', l: '📊 Dashboard', show: true },
-                { id: 'tasks', l: '🎬 Video', show: true },
-                { id: 'calendar', l: '📅 Lịch', show: true },
-                { id: 'report', l: '📈 Báo Cáo', show: true },
-                { id: 'performance', l: '📊 Hiệu Suất', show: true },
-                { id: 'integrations', l: '🔗 Tích Hợp', show: true }
+                { id: 'mytasks', l: '📝 Của Tôi' },
+                { id: 'dashboard', l: '📊 Dashboard' },
+                { id: 'tasks', l: '🎬 Video', tabKey: 'videos' },
+                { id: 'calendar', l: '📅 Lịch', tabKey: 'calendar' },
+                { id: 'report', l: '📈 Báo Cáo', tabKey: 'report' },
+                { id: 'performance', l: '📊 Hiệu Suất' },
+                { id: 'integrations', l: '🔗 Tích Hợp' }
               ] : activeModule === 'warehouse' ? [
-                { id: 'inventory', l: '📦 Tồn Kho', show: true },
-                { id: 'import', l: '📥 Nhập Kho', show: true },
-                { id: 'export', l: '📤 Xuất Kho', show: true },
-                { id: 'history', l: '📋 Lịch Sử', show: true }
+                { id: 'inventory', l: '📦 Tồn Kho', tabKey: 'inventory' },
+                { id: 'import', l: '📥 Nhập Kho', tabKey: 'import' },
+                { id: 'export', l: '📤 Xuất Kho', tabKey: 'export' },
+                { id: 'history', l: '📋 Lịch Sử', tabKey: 'products' }
               ] : activeModule === 'sales' ? [
-                { id: 'orders', l: '🛒 Đơn Hàng', show: true },
-                { id: 'customers', l: '👥 Khách Hàng', show: true },
-                { id: 'products', l: '📱 Sản Phẩm', show: true },
-                { id: 'report', l: '📈 Báo Cáo', show: true }
+                { id: 'orders', l: '🛒 Đơn Hàng', tabKey: 'orders' },
+                { id: 'customers', l: '👥 Khách Hàng' },
+                { id: 'products', l: '📱 Sản Phẩm' },
+                { id: 'report', l: '📈 Báo Cáo' }
               ] : activeModule === 'technical' ? [
-                { id: 'jobs', l: '📋 Công Việc', show: true },
-                { id: 'integrations', l: '🔗 Tích Hợp', show: true }
+                { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' },
+                { id: 'integrations', l: '🔗 Tích Hợp' }
               ] : activeModule === 'finance' ? [
-                { id: 'dashboard', l: '📊 Tổng Quan', show: true },
-                { id: 'receipts', l: '🧾 Thu/Chi', show: true },
-                { id: 'debts', l: '📋 Công Nợ', show: true },
-                { id: 'salaries', l: '💰 Lương', show: true },
-                { id: 'reports', l: '📈 Báo Cáo', show: true }
-              ] : []).filter(t => t.show).map(t => (
+                { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
+                { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
+                { id: 'debts', l: '📋 Công Nợ', tabKey: 'debts' },
+                { id: 'salaries', l: '💰 Lương', tabKey: 'salaries' },
+                { id: 'reports', l: '📈 Báo Cáo', tabKey: 'reports' }
+              ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => (
                 <button
                   key={t.id}
                   onClick={() => {
@@ -6463,31 +6463,31 @@ export default function SimpleMarketingSystem() {
           {(activeModule === 'media' ? [
             { id: 'mytasks', l: '📝 Của Tôi' },
             { id: 'dashboard', l: '📊 Dashboard' },
-            { id: 'tasks', l: '🎬 Video' },
-            { id: 'calendar', l: '📅 Lịch' },
-            { id: 'report', l: '📈 Báo Cáo' },
+            { id: 'tasks', l: '🎬 Video', tabKey: 'videos' },
+            { id: 'calendar', l: '📅 Lịch', tabKey: 'calendar' },
+            { id: 'report', l: '📈 Báo Cáo', tabKey: 'report' },
             { id: 'performance', l: '📊 Hiệu Suất' },
             { id: 'integrations', l: '🔗 Tích Hợp' }
           ] : activeModule === 'warehouse' ? [
-            { id: 'inventory', l: '📦 Tồn Kho' },
-            { id: 'import', l: '📥 Nhập Kho' },
-            { id: 'export', l: '📤 Xuất Kho' },
-            { id: 'history', l: '📋 Lịch Sử' }
+            { id: 'inventory', l: '📦 Tồn Kho', tabKey: 'inventory' },
+            { id: 'import', l: '📥 Nhập Kho', tabKey: 'import' },
+            { id: 'export', l: '📤 Xuất Kho', tabKey: 'export' },
+            { id: 'history', l: '📋 Lịch Sử', tabKey: 'products' }
           ] : activeModule === 'sales' ? [
-            { id: 'orders', l: '🛒 Đơn Hàng' },
+            { id: 'orders', l: '🛒 Đơn Hàng', tabKey: 'orders' },
             { id: 'customers', l: '👥 Khách Hàng' },
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc' },
+            { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' },
             { id: 'integrations', l: '🔗 Tích Hợp' }
           ] : activeModule === 'finance' ? [
-            { id: 'dashboard', l: '📊 Tổng Quan' },
-            { id: 'receipts', l: '🧾 Thu/Chi' },
-            { id: 'debts', l: '📋 Công Nợ' },
-            { id: 'salaries', l: '💰 Lương' },
-            { id: 'reports', l: '📈 Báo Cáo' }
-          ] : []).map(t => (
+            { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
+            { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
+            { id: 'debts', l: '📋 Công Nợ', tabKey: 'debts' },
+            { id: 'salaries', l: '💰 Lương', tabKey: 'salaries' },
+            { id: 'reports', l: '📈 Báo Cáo', tabKey: 'reports' }
+          ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => (
             <button key={t.id} onClick={() => navigateTo(activeModule, t.id)} className={`px-6 py-3 font-medium border-b-4 whitespace-nowrap ${activeTab === t.id ? 'border-green-700 text-green-700' : 'border-transparent text-gray-600 hover:text-green-600'}`}>
               {t.l}
             </button>
@@ -6547,10 +6547,19 @@ export default function SimpleMarketingSystem() {
         )}
         {activeModule === 'warehouse' && (
           <>
-            {activeTab === 'inventory' && <WarehouseInventoryView />}
-            {activeTab === 'import' && <WarehouseImportView />}
-            {activeTab === 'export' && <WarehouseExportView />}
-            {activeTab === 'history' && <WarehouseHistoryView />}
+            {activeTab === 'inventory' && canAccessTab('warehouse', 'inventory') && <WarehouseInventoryView />}
+            {activeTab === 'import' && canAccessTab('warehouse', 'import') && <WarehouseImportView />}
+            {activeTab === 'export' && canAccessTab('warehouse', 'export') && <WarehouseExportView />}
+            {activeTab === 'history' && canAccessTab('warehouse', 'products') && <WarehouseHistoryView />}
+            {!canAccessTab('warehouse', activeTab === 'history' ? 'products' : activeTab) && (
+              <div className="p-6">
+                <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+                  <div className="text-6xl mb-4">🔒</div>
+                  <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+                  <p className="text-red-600">Bạn không được phép xem mục này.</p>
+                </div>
+              </div>
+            )}
           </>
         )}
         {activeModule === 'sales' && (
@@ -6569,11 +6578,21 @@ export default function SimpleMarketingSystem() {
         )}
         {activeModule === 'finance' && (
           <>
-            {activeTab === 'dashboard' && <FinanceDashboard />}
-            {activeTab === 'receipts' && <ReceiptsView />}
-            {activeTab === 'debts' && <DebtsView />}
-            {activeTab === 'salaries' && <SalariesView />}
-            {activeTab === 'reports' && <ReportsView />}
+            {activeTab === 'dashboard' && canAccessTab('finance', 'overview') && <FinanceDashboard />}
+            {activeTab === 'receipts' && canAccessTab('finance', 'receipts') && <ReceiptsView />}
+            {activeTab === 'debts' && canAccessTab('finance', 'debts') && <DebtsView />}
+            {activeTab === 'salaries' && canAccessTab('finance', 'salaries') && <SalariesView />}
+            {activeTab === 'reports' && canAccessTab('finance', 'reports') && <ReportsView />}
+            {/* Hiển thị thông báo nếu không có quyền */}
+            {!canAccessTab('finance', activeTab === 'dashboard' ? 'overview' : activeTab) && (
+              <div className="p-6">
+                <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+                  <div className="text-6xl mb-4">🔒</div>
+                  <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+                  <p className="text-red-600">Bạn không được phép xem mục này. Vui lòng liên hệ Admin.</p>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
