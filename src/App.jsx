@@ -277,7 +277,7 @@ export default function SimpleMarketingSystem() {
   };
 
   const [templates] = useState([
-    { id: 1, name: 'Facebook Ads Campaign', tasks: ['Thiết kế creative', 'Viết copy', 'Setup ads', 'Launch'], team: 'Performance' },
+    { id: 1, name: 'Facebook Ads Campaign', tasks: ['Thiết kế creative', 'Viết copy', 'Setup ads', 'Launch'], team: 'Content' },
     { id: 2, name: 'Blog Weekly', tasks: ['Research', 'Viết bài', 'Thiết kế ảnh', 'SEO', 'Đăng bài'], team: 'Content' },
     { id: 3, name: 'Social Daily', tasks: ['Tạo content', 'Thiết kế', 'Lên lịch'], team: 'Content' }
   ]);
@@ -1034,7 +1034,7 @@ export default function SimpleMarketingSystem() {
       { name: 'Hoàn Thành', value: tasksToUse.filter(t => t.status === 'Hoàn Thành').length, color: '#6b7280' }
     ].filter(s => s.value > 0);
 
-    const teamStats = ['Content', 'Design', 'Performance'].map(t => ({
+    const teamStats = ['Content', 'Design', 'Livestream', 'Kho'].map(t => ({
       name: t,
       completed: tasksToUse.filter(x => x.team === t && x.status === 'Hoàn Thành').length,
       inProgress: tasksToUse.filter(x => x.team === t && x.status === 'Đang Làm').length
@@ -1088,7 +1088,12 @@ export default function SimpleMarketingSystem() {
   };
 
   const getTeamColor = (t) => {
-    const c = { 'Content': 'bg-blue-100 text-blue-700', 'Design': 'bg-purple-100 text-purple-700', 'Performance': 'bg-green-100 text-green-700' };
+    const c = { 
+      'Content': 'bg-blue-100 text-blue-700', 
+      'Design': 'bg-purple-100 text-purple-700', 
+      'Livestream': 'bg-pink-100 text-pink-700',
+      'Kho': 'bg-orange-100 text-orange-700'
+    };
     return c[t] || 'bg-gray-100';
   };
 
@@ -1822,7 +1827,8 @@ export default function SimpleMarketingSystem() {
                 <option value="">Chọn team</option>
                 <option value="Content">Content</option>
                 <option value="Design">Design</option>
-                <option value="Performance">Performance</option>
+                <option value="Livestream">Livestream</option>
+                <option value="Kho">Kho</option>
               </select>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -2158,7 +2164,8 @@ export default function SimpleMarketingSystem() {
                 <option value="all">Tất cả</option>
                 <option value="Content">Content</option>
                 <option value="Design">Design</option>
-                <option value="Performance">Performance</option>
+                <option value="Livestream">Livestream</option>
+                <option value="Kho">Kho</option>
               </select>
             </div>
             <div>
@@ -2522,7 +2529,7 @@ export default function SimpleMarketingSystem() {
         { name: 'Hoàn Thành', value: filteredTasks.filter(t => t.status === 'Hoàn Thành').length, color: '#6b7280' }
       ].filter(s => s.value > 0);
 
-      const teamStats = ['Content', 'Design', 'Performance'].map(t => ({
+      const teamStats = ['Content', 'Design', 'Livestream', 'Kho'].map(t => ({
         name: t,
         completed: filteredTasks.filter(x => x.team === t && x.status === 'Hoàn Thành').length,
         inProgress: filteredTasks.filter(x => x.team === t && x.status === 'Đang Làm').length
