@@ -1916,31 +1916,31 @@ export default function SimpleMarketingSystem() {
   };
 
   const DashboardView = () => (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-2">Xin chào, {currentUser.name}! 👋</h2>
-        <p className="text-gray-600">{currentUser.role} • {currentUser.team} Team</p>
+        <h2 className="text-lg md:text-2xl font-bold mb-1">Xin chào, {currentUser.name}! 👋</h2>
+        <p className="text-sm text-gray-600">{currentUser.role} • {currentUser.team} Team</p>
       </div>
 
-      <div className="grid md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
         {[
           { l: 'Tổng Video', v: visibleTasks.length, i: '📊', c: 'blue' },
           { l: 'Hoàn Thành', v: visibleTasks.filter(t => t.status === 'Hoàn Thành').length, i: '✅', c: 'green' },
           { l: 'Đang Làm', v: visibleTasks.filter(t => t.status === 'Đang Làm').length, i: '⏳', c: 'yellow' },
           { l: 'Quá Hạn', v: visibleTasks.filter(t => t.isOverdue).length, i: '⚠️', c: 'red' }
         ].map((s, i) => (
-          <div key={i} className={`bg-${s.c}-50 p-6 rounded-xl border-2 border-${s.c}-200`}>
-            <div className="text-3xl mb-2">{s.i}</div>
-            <div className="text-3xl font-bold mb-1">{s.v}</div>
-            <div className="text-sm text-gray-600">{s.l}</div>
+          <div key={i} className={`bg-${s.c}-50 p-3 md:p-6 rounded-xl border-2 border-${s.c}-200`}>
+            <div className="text-xl md:text-3xl mb-1 md:mb-2">{s.i}</div>
+            <div className="text-xl md:text-3xl font-bold">{s.v}</div>
+            <div className="text-xs md:text-sm text-gray-600">{s.l}</div>
           </div>
         ))}
       </div>
 
       {/* Chi tiết các trạng thái */}
-      <div className="bg-white p-6 rounded-xl shadow">
-        <h3 className="text-lg font-bold mb-4">📋 Chi Tiết Trạng Thái</h3>
-        <div className="grid md:grid-cols-5 gap-4">
+      <div className="bg-white p-4 md:p-6 rounded-xl shadow">
+        <h3 className="text-base md:text-lg font-bold mb-3 md:mb-4">📋 Chi Tiết Trạng Thái</h3>
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4">
           {[
             { status: 'Nháp', icon: '📝', color: 'bg-gray-100 text-gray-700' },
             { status: 'Chờ Duyệt', icon: '⏳', color: 'bg-yellow-100 text-yellow-700' },
@@ -1952,10 +1952,10 @@ export default function SimpleMarketingSystem() {
             const percentage = visibleTasks.length > 0 ? Math.round((count / visibleTasks.length) * 100) : 0;
             
             return (
-              <div key={item.status} className={`${item.color} p-4 rounded-lg`}>
-                <div className="text-2xl mb-2">{item.icon}</div>
-                <div className="text-2xl font-bold mb-1">{count}</div>
-                <div className="text-xs font-medium mb-1">{item.status}</div>
+              <div key={item.status} className={`${item.color} p-2 md:p-4 rounded-lg`}>
+                <div className="text-lg md:text-2xl mb-1">{item.icon}</div>
+                <div className="text-lg md:text-2xl font-bold">{count}</div>
+                <div className="text-xs font-medium mb-0.5">{item.status}</div>
                 <div className="text-xs opacity-75">{percentage}%</div>
               </div>
             );
@@ -1963,13 +1963,13 @@ export default function SimpleMarketingSystem() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow">
-          <h3 className="text-lg font-bold mb-4">📊 Trạng thái Video</h3>
-          <div className="h-64">
+      <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+        <div className="bg-white p-4 md:p-6 rounded-xl shadow">
+          <h3 className="text-base md:text-lg font-bold mb-3 md:mb-4">📊 Trạng thái Video</h3>
+          <div className="h-48 md:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={reportData.statusStats} cx="50%" cy="50%" outerRadius={80} dataKey="value" label>
+                <Pie data={reportData.statusStats} cx="50%" cy="50%" outerRadius={60} dataKey="value" label>
                   {reportData.statusStats.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
@@ -6190,15 +6190,15 @@ export default function SimpleMarketingSystem() {
             className="fixed inset-0 bg-black/50 z-40 md:hidden"
             onClick={() => setShowMobileSidebar(false)}
           />
-          <div className="fixed left-0 top-0 bottom-0 w-80 bg-white z-50 shadow-xl md:hidden overflow-y-auto">
-            <div className="p-4 border-b bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-xl font-bold">Menu</h2>
+          <div className="fixed left-0 top-0 bottom-0 w-72 bg-white z-50 shadow-xl md:hidden overflow-y-auto">
+            <div className="p-3 border-b bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-lg font-bold">Menu</h2>
                 <button
                   onClick={() => setShowMobileSidebar(false)}
                   className="p-1 hover:bg-white/20 rounded"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -6208,7 +6208,7 @@ export default function SimpleMarketingSystem() {
             </div>
 
             {/* Module Selection */}
-            <div className="p-4 border-b">
+            <div className="p-3 border-b">
               <div className="text-xs font-semibold text-gray-500 mb-2">BỘ PHẬN</div>
               {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.media > 0)) && (
                 <button
@@ -6216,7 +6216,7 @@ export default function SimpleMarketingSystem() {
                     navigateTo('media', 'dashboard');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                  className={`w-full px-3 py-2.5 rounded-lg mb-1.5 font-medium text-left text-sm ${
                     activeModule === 'media'
                       ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
@@ -6231,7 +6231,7 @@ export default function SimpleMarketingSystem() {
                     navigateTo('warehouse', 'inventory');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                  className={`w-full px-3 py-2.5 rounded-lg mb-1.5 font-medium text-left text-sm ${
                     activeModule === 'warehouse'
                       ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
@@ -6246,7 +6246,7 @@ export default function SimpleMarketingSystem() {
                     navigateTo('sales', 'orders');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                  className={`w-full px-3 py-2.5 rounded-lg mb-1.5 font-medium text-left text-sm ${
                     activeModule === 'sales'
                       ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
@@ -6261,7 +6261,7 @@ export default function SimpleMarketingSystem() {
                     navigateTo('technical', 'jobs');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                  className={`w-full px-3 py-2.5 rounded-lg mb-1.5 font-medium text-left text-sm ${
                     activeModule === 'technical'
                       ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
@@ -6276,7 +6276,7 @@ export default function SimpleMarketingSystem() {
                     navigateTo('finance', 'dashboard');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
+                  className={`w-full px-3 py-2.5 rounded-lg font-medium text-left text-sm ${
                     activeModule === 'finance'
                       ? 'bg-green-100 text-green-700'
                       : 'hover:bg-gray-100'
@@ -6289,14 +6289,14 @@ export default function SimpleMarketingSystem() {
 
             {/* Admin Functions */}
             {currentUser.role === 'Admin' || currentUser.role === 'admin' && (
-              <div className="p-4 border-b bg-purple-50">
+              <div className="p-3 border-b bg-purple-50">
                 <div className="text-xs font-semibold text-purple-700 mb-2">ADMIN</div>
                 <button
                   onClick={() => {
                     navigateTo('media', 'automation');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg mb-2 font-medium text-left ${
+                  className={`w-full px-3 py-2.5 rounded-lg mb-1.5 font-medium text-left text-sm ${
                     activeTab === 'automation'
                       ? 'bg-purple-600 text-white'
                       : 'bg-white hover:bg-purple-100'
@@ -6309,7 +6309,7 @@ export default function SimpleMarketingSystem() {
                     navigateTo('media', 'users');
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg font-medium text-left ${
+                  className={`w-full px-3 py-2.5 rounded-lg font-medium text-left text-sm ${
                     activeTab === 'users'
                       ? 'bg-purple-600 text-white'
                       : 'bg-white hover:bg-purple-100'
@@ -6321,7 +6321,7 @@ export default function SimpleMarketingSystem() {
             )}
 
             {/* Tabs Navigation */}
-            <div className="p-4">
+            <div className="p-3">
               <div className="text-xs font-semibold text-gray-500 mb-2">CHỨC NĂNG</div>
               {(activeModule === 'media' ? [
                 { id: 'mytasks', l: '📝 Của Tôi' },
@@ -6357,7 +6357,7 @@ export default function SimpleMarketingSystem() {
                     navigateTo(activeModule, t.id);
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-lg mb-1 text-left font-medium ${
+                  className={`w-full px-3 py-2.5 rounded-lg mb-1 text-left font-medium text-sm ${
                     activeTab === t.id
                       ? 'bg-blue-600 text-white'
                       : 'hover:bg-gray-100'
@@ -6369,14 +6369,14 @@ export default function SimpleMarketingSystem() {
             </div>
 
             {/* Admin Buttons */}
-            <div className="p-4 border-t space-y-2">
+            <div className="p-3 border-t space-y-1.5">
               {(currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'admin') && (
                 <button
                   onClick={() => {
                     setShowPermissionsModal(true);
                     setShowMobileSidebar(false);
                   }}
-                  className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium"
+                  className="w-full px-3 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm"
                 >
                   🔐 Phân Quyền
                 </button>
@@ -6390,7 +6390,7 @@ export default function SimpleMarketingSystem() {
                   localStorage.removeItem(`${tenant.slug}_loggedIn`);
                   setShowMobileSidebar(false);
                 }}
-                className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
+                className="w-full px-3 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm"
               >
                 🚪 Đăng xuất
               </button>
