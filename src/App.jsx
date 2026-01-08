@@ -541,23 +541,30 @@ export default function SimpleMarketingSystem() {
       const assignedUser = allUsers.find(u => u.name === assignee);
       const taskTeam = assignedUser ? assignedUser.team : currentUser.team;
       
+      // Build task data - chỉ thêm category nếu có giá trị
+      const taskData = {
+        tenant_id: tenant.id,
+        title,
+        assignee: assignee,
+        team: taskTeam,
+        status: 'Nháp',
+        due_date: dueDate,
+        platform,
+        priority,
+        description,
+        is_overdue: false,
+        comments: [],
+        post_links: []
+      };
+      
+      // Chỉ thêm category nếu có giá trị (tránh lỗi nếu cột chưa tồn tại)
+      if (category) {
+        taskData.category = category;
+      }
+      
       const { error } = await supabase
         .from('tasks')
-        .insert([{
-          tenant_id: tenant.id,
-          title,
-          assignee: assignee,
-          team: taskTeam,
-          status: 'Nháp',
-          due_date: dueDate,
-          platform,
-          priority,
-          description,
-          category,
-          is_overdue: false,
-          comments: [],
-          post_links: []
-        }]);
+        .insert([taskData]);
       
       if (error) throw error;
       
@@ -578,7 +585,7 @@ export default function SimpleMarketingSystem() {
       await loadTasks();
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('❌ Lỗi khi tạo task!');
+      alert('❌ Lỗi khi tạo task: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
