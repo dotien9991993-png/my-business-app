@@ -3857,6 +3857,15 @@ export default function SimpleMarketingSystem() {
     const [editPriority, setEditPriority] = useState('');
     const [editDueDate, setEditDueDate] = useState('');
     const [editDescription, setEditDescription] = useState('');
+    const [editCategory, setEditCategory] = useState('');
+
+    const videoCategories = [
+      { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },
+      { id: 'video_hangngay', name: '📅 Video hàng ngày', color: 'blue' },
+      { id: 'video_huongdan', name: '📚 Video hướng dẫn', color: 'green' },
+      { id: 'video_quangcao', name: '📢 Video quảng cáo', color: 'orange' },
+      { id: 'video_review', name: '⭐ Video review', color: 'yellow' }
+    ];
 
     if (!selectedTask) return null;
 
@@ -3868,6 +3877,7 @@ export default function SimpleMarketingSystem() {
       setEditPriority(selectedTask.priority || '');
       setEditDueDate(selectedTask.dueDate || '');
       setEditDescription(selectedTask.description || '');
+      setEditCategory(selectedTask.category || '');
       setShowEditTask(true);
     };
 
@@ -3892,7 +3902,8 @@ export default function SimpleMarketingSystem() {
             platform: editPlatform.join(', '),
             priority: editPriority,
             due_date: editDueDate,
-            description: editDescription
+            description: editDescription,
+            category: editCategory
           })
           .eq('id', selectedTask.id);
 
@@ -3906,7 +3917,8 @@ export default function SimpleMarketingSystem() {
           platform: editPlatform.join(', '),
           priority: editPriority,
           dueDate: editDueDate,
-          description: editDescription
+          description: editDescription,
+          category: editCategory
         });
       } catch (error) {
         console.error('Error updating task:', error);
@@ -4048,6 +4060,35 @@ export default function SimpleMarketingSystem() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  {/* Danh mục Video */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">🏷️ Danh mục Video</label>
+                    <div className="flex flex-wrap gap-2">
+                      {videoCategories.map(cat => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setEditCategory(editCategory === cat.id ? '' : cat.id)}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                            editCategory === cat.id
+                              ? `bg-${cat.color}-500 text-white`
+                              : `bg-${cat.color}-100 text-${cat.color}-700 hover:bg-${cat.color}-200`
+                          }`}
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+                    {editCategory && (
+                      <button
+                        type="button"
+                        onClick={() => setEditCategory('')}
+                        className="mt-2 text-xs text-red-500 hover:text-red-700"
+                      >
+                        ✕ Xóa danh mục
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
