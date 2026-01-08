@@ -7652,22 +7652,19 @@ export default function SimpleMarketingSystem() {
     const [activeTab, setActiveTab] = useState('all');
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
     const [showSalaryDetailModal, setShowSalaryDetailModal] = useState(false);
     const [showCreateSalaryModal, setShowCreateSalaryModal] = useState(false);
+    const [showEditSalaryConfigModal, setShowEditSalaryConfigModal] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [selectedSalary, setSelectedSalary] = useState(null);
     
-    const [employees, setEmployees] = useState([]);
+    const [salaryConfigs, setSalaryConfigs] = useState([]);
     const [monthlySalaries, setMonthlySalaries] = useState([]);
     
-    // Form states
-    const [formName, setFormName] = useState('');
-    const [formPhone, setFormPhone] = useState('');
-    const [formDepartment, setFormDepartment] = useState('livestream');
-    const [formBaseSalary, setFormBaseSalary] = useState('');
-    const [formCommissionRate, setFormCommissionRate] = useState('');
-    const [formBonusPerUnit, setFormBonusPerUnit] = useState('');
+    // Form states for salary config
+    const [configBaseSalary, setConfigBaseSalary] = useState('');
+    const [configCommissionRate, setConfigCommissionRate] = useState('');
+    const [configBonusPerUnit, setConfigBonusPerUnit] = useState('');
     
     // Salary calculation form
     const [salaryRevenue, setSalaryRevenue] = useState('');
@@ -7676,24 +7673,54 @@ export default function SimpleMarketingSystem() {
     const [salaryDeduction, setSalaryDeduction] = useState('');
     const [salaryNote, setSalaryNote] = useState('');
 
+    // Map department từ team của user
+    const mapTeamToDepartment = (team) => {
+      if (!team) return 'other';
+      const t = team.toLowerCase();
+      if (t.includes('livestream') || t.includes('live')) return 'livestream';
+      if (t.includes('media') || t.includes('content') || t.includes('design')) return 'media';
+      if (t.includes('kho') || t.includes('warehouse')) return 'warehouse';
+      return 'other';
+    };
+
     const departments = {
       livestream: { name: '🎥 Livestream', color: 'purple', commissionLabel: '% Hoa hồng', unitLabel: 'Doanh số' },
       media: { name: '🎬 Media', color: 'blue', commissionLabel: 'đ/Video', unitLabel: 'Số video' },
-      warehouse: { name: '📦 Kho', color: 'orange', commissionLabel: 'đ/Đơn', unitLabel: 'Số đơn' }
+      warehouse: { name: '📦 Kho', color: 'orange', commissionLabel: 'đ/Đơn', unitLabel: 'Số đơn' },
+      other: { name: '👤 Khác', color: 'gray', commissionLabel: 'đ/Đơn vị', unitLabel: 'Số lượng' }
     };
 
+    // Chuyển allUsers thành employees với salary config
+    const employees = useMemo(() => {
+      return allUsers.map(user => {
+        const config = salaryConfigs.find(c => c.user_id === user.id) || {};
+        return {
+          id: user.id,
+          name: user.name,
+          phone: user.phone || '',
+          department: mapTeamToDepartment(user.team),
+          team: user.team,
+          role: user.role,
+          base_salary: config.base_salary || 0,
+          commission_rate: config.commission_rate || 0,
+          bonus_per_unit: config.bonus_per_unit || 0,
+          status: 'active'
+        };
+      });
+    }, [allUsers, salaryConfigs]);
+
     useEffect(() => {
-      loadEmployees();
+      loadSalaryConfigs();
       loadMonthlySalaries();
     }, [selectedMonth, selectedYear]);
 
-    const loadEmployees = async () => {
+    const loadSalaryConfigs = async () => {
       try {
-        const { data, error } = await supabase.from('employees').select('*').order('department');
+        const { data, error } = await supabase.from('salary_configs').select('*');
         if (error) throw error;
-        setEmployees(data || []);
+        setSalaryConfigs(data || []);
       } catch (error) {
-        console.log('Load employees:', error.message);
+        console.log('Load salary configs:', error.message);
       }
     };
 
@@ -7711,40 +7738,43 @@ export default function SimpleMarketingSystem() {
       }
     };
 
-    const handleAddEmployee = async () => {
-      if (!formName || !formBaseSalary) {
-        alert('Vui lòng nhập tên và lương cơ bản!');
-        return;
-      }
+    const openEditSalaryConfig = (employee) => {
+      setSelectedEmployee(employee);
+      setConfigBaseSalary(employee.base_salary?.toString() || '');
+      setConfigCommissionRate(employee.commission_rate?.toString() || '');
+      setConfigBonusPerUnit(employee.bonus_per_unit?.toString() || '');
+      setShowEditSalaryConfigModal(true);
+    };
+
+    const handleSaveSalaryConfig = async () => {
+      if (!selectedEmployee) return;
       try {
-        const { error } = await supabase.from('employees').insert([{
-          name: formName,
-          phone: formPhone,
-          department: formDepartment,
-          base_salary: parseFloat(formBaseSalary),
-          commission_rate: parseFloat(formCommissionRate) || 0,
-          bonus_per_unit: parseFloat(formBonusPerUnit) || 0,
-          status: 'active',
-          created_by: currentUser.name,
-          created_at: new Date().toISOString()
-        }]);
-        if (error) throw error;
-        alert('Thêm nhân viên thành công!');
-        setShowAddEmployeeModal(false);
-        resetEmployeeForm();
-        loadEmployees();
+        const configData = {
+          user_id: selectedEmployee.id,
+          user_name: selectedEmployee.name,
+          department: selectedEmployee.department,
+          base_salary: parseFloat(configBaseSalary) || 0,
+          commission_rate: parseFloat(configCommissionRate) || 0,
+          bonus_per_unit: parseFloat(configBonusPerUnit) || 0,
+          updated_at: new Date().toISOString()
+        };
+
+        // Upsert - update nếu tồn tại, insert nếu chưa có
+        const existing = salaryConfigs.find(c => c.user_id === selectedEmployee.id);
+        if (existing) {
+          const { error } = await supabase.from('salary_configs').update(configData).eq('user_id', selectedEmployee.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('salary_configs').insert([configData]);
+          if (error) throw error;
+        }
+
+        alert('Đã lưu cấu hình lương!');
+        setShowEditSalaryConfigModal(false);
+        loadSalaryConfigs();
       } catch (error) {
         alert('Lỗi: ' + error.message);
       }
-    };
-
-    const resetEmployeeForm = () => {
-      setFormName('');
-      setFormPhone('');
-      setFormDepartment('livestream');
-      setFormBaseSalary('');
-      setFormCommissionRate('');
-      setFormBonusPerUnit('');
     };
 
     const openCreateSalary = (employee) => {
@@ -7878,18 +7908,6 @@ export default function SimpleMarketingSystem() {
       }
     };
 
-    const handleDeleteEmployee = async (id) => {
-      if (!window.confirm('Xóa nhân viên này?')) return;
-      try {
-        const { error } = await supabase.from('employees').delete().eq('id', id);
-        if (error) throw error;
-        alert('Đã xóa!');
-        loadEmployees();
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
-      }
-    };
-
     const openSalaryDetail = (salary) => {
       setSelectedSalary(salary);
       setShowSalaryDetailModal(true);
@@ -7929,11 +7947,6 @@ export default function SimpleMarketingSystem() {
             <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
               {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
-            {canManageSalaries && (
-              <button onClick={() => setShowAddEmployeeModal(true)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
-                ➕ Thêm NV
-              </button>
-            )}
           </div>
         </div>
 
@@ -7980,25 +7993,30 @@ export default function SimpleMarketingSystem() {
                 <div className="divide-y max-h-[400px] overflow-y-auto">
                   {filteredEmployees.map(emp => {
                     const hasSalary = monthlySalaries.some(s => s.employee_id === emp.id);
+                    const hasConfig = emp.base_salary > 0;
                     return (
                       <div key={emp.id} className="p-4 hover:bg-gray-50">
                         <div className="flex justify-between items-start">
                           <div>
                             <div className="font-medium">{emp.name}</div>
-                            <div className="text-sm text-gray-500">{departments[emp.department]?.name}</div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
-                              {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
-                              {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ/{emp.department === 'media' ? 'video' : 'đơn'}</span>}
-                            </div>
+                            <div className="text-sm text-gray-500">{departments[emp.department]?.name || emp.team}</div>
+                            {hasConfig ? (
+                              <div className="text-xs text-gray-400 mt-1">
+                                Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
+                                {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
+                                {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ</span>}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-orange-500 mt-1">⚠️ Chưa cấu hình lương</div>
+                            )}
                           </div>
                           <div className="flex gap-2">
-                            {!hasSalary ? (
+                            <button onClick={() => openEditSalaryConfig(emp)} className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm">⚙️</button>
+                            {hasConfig && !hasSalary ? (
                               <button onClick={() => openCreateSalary(emp)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Tính lương</button>
-                            ) : (
+                            ) : hasSalary ? (
                               <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm">Đã tính</span>
-                            )}
-                            <button onClick={() => handleDeleteEmployee(emp.id)} className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-600 rounded text-sm">🗑️</button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -8044,51 +8062,41 @@ export default function SimpleMarketingSystem() {
           </div>
         </div>
 
-        {showAddEmployeeModal && (
+        {/* Modal Cấu hình lương */}
+        {showEditSalaryConfigModal && selectedEmployee && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl max-w-md w-full">
               <div className="p-6 border-b bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
                 <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-bold">➕ Thêm Nhân Viên</h2>
-                  <button onClick={() => setShowAddEmployeeModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
+                  <div>
+                    <h2 className="text-xl font-bold">⚙️ Cấu hình lương</h2>
+                    <p className="text-white/80">{selectedEmployee.name} - {selectedEmployee.team || departments[selectedEmployee.department]?.name}</p>
+                  </div>
+                  <button onClick={() => setShowEditSalaryConfigModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
                 </div>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Họ tên *</label>
-                  <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nguyễn Văn A" className="w-full px-4 py-3 border-2 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Số điện thoại</label>
-                  <input type="text" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="0912345678" className="w-full px-4 py-3 border-2 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Bộ phận *</label>
-                  <select value={formDepartment} onChange={(e) => setFormDepartment(e.target.value)} className="w-full px-4 py-3 border-2 rounded-lg">
-                    <option value="livestream">🎥 Livestream</option>
-                    <option value="media">🎬 Media</option>
-                    <option value="warehouse">📦 Kho</option>
-                  </select>
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-2">Lương cơ bản (VNĐ) *</label>
-                  <input type="number" value={formBaseSalary} onChange={(e) => setFormBaseSalary(e.target.value)} placeholder="5000000" className="w-full px-4 py-3 border-2 rounded-lg" />
+                  <input type="number" value={configBaseSalary} onChange={(e) => setConfigBaseSalary(e.target.value)} placeholder="5000000" className="w-full px-4 py-3 border-2 rounded-lg" />
                 </div>
-                {formDepartment === 'livestream' ? (
+                {selectedEmployee.department === 'livestream' ? (
                   <div>
                     <label className="block text-sm font-medium mb-2">% Hoa hồng doanh số</label>
-                    <input type="number" value={formCommissionRate} onChange={(e) => setFormCommissionRate(e.target.value)} placeholder="2" className="w-full px-4 py-3 border-2 rounded-lg" />
+                    <input type="number" value={configCommissionRate} onChange={(e) => setConfigCommissionRate(e.target.value)} placeholder="2" className="w-full px-4 py-3 border-2 rounded-lg" />
+                    <p className="text-xs text-gray-500 mt-1">Ví dụ: 2 = 2% doanh số</p>
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-sm font-medium mb-2">Thưởng mỗi {formDepartment === 'media' ? 'video' : 'đơn hàng'} (VNĐ)</label>
-                    <input type="number" value={formBonusPerUnit} onChange={(e) => setFormBonusPerUnit(e.target.value)} placeholder="50000" className="w-full px-4 py-3 border-2 rounded-lg" />
+                    <label className="block text-sm font-medium mb-2">Thưởng mỗi {selectedEmployee.department === 'media' ? 'video' : 'đơn vị'} (VNĐ)</label>
+                    <input type="number" value={configBonusPerUnit} onChange={(e) => setConfigBonusPerUnit(e.target.value)} placeholder="50000" className="w-full px-4 py-3 border-2 rounded-lg" />
+                    <p className="text-xs text-gray-500 mt-1">Ví dụ: 50000 = 50.000đ mỗi {selectedEmployee.department === 'media' ? 'video' : 'đơn vị'}</p>
                   </div>
                 )}
               </div>
               <div className="p-6 border-t bg-gray-50 flex gap-3">
-                <button onClick={() => setShowAddEmployeeModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
-                <button onClick={handleAddEmployee} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✅ Thêm</button>
+                <button onClick={() => setShowEditSalaryConfigModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
+                <button onClick={handleSaveSalaryConfig} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">💾 Lưu</button>
               </div>
             </div>
           </div>
