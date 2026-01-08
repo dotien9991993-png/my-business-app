@@ -2,8 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from './supabaseClient';
 
-// ============ VIETNAM TIMEZONE HELPERS ============
-// Lấy ngày giờ hiện tại theo múi giờ Việt Nam (UTC+7)
+// ============ VIETNAM TIMEZONE HELPERS (UTC+7) ============
+// Lấy ngày giờ hiện tại theo múi giờ Việt Nam
 const getVietnamDate = () => {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
 };
@@ -14,13 +14,32 @@ const getTodayVN = () => {
   return vn.getFullYear() + '-' + String(vn.getMonth() + 1).padStart(2, '0') + '-' + String(vn.getDate()).padStart(2, '0');
 };
 
-// Lấy datetime hiện tại theo ISO format nhưng với múi giờ VN
-const getNowVN = () => {
+// Lấy datetime hiện tại theo ISO format với múi giờ VN (để lưu DB)
+const getNowISOVN = () => {
+  // Tạo ISO string với timezone +07:00
   const vn = getVietnamDate();
-  return vn.toISOString();
+  const year = vn.getFullYear();
+  const month = String(vn.getMonth() + 1).padStart(2, '0');
+  const day = String(vn.getDate()).padStart(2, '0');
+  const hours = String(vn.getHours()).padStart(2, '0');
+  const minutes = String(vn.getMinutes()).padStart(2, '0');
+  const seconds = String(vn.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+07:00`;
 };
 
-// Format datetime cho hiển thị
+// Lấy datetime string ngắn gọn (cho hiển thị)
+const getNowStringVN = () => {
+  const vn = getVietnamDate();
+  return vn.toLocaleString('vi-VN');
+};
+
+// Lấy date string YYYYMMDD cho generate số phiếu
+const getDateStrVN = () => {
+  const vn = getVietnamDate();
+  return vn.getFullYear().toString() + String(vn.getMonth() + 1).padStart(2, '0') + String(vn.getDate()).padStart(2, '0');
+};
+
+// Format datetime cho hiển thị (từ DB)
 const formatDateTimeVN = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -521,7 +540,7 @@ export default function SimpleMarketingSystem() {
           title: '📋 Video mới',
           message: `${currentUser.name} đã giao task cho bạn: "${title}"`,
           read: false,
-          createdAt: new Date().toISOString()
+          createdAt: getNowISOVN()
         });
       }
       
@@ -569,7 +588,7 @@ export default function SimpleMarketingSystem() {
             title: '🔧 Công việc mới',
             message: `${currentUser.name} đã giao công việc: "${jobData.title}"`,
             read: false,
-            createdAt: new Date().toISOString()
+            createdAt: getNowISOVN()
           });
         }
       });
@@ -613,8 +632,7 @@ export default function SimpleMarketingSystem() {
     
     try {
       const task = tasks.find(t => t.id === taskId);
-      const now = new Date();
-      const timeStr = now.toISOString().slice(0, 16).replace('T', ' ');
+      const timeStr = getNowStringVN();
       
       const newComments = [...(task.comments || []), { 
         user: currentUser.name, 
@@ -643,7 +661,7 @@ export default function SimpleMarketingSystem() {
           title: '💬 Comment mới',
           message: `${currentUser.name} đã comment vào task "${task.title}"`,
           read: false,
-          createdAt: new Date().toISOString()
+          createdAt: getNowISOVN()
         });
       }
     } catch (error) {
@@ -657,8 +675,7 @@ export default function SimpleMarketingSystem() {
     
     try {
       const task = tasks.find(t => t.id === taskId);
-      const now = new Date();
-      const timeStr = now.toISOString().slice(0, 16).replace('T', ' ');
+      const timeStr = getNowStringVN();
       
       const newLink = {
         url,
@@ -715,17 +732,23 @@ export default function SimpleMarketingSystem() {
       setLoading(true);
       const assignee = allUsers.find(u => u.team === template.team)?.name || currentUser.name;
       
-      const newTasks = template.tasks.map((title, i) => ({
-        title,
-        assignee,
-        team: template.team,
-        status: 'Nháp',
-        due_date: new Date(Date.now() + (i + 1) * 86400000).toISOString().split('T')[0],
-        platform: 'Campaign',
-        is_overdue: false,
-        comments: [],
-        post_links: []
-      }));
+      const newTasks = template.tasks.map((title, i) => {
+        // Tính ngày theo VN timezone
+        const vn = getVietnamDate();
+        vn.setDate(vn.getDate() + i + 1);
+        const dueDate = vn.getFullYear() + '-' + String(vn.getMonth() + 1).padStart(2, '0') + '-' + String(vn.getDate()).padStart(2, '0');
+        return {
+          title,
+          assignee,
+          team: template.team,
+          status: 'Nháp',
+          due_date: dueDate,
+          platform: 'Campaign',
+          is_overdue: false,
+          comments: [],
+          post_links: []
+        };
+      });
       
       const { error } = await supabase
         .from('tasks')
@@ -859,7 +882,7 @@ export default function SimpleMarketingSystem() {
             title: '⏰ Sắp đến deadline',
             message: `Task "${task.title}" sẽ đến hạn trong ${Math.floor(diffHours)} giờ`,
             read: false,
-            createdAt: new Date().toISOString()
+            createdAt: getNowISOVN()
           });
         }
       }
@@ -1385,7 +1408,7 @@ export default function SimpleMarketingSystem() {
               title: '🔧 Công việc mới',
               message: `Bạn được gán vào công việc: "${selectedJob.title}"`,
               read: false,
-              createdAt: new Date().toISOString()
+              createdAt: getNowISOVN()
             });
           }
         });
@@ -3448,11 +3471,11 @@ export default function SimpleMarketingSystem() {
 
     const calculateWeeklyTrend = () => {
       const days = [];
-      const now = new Date();
+      const now = getVietnamDate();
       for (let i = 6; i >= 0; i--) {
         const date = new Date(now);
         date.setDate(date.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
         const completedCount = tasks.filter(t => {
           if (currentUser.role !== 'Admin' && currentUser.role !== 'Manager' && t.assignee !== currentUser.name) return false;
           return t.status === 'Hoàn Thành';
@@ -3885,7 +3908,7 @@ export default function SimpleMarketingSystem() {
             title: '📋 Video được chuyển giao',
             message: `${currentUser.name} đã chuyển video "${selectedTask.title}" cho bạn`,
             read: false,
-            createdAt: new Date().toISOString()
+            createdAt: getNowISOVN()
           });
         }
 
@@ -4482,7 +4505,7 @@ export default function SimpleMarketingSystem() {
           max_stock: formMaxStock ? parseInt(formMaxStock) : null,
           location: formLocation, description: formDescription,
           brand: formBrand, warranty_months: formWarranty ? parseInt(formWarranty) : null,
-          updated_at: new Date().toISOString()
+          updated_at: getNowISOVN()
         }).eq('id', selectedProduct.id);
         if (error) throw error;
         alert('✅ Cập nhật thành công!');
@@ -4500,7 +4523,7 @@ export default function SimpleMarketingSystem() {
         else if (adjustType === 'set') newQuantity = qty;
 
         await supabase.from('products').update({
-          stock_quantity: newQuantity, updated_at: new Date().toISOString()
+          stock_quantity: newQuantity, updated_at: getNowISOVN()
         }).eq('id', selectedProduct.id);
 
         await supabase.from('stock_transactions').insert([{
@@ -5004,7 +5027,7 @@ export default function SimpleMarketingSystem() {
     };
 
     const generateTransactionNumber = () => {
-      const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+      const dateStr = getDateStrVN();
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       return `PN-${dateStr}-${random}`;
     };
@@ -5084,7 +5107,7 @@ export default function SimpleMarketingSystem() {
           if (product) {
             await supabase.from('products').update({
               stock_quantity: product.stock_quantity + parseInt(item.quantity),
-              updated_at: new Date().toISOString()
+              updated_at: getNowISOVN()
             }).eq('id', item.product_id);
           }
         }
@@ -5095,7 +5118,7 @@ export default function SimpleMarketingSystem() {
         const totalAmount = calculateTotal();
         if (totalAmount > 0 && window.confirm(`Bạn có muốn tạo phiếu chi ${totalAmount.toLocaleString('vi-VN')}đ cho giao dịch nhập kho này không?`)) {
           try {
-            const receiptNumber = 'PC-' + new Date().getFullYear() + String(new Date().getMonth() + 1).padStart(2, '0') + String(new Date().getDate()).padStart(2, '0') + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            const receiptNumber = 'PC-' + getDateStrVN() + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
             await supabase.from('receipts_payments').insert([{
               tenant_id: tenant.id,
               receipt_number: receiptNumber,
@@ -5107,7 +5130,7 @@ export default function SimpleMarketingSystem() {
               note: formNote || `Liên kết phiếu nhập kho: ${transactionNumber}`,
               status: 'pending',
               created_by: currentUser.name,
-              created_at: new Date().toISOString()
+              created_at: getNowISOVN()
             }]);
             alert('✅ Đã tạo phiếu chi chờ duyệt!');
           } catch (err) {
@@ -5457,7 +5480,7 @@ export default function SimpleMarketingSystem() {
     };
 
     const generateTransactionNumber = () => {
-      const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+      const dateStr = getDateStrVN();
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       return `PX-${dateStr}-${random}`;
     };
@@ -5546,7 +5569,7 @@ export default function SimpleMarketingSystem() {
           if (product) {
             await supabase.from('products').update({
               stock_quantity: product.stock_quantity - parseInt(item.quantity),
-              updated_at: new Date().toISOString()
+              updated_at: getNowISOVN()
             }).eq('id', item.product_id);
           }
         }
@@ -5557,7 +5580,7 @@ export default function SimpleMarketingSystem() {
         const totalAmount = calculateTotal();
         if (totalAmount > 0 && window.confirm(`Bạn có muốn tạo phiếu thu ${totalAmount.toLocaleString('vi-VN')}đ cho giao dịch xuất kho này không?`)) {
           try {
-            const receiptNumber = 'PT-' + new Date().getFullYear() + String(new Date().getMonth() + 1).padStart(2, '0') + String(new Date().getDate()).padStart(2, '0') + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            const receiptNumber = 'PT-' + getDateStrVN() + '-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0');
             await supabase.from('receipts_payments').insert([{
               tenant_id: tenant.id,
               receipt_number: receiptNumber,
@@ -5569,7 +5592,7 @@ export default function SimpleMarketingSystem() {
               note: formNote || `Liên kết phiếu xuất kho: ${transactionNumber}`,
               status: 'pending',
               created_by: currentUser.name,
-              created_at: new Date().toISOString()
+              created_at: getNowISOVN()
             }]);
             alert('✅ Đã tạo phiếu thu chờ duyệt!');
           } catch (err) {
@@ -6707,8 +6730,7 @@ export default function SimpleMarketingSystem() {
 
     const generateReceiptNumber = (type) => {
       const prefix = type === 'thu' ? 'PT' : 'PC';
-      const date = new Date();
-      const dateStr = date.getFullYear().toString() + String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0');
+      const dateStr = getDateStrVN();
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       return prefix + '-' + dateStr + '-' + random;
     };
@@ -6749,7 +6771,7 @@ export default function SimpleMarketingSystem() {
         note: formNote,
         status: 'pending',
         created_by: currentUser.name,
-        created_at: new Date().toISOString()
+        created_at: getNowISOVN()
       };
       try {
         const { error } = await supabase.from('receipts_payments').insert([newReceipt]);
@@ -6791,7 +6813,7 @@ export default function SimpleMarketingSystem() {
         const { error } = await supabase.from('receipts_payments').update({ 
           status: 'approved',
           approved_by: currentUser.name,
-          approved_at: new Date().toISOString()
+          approved_at: getNowISOVN()
         }).eq('id', id);
         if (error) throw error;
         alert('Đã duyệt!');
@@ -6807,7 +6829,7 @@ export default function SimpleMarketingSystem() {
         const { error } = await supabase.from('receipts_payments').update({ 
           status: 'rejected',
           approved_by: currentUser.name,
-          approved_at: new Date().toISOString()
+          approved_at: getNowISOVN()
         }).eq('id', id);
         if (error) throw error;
         alert('Đã từ chối!');
@@ -7203,8 +7225,7 @@ export default function SimpleMarketingSystem() {
 
     const generateDebtNumber = (type) => {
       const prefix = type === 'receivable' ? 'PT' : 'PTR';
-      const date = new Date();
-      const dateStr = date.getFullYear().toString() + String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0');
+      const dateStr = getDateStrVN();
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       return prefix + '-' + dateStr + '-' + random;
     };
@@ -7241,7 +7262,7 @@ export default function SimpleMarketingSystem() {
         note: formNote,
         status: 'pending',
         created_by: currentUser.name,
-        created_at: new Date().toISOString(),
+        created_at: getNowISOVN(),
         payments: []
       };
       try {
@@ -7273,7 +7294,7 @@ export default function SimpleMarketingSystem() {
       
       const newPayment = {
         amount: amount,
-        date: new Date().toISOString(),
+        date: getNowISOVN(),
         note: paymentNote,
         recorded_by: currentUser.name
       };
@@ -7292,7 +7313,7 @@ export default function SimpleMarketingSystem() {
         // Tự động tạo phiếu thu/chi
         const receiptType = selectedDebt.type === 'receivable' ? 'thu' : 'chi';
         const receiptPrefix = receiptType === 'thu' ? 'PT' : 'PC';
-        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+        const dateStr = getNowISOVN().slice(0,10).replace(/-/g, '');
         const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
         const receiptNumber = receiptPrefix + '-' + dateStr + '-' + randomNum;
 
@@ -7308,7 +7329,7 @@ export default function SimpleMarketingSystem() {
           status: 'approved',
           created_by: currentUser.name,
           approved_by: currentUser.name,
-          approved_at: new Date().toISOString()
+          approved_at: getNowISOVN()
         };
 
         await supabase.from('receipts_payments').insert([newReceipt]);
@@ -7649,9 +7670,10 @@ export default function SimpleMarketingSystem() {
   }
 
   function SalariesView() {
+    const vnDate = getVietnamDate();
     const [activeTab, setActiveTab] = useState('all');
-    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [selectedMonth, setSelectedMonth] = useState(vnDate.getMonth() + 1);
+    const [selectedYear, setSelectedYear] = useState(vnDate.getFullYear());
     const [showSalaryDetailModal, setShowSalaryDetailModal] = useState(false);
     const [showCreateSalaryModal, setShowCreateSalaryModal] = useState(false);
     const [showEditSalaryConfigModal, setShowEditSalaryConfigModal] = useState(false);
@@ -7756,7 +7778,7 @@ export default function SimpleMarketingSystem() {
           base_salary: parseFloat(configBaseSalary) || 0,
           commission_rate: parseFloat(configCommissionRate) || 0,
           bonus_per_unit: parseFloat(configBonusPerUnit) || 0,
-          updated_at: new Date().toISOString()
+          updated_at: getNowISOVN()
         };
 
         // Upsert - update nếu tồn tại, insert nếu chưa có
@@ -7829,7 +7851,7 @@ export default function SimpleMarketingSystem() {
           note: salaryNote,
           status: 'pending',
           created_by: currentUser.name,
-          created_at: new Date().toISOString()
+          created_at: getNowISOVN()
         }]);
         if (error) throw error;
         alert('Tạo bảng lương thành công!');
@@ -7845,7 +7867,7 @@ export default function SimpleMarketingSystem() {
         const { error } = await supabase.from('salaries').update({
           status: 'approved',
           approved_by: currentUser.name,
-          approved_at: new Date().toISOString()
+          approved_at: getNowISOVN()
         }).eq('id', salary.id);
         if (error) throw error;
         alert('Đã duyệt bảng lương!');
@@ -7863,12 +7885,12 @@ export default function SimpleMarketingSystem() {
         const { error } = await supabase.from('salaries').update({
           status: 'paid',
           paid_by: currentUser.name,
-          paid_at: new Date().toISOString()
+          paid_at: getNowISOVN()
         }).eq('id', salary.id);
         if (error) throw error;
 
         // Tạo phiếu chi
-        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+        const dateStr = getNowISOVN().slice(0,10).replace(/-/g, '');
         const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
         await supabase.from('receipts_payments').insert([{
           tenant_id: tenant.id,
@@ -7882,8 +7904,8 @@ export default function SimpleMarketingSystem() {
           status: 'approved',
           created_by: currentUser.name,
           approved_by: currentUser.name,
-          approved_at: new Date().toISOString(),
-          created_at: new Date().toISOString()
+          approved_at: getNowISOVN(),
+          created_at: getNowISOVN()
         }]);
 
         alert('Đã trả lương và tạo phiếu chi!');
