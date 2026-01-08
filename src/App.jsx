@@ -240,6 +240,23 @@ export default function SimpleMarketingSystem() {
     return false;
   };
 
+  // Check if user can access a specific tab in a module
+  const canAccessTab = (module, tabId) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
+    
+    // Kiểm tra có quyền module không
+    const moduleLevel = currentUser.permissions?.[module] || 0;
+    if (moduleLevel === 0) return false;
+    
+    // Nếu không có allowed_tabs hoặc allowed_tabs rỗng cho module này -> cho xem tất cả
+    const allowedTabs = currentUser.allowed_tabs?.[module];
+    if (!allowedTabs || allowedTabs.length === 0) return true;
+    
+    // Kiểm tra tab có trong danh sách cho phép không
+    return allowedTabs.includes(tabId);
+  };
+
   const [templates] = useState([
     { id: 1, name: 'Facebook Ads Campaign', tasks: ['Thiết kế creative', 'Viết copy', 'Setup ads', 'Launch'], team: 'Performance' },
     { id: 2, name: 'Blog Weekly', tasks: ['Research', 'Viết bài', 'Thiết kế ảnh', 'SEO', 'Đăng bài'], team: 'Content' },
@@ -8356,6 +8373,34 @@ export default function SimpleMarketingSystem() {
       { id: 'finance', name: '💰 Tài chính', desc: 'Thu chi, công nợ, lương' }
     ];
 
+    // Định nghĩa các tabs trong từng module
+    const moduleTabs = {
+      media: [
+        { id: 'videos', name: '📹 Quản lý Video', desc: 'Danh sách video, task' },
+        { id: 'calendar', name: '📅 Lịch', desc: 'Lịch deadline' },
+        { id: 'report', name: '📊 Báo cáo', desc: 'Thống kê, báo cáo' }
+      ],
+      warehouse: [
+        { id: 'products', name: '📦 Sản phẩm', desc: 'Danh sách sản phẩm' },
+        { id: 'import', name: '📥 Nhập kho', desc: 'Phiếu nhập hàng' },
+        { id: 'export', name: '📤 Xuất kho', desc: 'Phiếu xuất hàng' },
+        { id: 'inventory', name: '📋 Tồn kho', desc: 'Báo cáo tồn kho' }
+      ],
+      finance: [
+        { id: 'overview', name: '📊 Tổng quan', desc: 'Dashboard tài chính' },
+        { id: 'receipts', name: '🧾 Thu/Chi', desc: 'Phiếu thu, phiếu chi' },
+        { id: 'debts', name: '📋 Công nợ', desc: 'Quản lý công nợ' },
+        { id: 'salaries', name: '💰 Lương', desc: 'Tính lương nhân viên' },
+        { id: 'reports', name: '📈 Báo cáo', desc: 'Báo cáo tài chính' }
+      ],
+      technical: [
+        { id: 'jobs', name: '🔧 Công việc', desc: 'Danh sách lắp đặt/sửa chữa' }
+      ],
+      sale: [
+        { id: 'orders', name: '🛒 Đơn hàng', desc: 'Quản lý đơn hàng' }
+      ]
+    };
+
     const permissionLevels = [
       { value: 0, label: 'Không có quyền', desc: 'Ẩn hoàn toàn module', color: 'gray' },
       { value: 1, label: 'Xem của mình', desc: 'Xem dữ liệu mình tạo/được gán', color: 'yellow' },
@@ -8385,13 +8430,24 @@ export default function SimpleMarketingSystem() {
     // User Detail Modal - CHỈ LƯU KHI NHẤN NÚT LƯU
     const UserPermissionDetail = ({ user, onClose }) => {
       const [localPerms, setLocalPerms] = useState(user.permissions || {});
+      const [localTabs, setLocalTabs] = useState(user.allowed_tabs || {});
       const [hasChanges, setHasChanges] = useState(false);
+      const [expandedDept, setExpandedDept] = useState(null);
       const isAdmin = user.role === 'Admin' || user.role === 'admin';
 
       const handleToggleDept = (deptId) => {
         if (isAdmin) return;
         const current = localPerms[deptId] || 0;
-        setLocalPerms(prev => ({ ...prev, [deptId]: current > 0 ? 0 : 1 }));
+        if (current > 0) {
+          // Tắt department -> xóa tabs
+          setLocalPerms(prev => ({ ...prev, [deptId]: 0 }));
+          setLocalTabs(prev => ({ ...prev, [deptId]: [] }));
+        } else {
+          // Bật department -> cho tất cả tabs
+          setLocalPerms(prev => ({ ...prev, [deptId]: 1 }));
+          const allTabs = (moduleTabs[deptId] || []).map(t => t.id);
+          setLocalTabs(prev => ({ ...prev, [deptId]: allTabs }));
+        }
         setHasChanges(true);
       };
 
@@ -8401,12 +8457,47 @@ export default function SimpleMarketingSystem() {
         setHasChanges(true);
       };
 
+      const handleToggleTab = (deptId, tabId) => {
+        if (isAdmin) return;
+        const currentTabs = localTabs[deptId] || [];
+        const allDeptTabs = (moduleTabs[deptId] || []).map(t => t.id);
+        
+        if (currentTabs.includes(tabId)) {
+          // Bỏ tab này
+          const newTabs = currentTabs.filter(t => t !== tabId);
+          setLocalTabs(prev => ({ ...prev, [deptId]: newTabs }));
+        } else {
+          // Thêm tab này
+          setLocalTabs(prev => ({ ...prev, [deptId]: [...currentTabs, tabId] }));
+        }
+        setHasChanges(true);
+      };
+
+      const handleSelectAllTabs = (deptId) => {
+        if (isAdmin) return;
+        const allTabs = (moduleTabs[deptId] || []).map(t => t.id);
+        const currentTabs = localTabs[deptId] || [];
+        const allSelected = allTabs.every(t => currentTabs.includes(t));
+        
+        if (allSelected) {
+          setLocalTabs(prev => ({ ...prev, [deptId]: [] }));
+        } else {
+          setLocalTabs(prev => ({ ...prev, [deptId]: allTabs }));
+        }
+        setHasChanges(true);
+      };
+
       const selectAllDepts = () => {
         if (isAdmin) return;
         const allEnabled = departments.every(d => localPerms[d.id] > 0);
         const newPerms = {};
-        departments.forEach(d => { newPerms[d.id] = allEnabled ? 0 : 1; });
+        const newTabs = {};
+        departments.forEach(d => { 
+          newPerms[d.id] = allEnabled ? 0 : 1;
+          newTabs[d.id] = allEnabled ? [] : (moduleTabs[d.id] || []).map(t => t.id);
+        });
         setLocalPerms(newPerms);
+        setLocalTabs(newTabs);
         setHasChanges(true);
       };
 
@@ -8415,7 +8506,10 @@ export default function SimpleMarketingSystem() {
           setSaving(true);
           const { error } = await supabase
             .from('users')
-            .update({ permissions: localPerms })
+            .update({ 
+              permissions: localPerms,
+              allowed_tabs: localTabs 
+            })
             .eq('id', user.id);
           if (error) throw error;
           await loadUsers();
@@ -8478,6 +8572,9 @@ export default function SimpleMarketingSystem() {
                   {departments.map(dept => {
                     const level = localPerms[dept.id] || 0;
                     const isEnabled = level > 0;
+                    const deptTabs = moduleTabs[dept.id] || [];
+                    const enabledTabs = localTabs[dept.id] || [];
+                    const isExpanded = expandedDept === dept.id;
 
                     return (
                       <div key={dept.id} className={`border-2 rounded-xl overflow-hidden transition-all ${isEnabled ? 'border-blue-400 shadow-sm' : 'border-gray-200'}`}>
@@ -8494,37 +8591,94 @@ export default function SimpleMarketingSystem() {
                               <div className="text-xs text-gray-500">{dept.desc}</div>
                             </div>
                           </div>
-                          {isEnabled && (
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${getLevelColor(level)}`}>
-                              {permissionLevels.find(p => p.value === level)?.label}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {isEnabled && (
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${getLevelColor(level)}`}>
+                                {permissionLevels.find(p => p.value === level)?.label}
+                              </span>
+                            )}
+                            {isEnabled && deptTabs.length > 0 && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setExpandedDept(isExpanded ? null : dept.id); }}
+                                className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                              >
+                                {isExpanded ? '▲' : '▼'} Chi tiết
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {isEnabled && (
-                          <div className="px-4 pb-4 pt-3 bg-white border-t">
-                            <div className="text-xs text-gray-500 mb-3 font-medium">⚡ Chọn cấp quyền:</div>
-                            <div className="grid grid-cols-3 gap-2">
-                              {permissionLevels.filter(p => p.value > 0).map(p => (
-                                <button 
-                                  key={p.value}
-                                  onClick={(e) => { e.stopPropagation(); handleLevelChange(dept.id, p.value); }}
-                                  className={`p-3 rounded-xl border-2 text-left transition-all ${
-                                    level === p.value 
-                                      ? getLevelColor(p.value) + ' border-2 shadow-sm' 
-                                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${level === p.value ? 'border-current bg-current' : 'border-gray-300'}`}>
-                                      {level === p.value && <span className="text-white text-xs">•</span>}
+                          <div className="px-4 pb-4 pt-3 bg-white border-t space-y-4">
+                            {/* Chọn cấp quyền */}
+                            <div>
+                              <div className="text-xs text-gray-500 mb-2 font-medium">⚡ Chọn cấp quyền:</div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {permissionLevels.filter(p => p.value > 0).map(p => (
+                                  <button 
+                                    key={p.value}
+                                    onClick={(e) => { e.stopPropagation(); handleLevelChange(dept.id, p.value); }}
+                                    className={`p-2 rounded-lg border-2 text-left transition-all ${
+                                      level === p.value 
+                                        ? getLevelColor(p.value) + ' border-2 shadow-sm' 
+                                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center ${level === p.value ? 'border-current bg-current' : 'border-gray-300'}`}>
+                                        {level === p.value && <span className="text-white text-xs">•</span>}
+                                      </div>
+                                      <span className="font-bold text-xs">{p.label}</span>
                                     </div>
-                                    <span className="font-bold text-sm">{p.label}</span>
-                                  </div>
-                                  <div className="text-xs text-gray-500 ml-6">{p.desc}</div>
-                                </button>
-                              ))}
+                                    <div className="text-xs text-gray-500 ml-5 mt-0.5">{p.desc}</div>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
+
+                            {/* Chọn tabs chi tiết */}
+                            {deptTabs.length > 0 && isExpanded && (
+                              <div className="border-t pt-3">
+                                <div className="flex justify-between items-center mb-2">
+                                  <div className="text-xs text-gray-500 font-medium">📑 Chọn mục được xem:</div>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleSelectAllTabs(dept.id); }}
+                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                  >
+                                    {deptTabs.every(t => enabledTabs.includes(t.id)) ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {deptTabs.map(tab => {
+                                    const isTabEnabled = enabledTabs.includes(tab.id);
+                                    return (
+                                      <button
+                                        key={tab.id}
+                                        onClick={(e) => { e.stopPropagation(); handleToggleTab(dept.id, tab.id); }}
+                                        className={`p-2 rounded-lg border-2 text-left transition-all ${
+                                          isTabEnabled 
+                                            ? 'bg-green-50 border-green-400 text-green-700' 
+                                            : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center text-xs ${
+                                            isTabEnabled ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'
+                                          }`}>
+                                            {isTabEnabled && '✓'}
+                                          </div>
+                                          <span className="font-medium text-sm">{tab.name}</span>
+                                        </div>
+                                        <div className="text-xs text-gray-400 ml-6">{tab.desc}</div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {enabledTabs.length === 0 && (
+                                  <div className="text-xs text-orange-500 mt-2">⚠️ Chưa chọn mục nào - User sẽ không thấy nội dung</div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
