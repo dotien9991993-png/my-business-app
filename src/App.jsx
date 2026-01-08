@@ -1393,8 +1393,79 @@ export default function SimpleMarketingSystem() {
   const JobDetailModal = () => {
     const [showReassignModal, setShowReassignModal] = useState(false);
     const [newTechnicians, setNewTechnicians] = useState([]);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editTitle, setEditTitle] = useState('');
+    const [editCustomerName, setEditCustomerName] = useState('');
+    const [editCustomerPhone, setEditCustomerPhone] = useState('');
+    const [editAddress, setEditAddress] = useState('');
+    const [editEquipment, setEditEquipment] = useState('');
+    const [editScheduledDate, setEditScheduledDate] = useState('');
+    const [editScheduledTime, setEditScheduledTime] = useState('');
+    const [editPayment, setEditPayment] = useState('');
 
     if (!selectedJob) return null;
+
+    // Kiểm tra quyền sửa/xóa
+    const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'admin';
+    const isCreator = selectedJob.createdBy === currentUser.name;
+    const isLocked = selectedJob.status === 'Hoàn thành' || selectedJob.status === 'Hủy';
+    const canEdit = !isLocked && (isAdmin || isCreator);
+    const canDelete = !isLocked && (isAdmin || isCreator);
+
+    const openEditMode = () => {
+      setEditTitle(selectedJob.title || '');
+      setEditCustomerName(selectedJob.customerName || '');
+      setEditCustomerPhone(selectedJob.customerPhone || '');
+      setEditAddress(selectedJob.address || '');
+      setEditEquipment(selectedJob.equipment ? selectedJob.equipment.join('\n') : '');
+      setEditScheduledDate(selectedJob.scheduledDate || '');
+      setEditScheduledTime(selectedJob.scheduledTime || '');
+      setEditPayment(selectedJob.customerPayment || '');
+      setIsEditing(true);
+    };
+
+    const saveEditJob = async () => {
+      if (!editTitle || !editCustomerName) {
+        alert('⚠️ Vui lòng nhập tiêu đề và tên khách hàng!');
+        return;
+      }
+      try {
+        const equipmentArray = editEquipment.split('\n').filter(e => e.trim());
+        const { error } = await supabase
+          .from('technical_jobs')
+          .update({
+            title: editTitle,
+            customer_name: editCustomerName,
+            customer_phone: editCustomerPhone,
+            address: editAddress,
+            equipment: equipmentArray,
+            scheduled_date: editScheduledDate,
+            scheduled_time: editScheduledTime,
+            customer_payment: parseFloat(editPayment) || 0,
+            updated_at: getNowISOVN()
+          })
+          .eq('id', selectedJob.id);
+
+        if (error) throw error;
+        alert('✅ Cập nhật thành công!');
+        setIsEditing(false);
+        await loadTechnicalJobs();
+        setSelectedJob({
+          ...selectedJob,
+          title: editTitle,
+          customerName: editCustomerName,
+          customerPhone: editCustomerPhone,
+          address: editAddress,
+          equipment: equipmentArray,
+          scheduledDate: editScheduledDate,
+          scheduledTime: editScheduledTime,
+          customerPayment: parseFloat(editPayment) || 0
+        });
+      } catch (error) {
+        console.error('Error updating job:', error);
+        alert('❌ Lỗi khi cập nhật: ' + error.message);
+      }
+    };
 
     const updateJobStatus = async (newStatus) => {
       // Block nếu status hiện tại đã lock
@@ -1520,135 +1591,270 @@ export default function SimpleMarketingSystem() {
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Customer Info */}
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h3 className="font-bold mb-3 text-lg">👤 Thông tin khách hàng</h3>
-              <div className="space-y-2 text-sm">
-                <div><strong>Tên:</strong> {selectedJob.customerName}</div>
-                <div><strong>Số điện thoại:</strong> {selectedJob.customerPhone}</div>
-                <div><strong>Địa chỉ:</strong> {selectedJob.address}</div>
-              </div>
-            </div>
+            {/* Form chỉnh sửa */}
+            {isEditing ? (
+              <div className="space-y-4">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
+                  ✏️ Đang chỉnh sửa - Nhấn "Lưu" để lưu thay đổi
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Tiêu đề *</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="Tiêu đề công việc"
+                  />
+                </div>
 
-            {/* Equipment */}
-            {selectedJob.equipment && selectedJob.equipment.length > 0 && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-bold mb-3 text-lg">🎤 Thiết bị</h3>
-                <ul className="list-disc list-inside space-y-1 text-sm">
-                  {selectedJob.equipment.map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Schedule */}
-            <div className="bg-orange-50 p-4 rounded-lg">
-              <h3 className="font-bold mb-3 text-lg">📅 Lịch hẹn</h3>
-              <div className="space-y-2 text-sm">
-                {selectedJob.createdBy && (
+                <div className="bg-blue-50 p-4 rounded-lg space-y-3">
+                  <h3 className="font-bold text-blue-800">👤 Thông tin khách hàng</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Tên khách *</label>
+                      <input
+                        type="text"
+                        value={editCustomerName}
+                        onChange={(e) => setEditCustomerName(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Số điện thoại</label>
+                      <input
+                        type="text"
+                        value={editCustomerPhone}
+                        onChange={(e) => setEditCustomerPhone(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg"
+                      />
+                    </div>
+                  </div>
                   <div>
-                    <strong>📝 Người tạo:</strong> {selectedJob.createdBy}
+                    <label className="block text-sm font-medium mb-1">Địa chỉ</label>
+                    <input
+                      type="text"
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <label className="block text-sm font-medium mb-1">🎤 Thiết bị (mỗi dòng 1 thiết bị)</label>
+                  <textarea
+                    value={editEquipment}
+                    onChange={(e) => setEditEquipment(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="Micro Shure SM58&#10;Loa JBL 12&#10;Amply 1000W"
+                  />
+                </div>
+
+                <div className="bg-orange-50 p-4 rounded-lg space-y-3">
+                  <h3 className="font-bold text-orange-800">📅 Lịch hẹn</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Ngày</label>
+                      <input
+                        type="date"
+                        value={editScheduledDate}
+                        onChange={(e) => setEditScheduledDate(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Giờ</label>
+                      <input
+                        type="time"
+                        value={editScheduledTime}
+                        onChange={(e) => setEditScheduledTime(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <label className="block text-sm font-medium mb-1">💰 Thu của khách (VNĐ)</label>
+                  <input
+                    type="number"
+                    value={editPayment}
+                    onChange={(e) => setEditPayment(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Customer Info */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="font-bold mb-3 text-lg">👤 Thông tin khách hàng</h3>
+                  <div className="space-y-2 text-sm">
+                    <div><strong>Tên:</strong> {selectedJob.customerName}</div>
+                    <div><strong>Số điện thoại:</strong> {selectedJob.customerPhone}</div>
+                    <div><strong>Địa chỉ:</strong> {selectedJob.address}</div>
+                  </div>
+                </div>
+
+                {/* Equipment */}
+                {selectedJob.equipment && selectedJob.equipment.length > 0 && (
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h3 className="font-bold mb-3 text-lg">🎤 Thiết bị</h3>
+                    <ul className="list-disc list-inside space-y-1 text-sm">
+                      {selectedJob.equipment.map((item, idx) => (
+                        <li key={idx}>{item}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <strong>🔧 Kỹ thuật viên:</strong> {selectedJob.technicians ? selectedJob.technicians.join(', ') : selectedJob.technician}
-                  </div>
-                  {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.departments && currentUser.departments.includes('sales'))) && (
-                    <button
-                      onClick={() => {
-                        setNewTechnicians(selectedJob.technicians || []);
-                        setShowReassignModal(true);
-                      }}
-                      className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-medium"
-                    >
-                      ✏️ Thay Đổi
-                    </button>
-                  )}
-                </div>
-                <div><strong>Ngày:</strong> {selectedJob.scheduledDate}</div>
-                <div><strong>Giờ:</strong> {selectedJob.scheduledTime || 'Chưa xác định'}</div>
-              </div>
-            </div>
 
-            {/* Customer Payment */}
-            {selectedJob.customerPayment > 0 && (
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h3 className="font-bold mb-3 text-lg">💰 Thu của khách</h3>
-                <div className="text-sm">
-                  <div className="text-2xl font-bold text-green-700">
-                    {selectedJob.customerPayment.toLocaleString('vi-VN')} VNĐ
+                {/* Schedule */}
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h3 className="font-bold mb-3 text-lg">📅 Lịch hẹn</h3>
+                  <div className="space-y-2 text-sm">
+                    {selectedJob.createdBy && (
+                      <div>
+                        <strong>📝 Người tạo:</strong> {selectedJob.createdBy}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <strong>🔧 Kỹ thuật viên:</strong> {selectedJob.technicians ? selectedJob.technicians.join(', ') : selectedJob.technician}
+                      </div>
+                      {!isLocked && (isAdmin || (currentUser.departments && currentUser.departments.includes('sales'))) && (
+                        <button
+                          onClick={() => {
+                            setNewTechnicians(selectedJob.technicians || []);
+                            setShowReassignModal(true);
+                          }}
+                          className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-medium"
+                        >
+                          ✏️ Thay Đổi
+                        </button>
+                      )}
+                    </div>
+                    <div><strong>Ngày:</strong> {selectedJob.scheduledDate}</div>
+                    <div><strong>Giờ:</strong> {selectedJob.scheduledTime || 'Chưa xác định'}</div>
                   </div>
                 </div>
-              </div>
+
+                {/* Customer Payment */}
+                {selectedJob.customerPayment > 0 && (
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h3 className="font-bold mb-3 text-lg">💰 Thu của khách</h3>
+                    <div className="text-2xl font-bold text-green-700">
+                      {selectedJob.customerPayment.toLocaleString('vi-VN')} VNĐ
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
-            {/* Change Status */}
-            <div className="border-t pt-4">
-              <h3 className="font-bold mb-3">🔄 Thay đổi trạng thái</h3>
-              
-              {(selectedJob.status === 'Hoàn thành' || selectedJob.status === 'Hủy') ? (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <span className="text-xl">🔒</span>
-                    <span className="font-medium">Trạng thái đã khóa - Không thể thay đổi</span>
+            {/* Change Status - chỉ hiện khi không đang edit */}
+            {!isEditing && (
+              <div className="border-t pt-4">
+                <h3 className="font-bold mb-3">🔄 Thay đổi trạng thái</h3>
+                
+                {isLocked ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <span className="text-xl">🔒</span>
+                      <span className="font-medium">Trạng thái đã khóa - Không thể thay đổi</span>
+                    </div>
+                    <div className="text-sm text-gray-500 mt-1">
+                      Công việc đã {selectedJob.status === 'Hoàn thành' ? 'hoàn thành' : 'bị hủy'} và không thể thay đổi trạng thái.
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    Công việc đã {selectedJob.status === 'Hoàn thành' ? 'hoàn thành' : 'bị hủy'} và không thể thay đổi trạng thái.
+                ) : (
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => updateJobStatus('Chờ XN')}
+                      className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg hover:bg-yellow-200 font-medium"
+                    >
+                      Chờ XN
+                    </button>
+                    <button
+                      onClick={() => updateJobStatus('Đang làm')}
+                      className="px-4 py-2 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 font-medium"
+                    >
+                      Đang làm
+                    </button>
+                    <button
+                      onClick={() => updateJobStatus('Hoàn thành')}
+                      className="px-4 py-2 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 font-medium"
+                    >
+                      Hoàn thành
+                    </button>
+                    <button
+                      onClick={() => updateJobStatus('Hủy')}
+                      className="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 font-medium"
+                    >
+                      Hủy
+                    </button>
                   </div>
-                </div>
-              ) : (
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={() => updateJobStatus('Chờ XN')}
-                    className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg hover:bg-yellow-200 font-medium"
-                  >
-                    Chờ XN
-                  </button>
-                  <button
-                    onClick={() => updateJobStatus('Đang làm')}
-                    className="px-4 py-2 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 font-medium"
-                  >
-                    Đang làm
-                  </button>
-                  <button
-                    onClick={() => updateJobStatus('Hoàn thành')}
-                    className="px-4 py-2 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 font-medium"
-                  >
-                    Hoàn thành
-                  </button>
-                  <button
-                    onClick={() => updateJobStatus('Hủy')}
-                    className="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 font-medium"
-                  >
-                    Hủy
-                  </button>
-                </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t bg-gray-50 flex gap-3 justify-between">
+            <div className="flex gap-3">
+              {/* Nút Xóa - chỉ hiện khi chưa hoàn thành/hủy và là admin hoặc người tạo */}
+              {canDelete && (
+                <button
+                  onClick={() => {
+                    if (window.confirm('⚠️ Xóa công việc này?\n\nHành động không thể hoàn tác!')) {
+                      deleteTechnicalJob(selectedJob.id);
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-medium"
+                >
+                  🗑️ Xóa
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setShowJobModal(false);
+                }}
+                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+              >
+                Đóng
+              </button>
+              {/* Nút Sửa - chỉ hiện khi chưa hoàn thành/hủy và là admin hoặc người tạo */}
+              {canEdit && !isEditing && (
+                <button
+                  onClick={openEditMode}
+                  className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium"
+                >
+                  ✏️ Sửa
+                </button>
+              )}
+              {isEditing && (
+                <button
+                  onClick={saveEditJob}
+                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+                >
+                  💾 Lưu
+                </button>
               )}
             </div>
           </div>
 
-          <div className="p-6 border-t bg-gray-50 flex gap-3">
-            {currentUser.role === 'Admin' || currentUser.role === 'admin' && (
-              <button
-                onClick={() => {
-                  if (window.confirm('⚠️ Xóa công việc này?\n\nHành động không thể hoàn tác!')) {
-                    deleteTechnicalJob(selectedJob.id);
-                  }
-                }}
-                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
-              >
-                🗑️ Xóa
-              </button>
-            )}
-            <button
-              onClick={() => setShowJobModal(false)}
-              className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
-            >
-              Đóng
-            </button>
-          </div>
+          {/* Thông báo khóa */}
+          {isLocked && (
+            <div className="px-6 pb-4">
+              <div className="bg-gray-100 border border-gray-300 rounded-lg p-3 text-center text-sm text-gray-600">
+                🔒 Công việc đã {selectedJob.status === 'Hoàn thành' ? 'hoàn thành' : 'hủy'} - Không thể sửa hoặc xóa
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Reassign Technicians Modal */}
