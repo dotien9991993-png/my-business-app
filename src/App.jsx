@@ -452,7 +452,7 @@ export default function SimpleMarketingSystem() {
     }
   };
 
-  const createNewTask = async (title, platform, priority, dueDate, description, assignee) => {
+  const createNewTask = async (title, platform, priority, dueDate, description, assignee, category = '') => {
     try {
       setLoading(true);
       
@@ -472,6 +472,7 @@ export default function SimpleMarketingSystem() {
           platform,
           priority,
           description,
+          category,
           is_overdue: false,
           comments: [],
           post_links: []
@@ -1938,10 +1939,19 @@ export default function SimpleMarketingSystem() {
     const [filterTeam, setFilterTeam] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterAssignee, setFilterAssignee] = useState('all');
+    const [filterCategory, setFilterCategory] = useState('all');
     const [dateFilter, setDateFilter] = useState('all');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [showCustomDate, setShowCustomDate] = useState(false);
+
+    const videoCategories = [
+      { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },
+      { id: 'video_hangngay', name: '📅 Video hàng ngày', color: 'blue' },
+      { id: 'video_huongdan', name: '📚 Video hướng dẫn', color: 'green' },
+      { id: 'video_quangcao', name: '📢 Video quảng cáo', color: 'orange' },
+      { id: 'video_review', name: '⭐ Video review', color: 'yellow' }
+    ];
 
     // Helper: Get date range based on filter (Vietnam timezone UTC+7)
     const getDateRange = () => {
@@ -1984,6 +1994,7 @@ export default function SimpleMarketingSystem() {
       if (filterTeam !== 'all' && t.team !== filterTeam) return false;
       if (filterStatus !== 'all' && t.status !== filterStatus) return false;
       if (filterAssignee !== 'all' && t.assignee !== filterAssignee) return false;
+      if (filterCategory !== 'all' && t.category !== filterCategory) return false;
       
       // Date filter (Vietnam timezone)
       if (dateFilter !== 'all') {
@@ -2060,9 +2071,9 @@ export default function SimpleMarketingSystem() {
               >
                 <option value="all">Tất cả</option>
                 <option value="Nháp">Nháp</option>
-                <option value="Chờ Duyệt">Chờ Duyệt</option>
-                <option value="Đã Duyệt">Đã Duyệt</option>
-                <option value="Đang Làm">Đang Làm</option>
+                <option value="Chưa Quay">Chưa Quay</option>
+                <option value="Đã Quay">Đã Quay</option>
+                <option value="Đang Edit">Đang Edit</option>
                 <option value="Hoàn Thành">Hoàn Thành</option>
               </select>
             </div>
@@ -2076,6 +2087,19 @@ export default function SimpleMarketingSystem() {
                 <option value="all">Tất cả</option>
                 {Array.from(new Set(visibleTasks.map(t => t.assignee))).sort().map(assignee => (
                   <option key={assignee} value={assignee}>{assignee}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">🏷️ Danh mục</label>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Tất cả</option>
+                {videoCategories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
             </div>
@@ -2207,6 +2231,22 @@ export default function SimpleMarketingSystem() {
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${getTeamColor(task.team)}`}>
                       {task.team}
                     </span>
+                    {task.category && (
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        task.category === 'video_dan' ? 'bg-purple-100 text-purple-700' :
+                        task.category === 'video_hangngay' ? 'bg-blue-100 text-blue-700' :
+                        task.category === 'video_huongdan' ? 'bg-green-100 text-green-700' :
+                        task.category === 'video_quangcao' ? 'bg-orange-100 text-orange-700' :
+                        task.category === 'video_review' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {task.category === 'video_dan' ? '🎬 Video dàn' :
+                         task.category === 'video_hangngay' ? '📅 Hàng ngày' :
+                         task.category === 'video_huongdan' ? '📚 Hướng dẫn' :
+                         task.category === 'video_quangcao' ? '📢 Quảng cáo' :
+                         task.category === 'video_review' ? '⭐ Review' : task.category}
+                      </span>
+                    )}
                     <span className="px-3 py-1 bg-gray-100 rounded-full text-sm">
                       👤 {task.assignee}
                     </span>
@@ -3511,6 +3551,15 @@ export default function SimpleMarketingSystem() {
     const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [description, setDescription] = useState('');
     const [assignee, setAssignee] = useState(currentUser.name);
+    const [videoCategory, setVideoCategory] = useState('');
+
+    const videoCategories = [
+      { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },
+      { id: 'video_hangngay', name: '📅 Video hàng ngày', color: 'blue' },
+      { id: 'video_huongdan', name: '📚 Video hướng dẫn', color: 'green' },
+      { id: 'video_quangcao', name: '📢 Video quảng cáo', color: 'orange' },
+      { id: 'video_review', name: '⭐ Video review', color: 'yellow' }
+    ];
 
     const togglePlatform = (plat) => {
       if (platform.includes(plat)) {
@@ -3588,6 +3637,30 @@ export default function SimpleMarketingSystem() {
             </div>
 
             <div>
+              <label className="block text-sm font-medium mb-2">🏷️ Danh mục Video</label>
+              <div className="flex flex-wrap gap-2">
+                {videoCategories.map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setVideoCategory(videoCategory === cat.id ? '' : cat.id)}
+                    className={`px-3 py-2 rounded-lg border-2 font-medium transition-all ${
+                      videoCategory === cat.id
+                        ? cat.color === 'purple' ? 'bg-purple-100 border-purple-500 text-purple-700'
+                        : cat.color === 'blue' ? 'bg-blue-100 border-blue-500 text-blue-700'
+                        : cat.color === 'green' ? 'bg-green-100 border-green-500 text-green-700'
+                        : cat.color === 'orange' ? 'bg-orange-100 border-orange-500 text-orange-700'
+                        : 'bg-yellow-100 border-yellow-500 text-yellow-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-400'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium mb-2">
                 👤 Gán cho *
                 {currentUser.role === 'Member' && <span className="text-xs text-gray-500 ml-2">(Chỉ gán cho bản thân)</span>}
@@ -3659,7 +3732,7 @@ export default function SimpleMarketingSystem() {
                     alert('⚠️ Vui lòng điền đầy đủ thông tin bắt buộc!');
                     return;
                   }
-                  createNewTask(title, platform.join(', '), priority, dueDate, description, assignee);
+                  createNewTask(title, platform.join(', '), priority, dueDate, description, assignee, videoCategory);
                 }}
                 className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
               >
