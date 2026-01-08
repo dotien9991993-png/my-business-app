@@ -87,14 +87,26 @@ const getTenantSlug = () => {
     return 'hoangnamaudio';
   }
   
-  // Custom domain với subdomain: hoangnamaudio.yourdomain.com
+  // Custom domain với subdomain
   const parts = hostname.split('.');
   if (parts.length >= 3) {
+    const subdomain = parts[0];
+    
     // Bỏ qua www
-    if (parts[0] === 'www') {
-      return 'hoangnamaudio'; // www.domain.com -> default
+    if (subdomain === 'www') {
+      return 'hoangnamaudio';
     }
-    return parts[0]; // hoangnamaudio.domain.com -> hoangnamaudio
+    
+    // Map các subdomain về tenant tương ứng
+    // Thêm subdomain mới vào đây
+    const subdomainMap = {
+      'in': 'hoangnamaudio',      // in.hoangnamaudio.vn -> hoangnamaudio
+      'app': 'hoangnamaudio',     // app.hoangnamaudio.vn -> hoangnamaudio
+      'manage': 'hoangnamaudio',  // manage.hoangnamaudio.vn -> hoangnamaudio
+      'erp': 'hoangnamaudio',     // erp.hoangnamaudio.vn -> hoangnamaudio
+    };
+    
+    return subdomainMap[subdomain] || subdomain;
   }
   
   // domain.com without subdomain -> default
