@@ -252,6 +252,13 @@ export default function SimpleMarketingSystem() {
     return false;
   };
 
+  // Check if user can access a module
+  const canAccessModule = (module) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
+    return (currentUser.permissions?.[module] || 0) > 0;
+  };
+
   // Check if user can access a specific tab in a module
   const canAccessTab = (module, tabId) => {
     if (!currentUser) return false;
@@ -435,7 +442,8 @@ export default function SimpleMarketingSystem() {
         comments: task.comments || [],
         postLinks: task.post_links || [],
         priority: task.priority,
-        description: task.description
+        description: task.description,
+        category: task.category || ''
       }));
       
       setTasks(formattedTasks);
@@ -6539,20 +6547,51 @@ export default function SimpleMarketingSystem() {
       </div>
 
       <div className="max-w-7xl mx-auto pb-20 md:pb-0">
-        {activeModule === 'media' && (
+        {/* Media Module */}
+        {activeModule === 'media' && !canAccessModule('media') && (
+          <div className="p-6">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+              <div className="text-6xl mb-4">🔒</div>
+              <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+              <p className="text-red-600">Bạn không có quyền truy cập module Media.</p>
+            </div>
+          </div>
+        )}
+        {activeModule === 'media' && canAccessModule('media') && (
           <>
             {activeTab === 'mytasks' && <MyTasksView />}
             {activeTab === 'dashboard' && <DashboardView />}
-            {activeTab === 'tasks' && <TasksView />}
-            {activeTab === 'calendar' && <CalendarView />}
-            {activeTab === 'report' && <ReportView />}
+            {activeTab === 'tasks' && canAccessTab('media', 'videos') && <TasksView />}
+            {activeTab === 'calendar' && canAccessTab('media', 'calendar') && <CalendarView />}
+            {activeTab === 'report' && canAccessTab('media', 'report') && <ReportView />}
             {activeTab === 'integrations' && <IntegrationsView />}
             {activeTab === 'automation' && <AutomationView />}
             {activeTab === 'users' && <UserManagementView />}
             {activeTab === 'performance' && <PerformanceView />}
+            {/* Thông báo không có quyền tab */}
+            {((activeTab === 'tasks' && !canAccessTab('media', 'videos')) ||
+              (activeTab === 'calendar' && !canAccessTab('media', 'calendar')) ||
+              (activeTab === 'report' && !canAccessTab('media', 'report'))) && (
+              <div className="p-6">
+                <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+                  <div className="text-6xl mb-4">🔒</div>
+                  <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+                  <p className="text-red-600">Bạn không được phép xem mục này.</p>
+                </div>
+              </div>
+            )}
           </>
         )}
-        {activeModule === 'warehouse' && (
+        {activeModule === 'warehouse' && !canAccessModule('warehouse') && (
+          <div className="p-6">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+              <div className="text-6xl mb-4">🔒</div>
+              <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+              <p className="text-red-600">Bạn không có quyền truy cập module Kho.</p>
+            </div>
+          </div>
+        )}
+        {activeModule === 'warehouse' && canAccessModule('warehouse') && (
           <>
             {activeTab === 'inventory' && canAccessTab('warehouse', 'inventory') && <WarehouseInventoryView />}
             {activeTab === 'import' && canAccessTab('warehouse', 'import') && <WarehouseImportView />}
@@ -6569,7 +6608,16 @@ export default function SimpleMarketingSystem() {
             )}
           </>
         )}
-        {activeModule === 'sales' && (
+        {activeModule === 'sales' && !canAccessModule('sales') && (
+          <div className="p-6">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+              <div className="text-6xl mb-4">🔒</div>
+              <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+              <p className="text-red-600">Bạn không có quyền truy cập module Sale.</p>
+            </div>
+          </div>
+        )}
+        {activeModule === 'sales' && canAccessModule('sales') && (
           <>
             {activeTab === 'orders' && <SalesOrdersView />}
             {activeTab === 'customers' && <SalesCustomersView />}
@@ -6577,13 +6625,31 @@ export default function SimpleMarketingSystem() {
             {activeTab === 'report' && <SalesReportView />}
           </>
         )}
-        {activeModule === 'technical' && (
+        {activeModule === 'technical' && !canAccessModule('technical') && (
+          <div className="p-6">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+              <div className="text-6xl mb-4">🔒</div>
+              <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+              <p className="text-red-600">Bạn không có quyền truy cập module Kỹ thuật.</p>
+            </div>
+          </div>
+        )}
+        {activeModule === 'technical' && canAccessModule('technical') && (
           <>
             {activeTab === 'jobs' && <TechnicalJobsView />}
             {activeTab === 'integrations' && <IntegrationsView />}
           </>
         )}
-        {activeModule === 'finance' && (
+        {activeModule === 'finance' && !canAccessModule('finance') && (
+          <div className="p-6">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+              <div className="text-6xl mb-4">🔒</div>
+              <h2 className="text-2xl font-bold text-red-800 mb-2">Không có quyền truy cập</h2>
+              <p className="text-red-600">Bạn không có quyền truy cập module Tài chính.</p>
+            </div>
+          </div>
+        )}
+        {activeModule === 'finance' && canAccessModule('finance') && (
           <>
             {activeTab === 'dashboard' && canAccessTab('finance', 'overview') && <FinanceDashboard />}
             {activeTab === 'receipts' && canAccessTab('finance', 'receipts') && <ReceiptsView />}
