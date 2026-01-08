@@ -1199,9 +1199,8 @@ export default function SimpleMarketingSystem() {
     }, []);
 
     const getTechnicalUsers = () => {
-      return allUsers.filter(u => 
-        u.departments && u.departments.includes('technical')
-      );
+      // Trả về tất cả users có thể được giao công việc kỹ thuật
+      return allUsers.filter(u => u.is_active !== false);
     };
 
     const technicalUsers = getTechnicalUsers();
@@ -1473,9 +1472,8 @@ export default function SimpleMarketingSystem() {
     };
 
     const getTechnicalUsers = () => {
-      return allUsers.filter(u => 
-        u.departments && u.departments.includes('technical')
-      );
+      // Trả về tất cả users có thể được giao công việc kỹ thuật
+      return allUsers.filter(u => u.is_active !== false);
     };
 
     const toggleTechnician = (techName) => {
