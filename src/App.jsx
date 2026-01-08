@@ -113,6 +113,12 @@ const getTenantSlug = () => {
   return 'hoangnamaudio';
 };
 
+// Helper function format tiền VND
+const formatMoney = (amount) => {
+  const num = parseFloat(amount) || 0;
+  return new Intl.NumberFormat('vi-VN').format(num) + 'đ';
+};
+
 export default function SimpleMarketingSystem() {
   const { path, navigate } = useHashRouter();
   
@@ -7049,14 +7055,14 @@ export default function SimpleMarketingSystem() {
           <div className="bg-green-50 p-6 rounded-xl border border-green-200">
             <div className="text-sm text-green-600 font-medium mb-1">Tổng Thu</div>
             <div className="text-2xl font-bold text-green-700">
-              {(totalReceipts / 1000000).toFixed(1)}M
+              {formatMoney(totalReceipts)}
             </div>
           </div>
           
           <div className="bg-red-50 p-6 rounded-xl border border-red-200">
             <div className="text-sm text-red-600 font-medium mb-1">Tổng Chi</div>
             <div className="text-2xl font-bold text-red-700">
-              {(totalPayments / 1000000).toFixed(1)}M
+              {formatMoney(totalPayments)}
             </div>
           </div>
           
@@ -7065,7 +7071,7 @@ export default function SimpleMarketingSystem() {
               Dòng Tiền
             </div>
             <div className={`text-2xl font-bold ${netCashFlow >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
-              {(netCashFlow / 1000000).toFixed(1)}M
+              {formatMoney(netCashFlow)}
             </div>
           </div>
         </div>
@@ -7080,7 +7086,7 @@ export default function SimpleMarketingSystem() {
                   <div className="text-sm text-gray-500">{r.description || 'Không có mô tả'}</div>
                 </div>
                 <div className={`font-bold ${r.type === 'thu' ? 'text-green-600' : 'text-red-600'}`}>
-                  {r.type === 'thu' ? '+' : '-'}{(parseFloat(r.amount) / 1000000).toFixed(1)}M
+                  {r.type === 'thu' ? '+' : '-'}{formatMoney(r.amount)}
                 </div>
               </div>
             ))}
@@ -7277,15 +7283,15 @@ export default function SimpleMarketingSystem() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-green-50 border border-green-200 rounded-xl p-4">
             <div className="text-sm text-green-600 font-medium">Tổng Thu</div>
-            <div className="text-2xl font-bold text-green-700">+{(totalThu / 1000000).toFixed(1)}M</div>
+            <div className="text-2xl font-bold text-green-700">+{formatMoney(totalThu)}</div>
           </div>
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <div className="text-sm text-red-600 font-medium">Tổng Chi</div>
-            <div className="text-2xl font-bold text-red-700">-{(totalChi / 1000000).toFixed(1)}M</div>
+            <div className="text-2xl font-bold text-red-700">-{formatMoney(totalChi)}</div>
           </div>
           <div className={(totalThu - totalChi >= 0) ? "bg-blue-50 border border-blue-200 rounded-xl p-4" : "bg-orange-50 border border-orange-200 rounded-xl p-4"}>
             <div className={(totalThu - totalChi >= 0) ? "text-sm text-blue-600 font-medium" : "text-sm text-orange-600 font-medium"}>Chênh lệch</div>
-            <div className={(totalThu - totalChi >= 0) ? "text-2xl font-bold text-blue-700" : "text-2xl font-bold text-orange-700"}>{((totalThu - totalChi) / 1000000).toFixed(1)}M</div>
+            <div className={(totalThu - totalChi >= 0) ? "text-2xl font-bold text-blue-700" : "text-2xl font-bold text-orange-700"}>{formatMoney(totalThu - totalChi)}</div>
           </div>
         </div>
 
@@ -7784,17 +7790,17 @@ export default function SimpleMarketingSystem() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-green-50 border border-green-200 rounded-xl p-4">
             <div className="text-sm text-green-600 font-medium">Tổng Phải Thu</div>
-            <div className="text-2xl font-bold text-green-700">+{(totalReceivable / 1000000).toFixed(1)}M</div>
+            <div className="text-2xl font-bold text-green-700">+{formatMoney(totalReceivable)}</div>
             <div className="text-xs text-green-600 mt-1">{receivables.length} khoản</div>
           </div>
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <div className="text-sm text-red-600 font-medium">Tổng Phải Trả</div>
-            <div className="text-2xl font-bold text-red-700">-{(totalPayable / 1000000).toFixed(1)}M</div>
+            <div className="text-2xl font-bold text-red-700">-{formatMoney(totalPayable)}</div>
             <div className="text-xs text-red-600 mt-1">{payables.length} khoản</div>
           </div>
           <div className={(totalReceivable - totalPayable >= 0) ? "bg-blue-50 border border-blue-200 rounded-xl p-4" : "bg-orange-50 border border-orange-200 rounded-xl p-4"}>
             <div className={(totalReceivable - totalPayable >= 0) ? "text-sm text-blue-600 font-medium" : "text-sm text-orange-600 font-medium"}>Chênh lệch</div>
-            <div className={(totalReceivable - totalPayable >= 0) ? "text-2xl font-bold text-blue-700" : "text-2xl font-bold text-orange-700"}>{((totalReceivable - totalPayable) / 1000000).toFixed(1)}M</div>
+            <div className={(totalReceivable - totalPayable >= 0) ? "text-2xl font-bold text-blue-700" : "text-2xl font-bold text-orange-700"}>{formatMoney(totalReceivable - totalPayable)}</div>
           </div>
         </div>
 
@@ -8375,22 +8381,22 @@ export default function SimpleMarketingSystem() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-gray-50 border rounded-xl p-4 cursor-pointer hover:bg-gray-100" onClick={() => setActiveTab('all')}>
             <div className="text-sm text-gray-600">Tổng lương</div>
-            <div className="text-xl font-bold text-gray-800">{(totalSalaryByDept('all') / 1000000).toFixed(1)}M</div>
+            <div className="text-xl font-bold text-gray-800">{formatMoney(totalSalaryByDept('all'))}</div>
             <div className="text-xs text-gray-500">{monthlySalaries.length} bảng lương</div>
           </div>
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 cursor-pointer hover:bg-purple-100" onClick={() => setActiveTab('livestream')}>
             <div className="text-sm text-purple-600">🎥 Livestream</div>
-            <div className="text-xl font-bold text-purple-700">{(totalSalaryByDept('livestream') / 1000000).toFixed(1)}M</div>
+            <div className="text-xl font-bold text-purple-700">{formatMoney(totalSalaryByDept('livestream'))}</div>
             <div className="text-xs text-purple-500">{employees.filter(e => e.department === 'livestream').length} NV</div>
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 cursor-pointer hover:bg-blue-100" onClick={() => setActiveTab('media')}>
             <div className="text-sm text-blue-600">🎬 Media</div>
-            <div className="text-xl font-bold text-blue-700">{(totalSalaryByDept('media') / 1000000).toFixed(1)}M</div>
+            <div className="text-xl font-bold text-blue-700">{formatMoney(totalSalaryByDept('media'))}</div>
             <div className="text-xs text-blue-500">{employees.filter(e => e.department === 'media').length} NV</div>
           </div>
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 cursor-pointer hover:bg-orange-100" onClick={() => setActiveTab('warehouse')}>
             <div className="text-sm text-orange-600">📦 Kho</div>
-            <div className="text-xl font-bold text-orange-700">{(totalSalaryByDept('warehouse') / 1000000).toFixed(1)}M</div>
+            <div className="text-xl font-bold text-orange-700">{formatMoney(totalSalaryByDept('warehouse'))}</div>
             <div className="text-xs text-orange-500">{employees.filter(e => e.department === 'warehouse').length} NV</div>
           </div>
         </div>
@@ -8463,15 +8469,15 @@ export default function SimpleMarketingSystem() {
                         <div className="font-medium">{salary.employee_name}</div>
                         <div className="text-sm text-gray-500">{departments[salary.department]?.name}</div>
                         <div className="text-xs text-gray-400 mt-1">
-                          CB: {(parseFloat(salary.base_salary)/1000000).toFixed(1)}M
-                          {salary.commission > 0 && <span> + HH: {(parseFloat(salary.commission)/1000000).toFixed(1)}M</span>}
-                          {salary.unit_bonus > 0 && <span> + Thưởng: {(parseFloat(salary.unit_bonus)/1000000).toFixed(1)}M</span>}
-                          {salary.bonus > 0 && <span> + Bonus: {(parseFloat(salary.bonus)/1000000).toFixed(1)}M</span>}
-                          {salary.deduction > 0 && <span> - Trừ: {(parseFloat(salary.deduction)/1000000).toFixed(1)}M</span>}
+                          CB: {formatMoney(salary.base_salary)}
+                          {salary.commission > 0 && <span> + HH: {formatMoney(salary.commission)}</span>}
+                          {salary.unit_bonus > 0 && <span> + Thưởng: {formatMoney(salary.unit_bonus)}</span>}
+                          {salary.bonus > 0 && <span> + Bonus: {formatMoney(salary.bonus)}</span>}
+                          {salary.deduction > 0 && <span> - Trừ: {formatMoney(salary.deduction)}</span>}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-blue-600">{(parseFloat(salary.total_salary)/1000000).toFixed(1)}M</div>
+                        <div className="font-bold text-blue-600">{formatMoney(salary.total_salary)}</div>
                         <span className={salary.status === 'paid' ? "text-xs px-2 py-0.5 rounded bg-green-100 text-green-700" : salary.status === 'approved' ? "text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700" : "text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700"}>
                           {salary.status === 'paid' ? '✅ Đã trả' : salary.status === 'approved' ? '✓ Đã duyệt' : '⏳ Chờ duyệt'}
                         </span>
