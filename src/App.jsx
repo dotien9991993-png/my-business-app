@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from './supabaseClient';
+// SalaryManagement component integrated below
 
 // ============ VIETNAM TIMEZONE HELPERS (UTC+7) ============
 // Lấy ngày giờ hiện tại theo múi giờ Việt Nam
@@ -449,7 +450,10 @@ export default function SimpleMarketingSystem() {
         postLinks: task.post_links || [],
         priority: task.priority,
         description: task.description,
-        category: task.category || ''
+        category: task.category || '',
+        created_at: task.created_at,
+        updated_at: task.updated_at,
+        completed_at: task.completed_at
       }));
       
       setTasks(formattedTasks);
@@ -485,7 +489,8 @@ export default function SimpleMarketingSystem() {
         customerPayment: job.customer_payment,
         createdBy: job.created_by,
         status: job.status,
-        createdAt: job.created_at
+        createdAt: job.created_at,
+        expenses: job.expenses || []
       }));
       
       setTechnicalJobs(formattedJobs);
@@ -1408,8 +1413,21 @@ export default function SimpleMarketingSystem() {
     const [editScheduledDate, setEditScheduledDate] = useState('');
     const [editScheduledTime, setEditScheduledTime] = useState('');
     const [editPayment, setEditPayment] = useState('');
+    
+    // Chi phí công việc
+    const [showAddExpense, setShowAddExpense] = useState(false);
+    const [expenseDesc, setExpenseDesc] = useState('');
+    const [expenseAmount, setExpenseAmount] = useState('');
+    const [expenseCategory, setExpenseCategory] = useState('Tiền xe');
+    
+    const expenseCategories = ['Tiền xe', 'Chi phí ăn uống', 'Chi phí khác'];
 
     if (!selectedJob) return null;
+    
+    // Chi phí từ job
+    const jobExpenses = selectedJob.expenses || [];
+    const totalExpenses = jobExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+    const netProfit = (selectedJob.customerPayment || 0) - totalExpenses;
 
     // Kiểm tra quyền sửa/xóa
     const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'admin';
@@ -1417,6 +1435,78 @@ export default function SimpleMarketingSystem() {
     const isLocked = selectedJob.status === 'Hoàn thành' || selectedJob.status === 'Hủy';
     const canEdit = !isLocked && (isAdmin || isCreator);
     const canDelete = !isLocked && (isAdmin || isCreator);
+    
+    // Thêm chi phí
+    const addExpense = async () => {
+      if (!expenseAmount) {
+        alert('⚠️ Vui lòng nhập số tiền!');
+        return;
+      }
+      
+      // Chỉ yêu cầu mô tả khi chọn "Chi phí khác"
+      if (expenseCategory === 'Chi phí khác' && !expenseDesc) {
+        alert('⚠️ Vui lòng nhập mô tả cho chi phí khác!');
+        return;
+      }
+      
+      const newExpense = {
+        id: Date.now(),
+        description: expenseCategory === 'Chi phí khác' ? expenseDesc : '',
+        amount: parseFloat(expenseAmount),
+        category: expenseCategory,
+        addedBy: currentUser.name,
+        addedAt: getNowISOVN()
+      };
+      
+      const updatedExpenses = [...jobExpenses, newExpense];
+      
+      console.log('Saving expenses:', updatedExpenses);
+      console.log('Job ID:', selectedJob.id);
+      
+      try {
+        const { data, error } = await supabase
+          .from('technical_jobs')
+          .update({ expenses: updatedExpenses })
+          .eq('id', selectedJob.id)
+          .select();
+        
+        console.log('Response:', data, error);
+        
+        if (error) throw error;
+        
+        alert('✅ Đã thêm chi phí: ' + formatMoney(newExpense.amount));
+        setSelectedJob({ ...selectedJob, expenses: updatedExpenses });
+        setExpenseDesc('');
+        setExpenseAmount('');
+        setShowAddExpense(false);
+        await loadTechnicalJobs();
+      } catch (error) {
+        console.error('Error adding expense:', error);
+        alert('❌ Lỗi khi thêm chi phí: ' + error.message);
+      }
+    };
+    
+    // Xóa chi phí
+    const removeExpense = async (expenseId) => {
+      if (!window.confirm('Xóa chi phí này?')) return;
+      
+      const updatedExpenses = jobExpenses.filter(e => e.id !== expenseId);
+      
+      try {
+        const { error } = await supabase
+          .from('technical_jobs')
+          .update({ expenses: updatedExpenses })
+          .eq('id', selectedJob.id);
+        
+        if (error) throw error;
+        
+        setSelectedJob({ ...selectedJob, expenses: updatedExpenses });
+        await loadTechnicalJobs();
+      } catch (error) {
+        console.error('Error removing expense:', error);
+        alert('❌ Lỗi khi xóa chi phí!');
+      }
+    };
 
     const openEditMode = () => {
       setEditTitle(selectedJob.title || '');
@@ -1473,6 +1563,86 @@ export default function SimpleMarketingSystem() {
       }
     };
 
+    // Tạo phiếu thu từ công việc kỹ thuật
+    const createReceiptFromJob = async (job) => {
+      try {
+        // Tạo mã phiếu thu
+        const today = new Date();
+        const dateStr = today.toISOString().slice(0,10).replace(/-/g, '');
+        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const receiptNumber = `PT-${dateStr}-${randomNum}`;
+
+        const { error } = await supabase
+          .from('receipts_payments')
+          .insert([{
+            tenant_id: tenant.id,
+            receipt_number: receiptNumber,
+            type: 'thu',
+            amount: job.customerPayment,
+            description: `Thu tiền lắp đặt: ${job.title}`,
+            category: 'Lắp đặt tại nhà khách',
+            status: 'pending',
+            receipt_date: getTodayVN(),
+            note: `Khách hàng: ${job.customerName}\nSĐT: ${job.customerPhone}\nĐịa chỉ: ${job.address}\nKỹ thuật viên: ${job.technicians?.join(', ') || 'N/A'}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
+            created_by: currentUser.name,
+            created_at: getNowISOVN()
+          }]);
+
+        if (error) throw error;
+        
+        // Reload receipts data
+        await loadFinanceData();
+        
+        return true;
+      } catch (error) {
+        console.error('Error creating receipt:', error);
+        alert('❌ Lỗi khi tạo phiếu thu: ' + error.message);
+        return false;
+      }
+    };
+
+    // Tạo phiếu chi từ chi phí công việc
+    const createExpenseReceiptsFromJob = async (job) => {
+      const expenses = job.expenses || [];
+      if (expenses.length === 0) return true;
+      
+      try {
+        const today = new Date();
+        const dateStr = today.toISOString().slice(0,10).replace(/-/g, '');
+        
+        // Tạo 1 phiếu chi tổng hợp
+        const totalExpense = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+        const expenseDetails = expenses.map(e => `- ${e.category}${e.description ? ': ' + e.description : ''}: ${formatMoney(e.amount)}`).join('\n');
+        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const receiptNumber = `PC-${dateStr}-${randomNum}`;
+
+        const { error } = await supabase
+          .from('receipts_payments')
+          .insert([{
+            tenant_id: tenant.id,
+            receipt_number: receiptNumber,
+            type: 'chi',
+            amount: totalExpense,
+            description: `Chi phí lắp đặt: ${job.title}`,
+            category: 'Vận chuyển',
+            status: 'pending',
+            receipt_date: getTodayVN(),
+            note: `Chi tiết chi phí:\n${expenseDetails}\n\nKhách hàng: ${job.customerName}\nKỹ thuật viên: ${job.technicians?.join(', ') || 'N/A'}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
+            created_by: currentUser.name,
+            created_at: getNowISOVN()
+          }]);
+
+        if (error) throw error;
+        
+        await loadFinanceData();
+        return true;
+      } catch (error) {
+        console.error('Error creating expense receipts:', error);
+        alert('❌ Lỗi khi tạo phiếu chi: ' + error.message);
+        return false;
+      }
+    };
+
     const updateJobStatus = async (newStatus) => {
       // Block nếu status hiện tại đã lock
       if (selectedJob.status === 'Hoàn thành' || selectedJob.status === 'Hủy') {
@@ -1483,12 +1653,74 @@ export default function SimpleMarketingSystem() {
       }
 
       // Confirm khi chuyển sang status cuối
-      if (newStatus === 'Hoàn thành' || newStatus === 'Hủy') {
-        const message = newStatus === 'Hoàn thành' 
-          ? '✅ Xác nhận hoàn thành công việc?\n\n⚠️ Sau khi hoàn thành, bạn KHÔNG THỂ thay đổi trạng thái nữa!'
-          : '❌ Xác nhận hủy công việc?\n\n⚠️ Sau khi hủy, bạn KHÔNG THỂ thay đổi trạng thái nữa!';
+      if (newStatus === 'Hoàn thành') {
+        const hasPayment = selectedJob.customerPayment > 0;
+        const hasExpenses = (selectedJob.expenses || []).length > 0;
+        const totalExp = (selectedJob.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
         
-        if (!window.confirm(message)) {
+        // Xây dựng thông báo
+        let confirmMsg = `✅ Xác nhận hoàn thành công việc?\n\n`;
+        
+        if (hasPayment) {
+          confirmMsg += `💰 Thu của khách: ${formatMoney(selectedJob.customerPayment)}\n`;
+        }
+        if (hasExpenses) {
+          confirmMsg += `💸 Chi phí: ${formatMoney(totalExp)}\n`;
+        }
+        if (hasPayment && hasExpenses) {
+          confirmMsg += `📊 Còn lại: ${formatMoney(selectedJob.customerPayment - totalExp)}\n`;
+        }
+        
+        if (hasPayment || hasExpenses) {
+          confirmMsg += `\n📝 Bạn có muốn TẠO PHIẾU TỰ ĐỘNG không?\n`;
+          if (hasPayment) confirmMsg += `• Phiếu thu: ${formatMoney(selectedJob.customerPayment)}\n`;
+          if (hasExpenses) confirmMsg += `• Phiếu chi: ${formatMoney(totalExp)}\n`;
+          confirmMsg += `\n• Nhấn OK → Tạo phiếu tự động\n• Nhấn Cancel → Không tạo phiếu`;
+          
+          const createReceipts = window.confirm(confirmMsg);
+          
+          try {
+            // Update status
+            const { error } = await supabase
+              .from('technical_jobs')
+              .update({ status: newStatus })
+              .eq('id', selectedJob.id);
+            
+            if (error) throw error;
+            
+            let resultMsg = '✅ Hoàn thành công việc!\n\n';
+            
+            // Tạo phiếu nếu user đồng ý
+            if (createReceipts) {
+              if (hasPayment) {
+                const successThu = await createReceiptFromJob(selectedJob);
+                resultMsg += successThu ? '✓ Đã tạo phiếu thu\n' : '⚠️ Lỗi tạo phiếu thu\n';
+              }
+              if (hasExpenses) {
+                const successChi = await createExpenseReceiptsFromJob(selectedJob);
+                resultMsg += successChi ? '✓ Đã tạo phiếu chi\n' : '⚠️ Lỗi tạo phiếu chi\n';
+              }
+            }
+            
+            resultMsg += '\n🔒 Trạng thái đã bị khóa.';
+            alert(resultMsg);
+            
+            await loadTechnicalJobs();
+            setSelectedJob({ ...selectedJob, status: newStatus });
+            return;
+          } catch (error) {
+            console.error('Error updating job status:', error);
+            alert('❌ Lỗi khi cập nhật trạng thái!');
+            return;
+          }
+        } else {
+          // Không có tiền thu và chi phí
+          if (!window.confirm('✅ Xác nhận hoàn thành công việc?\n\n⚠️ Sau khi hoàn thành, bạn KHÔNG THỂ thay đổi trạng thái nữa!')) {
+            return;
+          }
+        }
+      } else if (newStatus === 'Hủy') {
+        if (!window.confirm('❌ Xác nhận hủy công việc?\n\n⚠️ Sau khi hủy, bạn KHÔNG THỂ thay đổi trạng thái nữa!')) {
           return;
         }
       }
@@ -1753,7 +1985,115 @@ export default function SimpleMarketingSystem() {
                   <div className="bg-green-50 p-4 rounded-lg">
                     <h3 className="font-bold mb-3 text-lg">💰 Thu của khách</h3>
                     <div className="text-2xl font-bold text-green-700">
-                      {selectedJob.customerPayment.toLocaleString('vi-VN')} VNĐ
+                      {formatMoney(selectedJob.customerPayment)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Job Expenses */}
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold text-lg">💸 Chi phí công việc</h3>
+                    {!isLocked && (
+                      <button
+                        onClick={() => setShowAddExpense(!showAddExpense)}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-medium"
+                      >
+                        {showAddExpense ? '✕ Đóng' : '+ Thêm'}
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Form thêm chi phí */}
+                  {showAddExpense && (
+                    <div className="bg-white p-3 rounded-lg border mb-3 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={expenseCategory}
+                          onChange={(e) => setExpenseCategory(e.target.value)}
+                          className="px-3 py-2 border rounded-lg text-sm"
+                        >
+                          {expenseCategories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          value={expenseAmount}
+                          onChange={(e) => setExpenseAmount(e.target.value)}
+                          placeholder="Số tiền"
+                          className="px-3 py-2 border rounded-lg text-sm"
+                        />
+                      </div>
+                      {expenseCategory === 'Chi phí khác' && (
+                        <input
+                          type="text"
+                          value={expenseDesc}
+                          onChange={(e) => setExpenseDesc(e.target.value)}
+                          placeholder="Mô tả chi phí..."
+                          className="w-full px-3 py-2 border rounded-lg text-sm"
+                        />
+                      )}
+                      <button
+                        onClick={addExpense}
+                        className="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium"
+                      >
+                        ✓ Thêm chi phí
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Danh sách chi phí */}
+                  {jobExpenses.length > 0 ? (
+                    <div className="space-y-2">
+                      {jobExpenses.map(expense => (
+                        <div key={expense.id} className="flex justify-between items-center bg-white p-2 rounded border">
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">{expense.category}{expense.description ? `: ${expense.description}` : ''}</div>
+                            <div className="text-xs text-gray-500">{expense.addedBy}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-red-600">{formatMoney(expense.amount)}</span>
+                            {!isLocked && (
+                              <button
+                                onClick={() => removeExpense(expense.id)}
+                                className="text-gray-400 hover:text-red-600 p-1"
+                              >
+                                🗑️
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center pt-2 border-t">
+                        <span className="font-medium">Tổng chi phí:</span>
+                        <span className="font-bold text-red-700">{formatMoney(totalExpenses)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 text-center py-2">Chưa có chi phí nào</p>
+                  )}
+                </div>
+
+                {/* Profit Summary */}
+                {(selectedJob.customerPayment > 0 || totalExpenses > 0) && (
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h3 className="font-bold mb-3 text-lg">📊 Tổng kết</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Thu của khách:</span>
+                        <span className="font-medium text-green-600">+{formatMoney(selectedJob.customerPayment || 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Chi phí:</span>
+                        <span className="font-medium text-red-600">-{formatMoney(totalExpenses)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2 border-t">
+                        <span className="font-bold">Còn lại:</span>
+                        <span className={`font-bold text-lg ${netProfit >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+                          {formatMoney(netProfit)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1918,6 +2258,559 @@ export default function SimpleMarketingSystem() {
                   ✅ Lưu
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // =====================================
+  // TECHNICIAN WAGES VIEW
+  // =====================================
+  const TechnicianWagesView = () => {
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [bonusAmounts, setBonusAmounts] = useState({});
+    const [showBonusModal, setShowBonusModal] = useState(false);
+    const [selectedTechnician, setSelectedTechnician] = useState(null);
+    const [bonusInput, setBonusInput] = useState('');
+    const [bonusNote, setBonusNote] = useState('');
+    const [loadingBonuses, setLoadingBonuses] = useState(false);
+    
+    const BASE_WAGE = 200000; // 200,000đ/công việc
+    
+    // Load bonus data từ database
+    const loadBonuses = async () => {
+      if (!tenant) return;
+      setLoadingBonuses(true);
+      try {
+        const { data, error } = await supabase
+          .from('technician_bonuses')
+          .select('*')
+          .eq('tenant_id', tenant.id)
+          .eq('month', selectedMonth)
+          .eq('year', selectedYear);
+        
+        if (error) throw error;
+        
+        const bonusMap = {};
+        (data || []).forEach(b => {
+          bonusMap[b.technician_name] = b.bonus_amount || 0;
+          bonusMap[b.technician_name + '_note'] = b.note || '';
+          bonusMap[b.technician_name + '_id'] = b.id;
+        });
+        setBonusAmounts(bonusMap);
+      } catch (error) {
+        console.error('Error loading bonuses:', error);
+      }
+      setLoadingBonuses(false);
+    };
+    
+    // Load bonuses khi đổi tháng/năm
+    useEffect(() => {
+      loadBonuses();
+    }, [selectedMonth, selectedYear, tenant]);
+    
+    // Lọc công việc hoàn thành trong tháng
+    const completedJobsInMonth = technicalJobs.filter(job => {
+      if (job.status !== 'Hoàn thành') return false;
+      const jobDate = new Date(job.scheduledDate);
+      return jobDate.getMonth() + 1 === selectedMonth && jobDate.getFullYear() === selectedYear;
+    });
+    
+    // Tính tiền công cho từng kỹ thuật viên
+    const getTechnicianWages = () => {
+      const wagesMap = {};
+      
+      completedJobsInMonth.forEach(job => {
+        const technicians = job.technicians || [];
+        technicians.forEach(tech => {
+          if (!wagesMap[tech]) {
+            wagesMap[tech] = {
+              name: tech,
+              jobs: [],
+              jobCount: 0,
+              baseWage: 0,
+              bonus: bonusAmounts[tech] || 0,
+              bonusNote: bonusAmounts[tech + '_note'] || ''
+            };
+          }
+          wagesMap[tech].jobs.push(job);
+          wagesMap[tech].jobCount += 1;
+          wagesMap[tech].baseWage = wagesMap[tech].jobCount * BASE_WAGE;
+        });
+      });
+      
+      return Object.values(wagesMap);
+    };
+    
+    const technicianWages = getTechnicianWages();
+    const totalBaseWage = technicianWages.reduce((sum, t) => sum + t.baseWage, 0);
+    const totalBonus = technicianWages.reduce((sum, t) => sum + (bonusAmounts[t.name] || 0), 0);
+    const totalWage = totalBaseWage + totalBonus;
+    
+    // Mở modal thêm công phát sinh
+    const openBonusModal = (tech) => {
+      setSelectedTechnician(tech);
+      setBonusInput(bonusAmounts[tech.name] || '');
+      setBonusNote(bonusAmounts[tech.name + '_note'] || '');
+      setShowBonusModal(true);
+    };
+    
+    // Lưu công phát sinh vào database
+    const saveBonus = async () => {
+      if (!selectedTechnician) return;
+      
+      const bonusData = {
+        tenant_id: tenant.id,
+        technician_name: selectedTechnician.name,
+        month: selectedMonth,
+        year: selectedYear,
+        bonus_amount: parseFloat(bonusInput) || 0,
+        note: bonusNote,
+        created_by: currentUser.name,
+        updated_at: getNowISOVN()
+      };
+      
+      try {
+        // Check if record exists
+        const existingId = bonusAmounts[selectedTechnician.name + '_id'];
+        
+        if (existingId) {
+          // Update existing
+          const { error } = await supabase
+            .from('technician_bonuses')
+            .update({
+              bonus_amount: bonusData.bonus_amount,
+              note: bonusData.note,
+              updated_at: bonusData.updated_at
+            })
+            .eq('id', existingId);
+          
+          if (error) throw error;
+        } else {
+          // Insert new
+          const { error } = await supabase
+            .from('technician_bonuses')
+            .insert([bonusData]);
+          
+          if (error) throw error;
+        }
+        
+        alert('✅ Đã lưu công phát sinh!');
+        setShowBonusModal(false);
+        await loadBonuses();
+      } catch (error) {
+        console.error('Error saving bonus:', error);
+        alert('❌ Lỗi khi lưu: ' + error.message);
+      }
+    };
+    
+    return (
+      <div className="p-4 md:p-6 space-y-4">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h2 className="text-xl md:text-2xl font-bold">💰 Tiền Công Lắp Đặt</h2>
+          <div className="flex gap-2">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-lg"
+            >
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                <option key={m} value={m}>Tháng {m}</option>
+              ))}
+            </select>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-lg"
+            >
+              {[2024,2025,2026,2027].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="text-sm text-blue-600">Công việc hoàn thành</div>
+            <div className="text-2xl font-bold text-blue-700">{completedJobsInMonth.length}</div>
+          </div>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <div className="text-sm text-green-600">Tiền công cơ bản</div>
+            <div className="text-xl font-bold text-green-700">{formatMoney(totalBaseWage)}</div>
+            <div className="text-xs text-green-500">{formatMoney(BASE_WAGE)}/công việc</div>
+          </div>
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+            <div className="text-sm text-orange-600">Công phát sinh</div>
+            <div className="text-xl font-bold text-orange-700">{formatMoney(totalBonus)}</div>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+            <div className="text-sm text-purple-600">Tổng tiền công</div>
+            <div className="text-xl font-bold text-purple-700">{formatMoney(totalWage)}</div>
+          </div>
+        </div>
+        
+        {/* Technician List */}
+        <div className="bg-white rounded-xl border shadow-sm">
+          <div className="p-4 border-b">
+            <h3 className="font-bold text-lg">👷 Chi tiết theo kỹ thuật viên</h3>
+          </div>
+          
+          {technicianWages.length > 0 ? (
+            <div className="divide-y">
+              {technicianWages.map(tech => (
+                <div key={tech.name} className="p-4">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div className="flex-1">
+                      <div className="font-bold text-lg">{tech.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {tech.jobCount} công việc hoàn thành
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span>Tiền công cơ bản ({tech.jobCount} × {formatMoney(BASE_WAGE)}):</span>
+                          <span className="font-medium text-green-600">{formatMoney(tech.baseWage)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span>Công phát sinh:</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-orange-600">{formatMoney(bonusAmounts[tech.name] || 0)}</span>
+                            <button
+                              onClick={() => openBonusModal(tech)}
+                              className="px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-xs font-medium"
+                            >
+                              ✏️ Sửa
+                            </button>
+                          </div>
+                        </div>
+                        {bonusAmounts[tech.name + '_note'] && (
+                          <div className="text-xs text-gray-500 italic">
+                            Ghi chú: {bonusAmounts[tech.name + '_note']}
+                          </div>
+                        )}
+                        <div className="flex justify-between pt-2 border-t">
+                          <span className="font-bold">Tổng:</span>
+                          <span className="font-bold text-purple-700">
+                            {formatMoney(tech.baseWage + (bonusAmounts[tech.name] || 0))}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Danh sách công việc */}
+                  <div className="mt-3 bg-gray-50 rounded-lg p-3">
+                    <div className="text-sm font-medium text-gray-700 mb-2">📋 Công việc:</div>
+                    <div className="space-y-1">
+                      {tech.jobs.map(job => (
+                        <div key={job.id} className="text-sm flex justify-between">
+                          <span className="text-gray-600">{job.title}</span>
+                          <span className="text-gray-500">{job.scheduledDate}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-gray-500">
+              <div className="text-4xl mb-2">📭</div>
+              <p>Chưa có công việc hoàn thành trong tháng {selectedMonth}/{selectedYear}</p>
+            </div>
+          )}
+        </div>
+        
+        {/* Bonus Modal */}
+        {showBonusModal && selectedTechnician && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl max-w-md w-full">
+              <div className="p-6 border-b">
+                <h3 className="text-xl font-bold">💰 Công Phát Sinh - {selectedTechnician.name}</h3>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Số tiền (VNĐ)</label>
+                  <input
+                    type="number"
+                    value={bonusInput}
+                    onChange={(e) => setBonusInput(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg"
+                    placeholder="VD: 500000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                  <textarea
+                    value={bonusNote}
+                    onChange={(e) => setBonusNote(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg"
+                    rows={2}
+                    placeholder="VD: Công việc khó, đi xa, OT..."
+                  />
+                </div>
+              </div>
+              <div className="p-6 border-t bg-gray-50 flex gap-3">
+                <button
+                  onClick={() => setShowBonusModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={saveBonus}
+                  className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium"
+                >
+                  💾 Lưu
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // =====================================
+  // TECHNICAL SUMMARY VIEW
+  // =====================================
+  const TechnicalSummaryView = () => {
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [bonusAmounts, setBonusAmounts] = useState({});
+    
+    const BASE_WAGE = 200000; // 200,000đ/công việc
+    
+    // Load bonus data từ database
+    const loadBonuses = async () => {
+      if (!tenant) return;
+      try {
+        const { data, error } = await supabase
+          .from('technician_bonuses')
+          .select('*')
+          .eq('tenant_id', tenant.id)
+          .eq('month', selectedMonth)
+          .eq('year', selectedYear);
+        
+        if (error) throw error;
+        
+        const bonusMap = {};
+        (data || []).forEach(b => {
+          bonusMap[b.technician_name] = b.bonus_amount || 0;
+        });
+        setBonusAmounts(bonusMap);
+      } catch (error) {
+        console.error('Error loading bonuses:', error);
+      }
+    };
+    
+    useEffect(() => {
+      loadBonuses();
+    }, [selectedMonth, selectedYear, tenant]);
+    
+    // Lọc công việc hoàn thành trong tháng
+    const completedJobsInMonth = technicalJobs.filter(job => {
+      if (job.status !== 'Hoàn thành') return false;
+      const jobDate = new Date(job.scheduledDate);
+      return jobDate.getMonth() + 1 === selectedMonth && jobDate.getFullYear() === selectedYear;
+    });
+    
+    // Tính toán tổng hợp
+    const calculateSummary = () => {
+      let totalRevenue = 0;
+      let totalExpenses = 0;
+      let totalWages = 0;
+      
+      const jobDetails = completedJobsInMonth.map(job => {
+        const revenue = job.customerPayment || 0;
+        const expenseItems = job.expenses || [];
+        const expenseTotal = expenseItems.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+        const techCount = (job.technicians || []).length;
+        const wages = techCount * BASE_WAGE;
+        
+        totalRevenue += revenue;
+        totalExpenses += expenseTotal;
+        totalWages += wages;
+        
+        return {
+          ...job,
+          revenue,
+          expenseItems,
+          expenseTotal,
+          wages,
+          profit: revenue - expenseTotal - wages
+        };
+      });
+      
+      // Thêm công phát sinh
+      const totalBonus = Object.keys(bonusAmounts)
+        .filter(key => !key.includes('_'))
+        .reduce((sum, key) => sum + (bonusAmounts[key] || 0), 0);
+      
+      totalWages += totalBonus;
+      
+      return {
+        jobDetails,
+        totalRevenue,
+        totalExpenses,
+        totalWages,
+        totalBonus,
+        netProfit: totalRevenue - totalExpenses - totalWages
+      };
+    };
+    
+    const summary = calculateSummary();
+    
+    return (
+      <div className="p-4 md:p-6 space-y-4">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h2 className="text-xl md:text-2xl font-bold">📊 Tổng Hợp Kỹ Thuật</h2>
+          <div className="flex gap-2">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-lg"
+            >
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                <option key={m} value={m}>Tháng {m}</option>
+              ))}
+            </select>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-lg"
+            >
+              {[2024,2025,2026,2027].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Doanh Thu */}
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <div className="text-sm text-green-600 font-medium">💰 Doanh Thu</div>
+            <div className="text-2xl font-bold text-green-700 mt-1">{formatMoney(summary.totalRevenue)}</div>
+            <div className="text-xs text-green-500 mt-1">{completedJobsInMonth.length} công việc hoàn thành</div>
+          </div>
+          
+          {/* Tổng Chi Phí */}
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="text-sm text-red-600 font-medium">💸 Tổng Chi Phí</div>
+            <div className="text-2xl font-bold text-red-700 mt-1">{formatMoney(summary.totalExpenses + summary.totalWages)}</div>
+            <div className="mt-2 space-y-1 text-xs">
+              <div className="flex justify-between text-gray-600">
+                <span>• Chi phí lắp đặt:</span>
+                <span className="font-medium">{formatMoney(summary.totalExpenses)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>• Tiền công cơ bản:</span>
+                <span className="font-medium">{formatMoney(summary.totalWages - summary.totalBonus)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>• Công phát sinh:</span>
+                <span className="font-medium">{formatMoney(summary.totalBonus)}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Còn Lại */}
+          <div className={`border rounded-xl p-4 ${summary.netProfit >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-yellow-50 border-yellow-200'}`}>
+            <div className={`text-sm font-medium ${summary.netProfit >= 0 ? 'text-blue-600' : 'text-yellow-600'}`}>📈 Còn Lại</div>
+            <div className={`text-2xl font-bold mt-1 ${summary.netProfit >= 0 ? 'text-blue-700' : 'text-yellow-700'}`}>{formatMoney(summary.netProfit)}</div>
+            <div className="text-xs text-gray-500 mt-1">Doanh thu - Tổng chi phí</div>
+          </div>
+        </div>
+        
+        {/* Formula */}
+        <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
+          <strong>Công thức:</strong> Còn Lại = Doanh Thu - Tổng Chi Phí
+          <div className="mt-1">
+            {formatMoney(summary.netProfit)} = {formatMoney(summary.totalRevenue)} - {formatMoney(summary.totalExpenses + summary.totalWages)}
+          </div>
+          <div className="mt-1 text-xs">
+            (Tổng chi phí = {formatMoney(summary.totalExpenses)} chi phí lắp đặt + {formatMoney(summary.totalWages - summary.totalBonus)} tiền công CB + {formatMoney(summary.totalBonus)} phát sinh)
+          </div>
+        </div>
+        
+        {/* Job Details */}
+        <div className="bg-white rounded-xl border shadow-sm">
+          <div className="p-4 border-b">
+            <h3 className="font-bold text-lg">📋 Chi tiết theo công việc</h3>
+          </div>
+          
+          {summary.jobDetails.length > 0 ? (
+            <div className="divide-y">
+              {summary.jobDetails.map(job => (
+                <div key={job.id} className="p-4">
+                  <div className="flex flex-col md:flex-row justify-between items-start gap-2">
+                    <div className="flex-1">
+                      <div className="font-bold">{job.title}</div>
+                      <div className="text-sm text-gray-500">
+                        {job.customerName} • {job.scheduledDate}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        KTV: {(job.technicians || []).join(', ')}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                        Hoàn thành
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                    <div className="bg-green-50 p-2 rounded">
+                      <div className="text-xs text-green-600">Thu</div>
+                      <div className="font-bold text-green-700">{formatMoney(job.revenue)}</div>
+                    </div>
+                    <div className="bg-red-50 p-2 rounded">
+                      <div className="text-xs text-red-600">Chi phí</div>
+                      <div className="font-bold text-red-700">{formatMoney(job.expenseTotal)}</div>
+                    </div>
+                    <div className="bg-orange-50 p-2 rounded">
+                      <div className="text-xs text-orange-600">Tiền công</div>
+                      <div className="font-bold text-orange-700">{formatMoney(job.wages)}</div>
+                      <div className="text-xs text-orange-500">{(job.technicians || []).length} người</div>
+                    </div>
+                    <div className={`p-2 rounded ${job.profit >= 0 ? 'bg-blue-50' : 'bg-yellow-50'}`}>
+                      <div className={`text-xs ${job.profit >= 0 ? 'text-blue-600' : 'text-yellow-600'}`}>Còn lại</div>
+                      <div className={`font-bold ${job.profit >= 0 ? 'text-blue-700' : 'text-yellow-700'}`}>{formatMoney(job.profit)}</div>
+                    </div>
+                  </div>
+                  
+                  {/* Chi tiết chi phí */}
+                  {job.expenseItems && job.expenseItems.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-500">
+                      Chi tiết: {job.expenseItems.map(e => `${e.category}${e.description ? ': ' + e.description : ''} (${formatMoney(e.amount)})`).join(', ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-gray-500">
+              <div className="text-4xl mb-2">📭</div>
+              <p>Chưa có công việc hoàn thành trong tháng {selectedMonth}/{selectedYear}</p>
+            </div>
+          )}
+        </div>
+        
+        {/* Bonus Note */}
+        {summary.totalBonus > 0 && (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+            <div className="font-medium text-purple-800">💡 Lưu ý về công phát sinh</div>
+            <div className="text-sm text-purple-600 mt-1">
+              Công phát sinh ({formatMoney(summary.totalBonus)}) được tính riêng cho từng kỹ thuật viên trong tab "Tiền Công".
             </div>
           </div>
         )}
@@ -3627,8 +4520,11 @@ export default function SimpleMarketingSystem() {
 
     const AVAILABLE_TEAMS = [
       { id: 'Content', name: 'Content', color: 'blue', emoji: '✍️' },
+      { id: 'Edit Video', name: 'Edit Video', color: 'purple', emoji: '🎬' },
       { id: 'Kỹ Thuật', name: 'Kỹ Thuật', color: 'orange', emoji: '🔧' },
-      { id: 'Sale', name: 'Sale', color: 'green', emoji: '💼' }
+      { id: 'Sale', name: 'Sale', color: 'green', emoji: '💼' },
+      { id: 'Kho', name: 'Kho', color: 'yellow', emoji: '📦' },
+      { id: 'Livestream', name: 'Livestream', color: 'red', emoji: '🎥' }
     ];
 
     return (
@@ -6778,7 +7674,9 @@ export default function SimpleMarketingSystem() {
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' }
+            { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' },
+            { id: 'wages', l: '💰 Tiền Công', tabKey: 'wages' },
+            { id: 'summary', l: '📊 Tổng Hợp', tabKey: 'summary' }
           ] : activeModule === 'finance' ? [
             { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
             { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
@@ -6816,7 +7714,9 @@ export default function SimpleMarketingSystem() {
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc' }
+            { id: 'jobs', l: '📋 Công Việc' },
+            { id: 'wages', l: '💰 Tiền Công' },
+            { id: 'summary', l: '📊 Tổng Hợp' }
           ] : activeModule === 'finance' ? [
             { id: 'dashboard', l: '📊 Tổng Quan' },
             { id: 'receipts', l: '🧾 Thu/Chi' },
@@ -6918,6 +7818,8 @@ export default function SimpleMarketingSystem() {
         {activeModule === 'technical' && canAccessModule('technical') && (
           <>
             {activeTab === 'jobs' && <TechnicalJobsView />}
+            {activeTab === 'wages' && <TechnicianWagesView />}
+            {activeTab === 'summary' && <TechnicalSummaryView />}
             {activeTab === 'integrations' && <IntegrationsView />}
           </>
         )}
@@ -7261,8 +8163,9 @@ export default function SimpleMarketingSystem() {
 
     // Chỉ Admin hoặc Level 3 mới được duyệt
     const canApprove = currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions?.finance || 0) >= 3;
-    const totalThu = filteredReceipts.filter(r => r.type === 'thu').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
-    const totalChi = filteredReceipts.filter(r => r.type === 'chi').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+    // Chỉ tính tổng những phiếu đã duyệt (approved)
+    const totalThu = filteredReceipts.filter(r => r.type === 'thu' && r.status === 'approved').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+    const totalChi = filteredReceipts.filter(r => r.type === 'chi' && r.status === 'approved').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
 
     return (
       <div className="p-6 space-y-4">
@@ -8075,626 +8978,929 @@ export default function SimpleMarketingSystem() {
     );
   }
 
-  function SalariesView() {
-    const vnDate = getVietnamDate();
-    const [activeTab, setActiveTab] = useState('all');
-    const [selectedMonth, setSelectedMonth] = useState(vnDate.getMonth() + 1);
-    const [selectedYear, setSelectedYear] = useState(vnDate.getFullYear());
-    const [showSalaryDetailModal, setShowSalaryDetailModal] = useState(false);
-    const [showCreateSalaryModal, setShowCreateSalaryModal] = useState(false);
-    const [showEditSalaryConfigModal, setShowEditSalaryConfigModal] = useState(false);
-    const [selectedEmployee, setSelectedEmployee] = useState(null);
+  // ============================================
+  // 💰 SALARY MANAGEMENT COMPONENT
+  // Tích hợp trực tiếp - không cần import
+  // ============================================
+
+  // ============ SALARY MANAGEMENT - MULTI DEPARTMENT v85 ============
+  function SalaryManagement({ 
+    tenant, 
+    currentUser, 
+    allUsers, 
+    tasks, 
+    technicalJobs, 
+    formatMoney,
+    getTodayVN,
+    getVietnamDate,
+    supabase 
+  }) {
+    const [salaries, setSalaries] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedSalary, setSelectedSalary] = useState(null);
+    const [filterMonth, setFilterMonth] = useState('');
+    const [filterUser, setFilterUser] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
     
-    const [salaryConfigs, setSalaryConfigs] = useState([]);
-    const [monthlySalaries, setMonthlySalaries] = useState([]);
-    
-    // Form states for salary config
-    const [configBaseSalary, setConfigBaseSalary] = useState('');
-    const [configCommissionRate, setConfigCommissionRate] = useState('');
-    const [configBonusPerUnit, setConfigBonusPerUnit] = useState('');
-    
-    // Salary calculation form
-    const [salaryRevenue, setSalaryRevenue] = useState('');
-    const [salaryUnits, setSalaryUnits] = useState('');
-    const [salaryBonus, setSalaryBonus] = useState('');
-    const [salaryDeduction, setSalaryDeduction] = useState('');
-    const [salaryNote, setSalaryNote] = useState('');
+    // Create modal states
+    const [createStep, setCreateStep] = useState(1);
+    const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [formData, setFormData] = useState({});
 
-    // Map department từ team của user
-    const mapTeamToDepartment = (team) => {
-      if (!team) return 'other';
-      const t = team.toLowerCase();
-      if (t.includes('livestream') || t.includes('live')) return 'livestream';
-      if (t.includes('media') || t.includes('content') || t.includes('design')) return 'media';
-      if (t.includes('kho') || t.includes('warehouse')) return 'warehouse';
-      return 'other';
+    const getCurrentMonth = () => {
+      const vn = getVietnamDate();
+      return `${vn.getFullYear()}-${String(vn.getMonth() + 1).padStart(2, '0')}`;
     };
 
-    const departments = {
-      livestream: { name: '🎥 Livestream', color: 'purple', commissionLabel: '% Hoa hồng', unitLabel: 'Doanh số' },
-      media: { name: '🎬 Media', color: 'blue', commissionLabel: 'đ/Video', unitLabel: 'Số video' },
-      warehouse: { name: '📦 Kho', color: 'orange', commissionLabel: 'đ/Đơn', unitLabel: 'Số đơn' },
-      other: { name: '👤 Khác', color: 'gray', commissionLabel: 'đ/Đơn vị', unitLabel: 'Số lượng' }
-    };
-
-    // Chuyển allUsers thành employees với salary config
-    const employees = useMemo(() => {
-      return allUsers.map(user => {
-        const config = salaryConfigs.find(c => c.user_id === user.id) || {};
-        return {
-          id: user.id,
-          name: user.name,
-          phone: user.phone || '',
-          department: mapTeamToDepartment(user.team),
-          team: user.team,
-          role: user.role,
-          base_salary: config.base_salary || 0,
-          commission_rate: config.commission_rate || 0,
-          bonus_per_unit: config.bonus_per_unit || 0,
-          status: 'active'
-        };
+    const resetForm = () => {
+      setFormData({
+        month: getCurrentMonth(),
+        basic_salary: '',
+        work_days: '26',
+        livestream_revenue: '',
+        livestream_commission: '6',
+        livestream_note: '',
+        media_videos: '',
+        media_per_video: '',
+        media_note: '',
+        kho_orders: '',
+        kho_per_order: '',
+        kho_note: '',
+        kythuat_jobs: '',
+        kythuat_per_job: '200000',
+        kythuat_note: '',
+        sale_revenue: '',
+        sale_commission: '',
+        sale_note: '',
+        bonus: '',
+        deduction: '',
+        note: ''
       });
-    }, [allUsers, salaryConfigs]);
+      setCreateStep(1);
+      setSelectedEmployee(null);
+    };
 
     useEffect(() => {
-      loadSalaryConfigs();
-      loadMonthlySalaries();
-    }, [selectedMonth, selectedYear]);
+      loadSalaries();
+    }, [tenant]);
 
-    const loadSalaryConfigs = async () => {
+    const loadSalaries = async () => {
+      if (!tenant) return;
       try {
-        const { data, error } = await supabase.from('salary_configs').select('*');
-        if (error) throw error;
-        setSalaryConfigs(data || []);
-      } catch (error) {
-        console.log('Load salary configs:', error.message);
-      }
-    };
-
-    const loadMonthlySalaries = async () => {
-      try {
-        const { data, error } = await supabase.from('salaries')
+        const { data, error } = await supabase
+          .from('salaries')
           .select('*')
-          .eq('month', selectedMonth)
-          .eq('year', selectedYear)
+          .eq('tenant_id', tenant.id)
           .order('created_at', { ascending: false });
         if (error) throw error;
-        setMonthlySalaries(data || []);
-      } catch (error) {
-        console.log('Load salaries:', error.message);
+        setSalaries(data || []);
+      } catch (err) {
+        console.error('Error loading salaries:', err);
+      } finally {
+        setLoading(false);
       }
     };
 
-    const openEditSalaryConfig = (employee) => {
-      setSelectedEmployee(employee);
-      setConfigBaseSalary(employee.base_salary?.toString() || '');
-      setConfigCommissionRate(employee.commission_rate?.toString() || '');
-      setConfigBonusPerUnit(employee.bonus_per_unit?.toString() || '');
-      setShowEditSalaryConfigModal(true);
+    const filteredSalaries = (salaries || []).filter(s => {
+      if (filterMonth && s.month !== filterMonth) return false;
+      if (filterUser && s.user_id !== filterUser) return false;
+      if (filterStatus !== 'all' && s.status !== filterStatus) return false;
+      return true;
+    });
+
+    const getStatusBadge = (status) => {
+      const badges = {
+        draft: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '📝 Nháp' },
+        approved: { bg: 'bg-green-100', text: 'text-green-700', label: '✅ Đã duyệt' },
+        paid: { bg: 'bg-blue-100', text: 'text-blue-700', label: '💰 Đã trả' }
+      };
+      const badge = badges[status] || badges.draft;
+      return <span className={`px-3 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>{badge.label}</span>;
     };
 
-    const handleSaveSalaryConfig = async () => {
+    const stats = {
+      totalThisMonth: (salaries || []).filter(s => s.month === getCurrentMonth()).reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
+      totalPending: (salaries || []).filter(s => s.status === 'draft').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
+      totalApproved: (salaries || []).filter(s => s.status === 'approved').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
+      totalPaid: (salaries || []).filter(s => s.status === 'paid').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0)
+    };
+
+    // Calculate totals for create form
+    const calculateTotals = () => {
+      const basicSalary = parseFloat(formData.basic_salary) || 0;
+      const workDays = parseFloat(formData.work_days) || 0;
+      const actualBasic = workDays > 0 ? (basicSalary / 26) * workDays : 0;
+
+      const livestreamRevenue = parseFloat(formData.livestream_revenue) || 0;
+      const livestreamCommission = parseFloat(formData.livestream_commission) || 0;
+      const livestreamTotal = livestreamRevenue >= 100000000 ? (livestreamRevenue * livestreamCommission / 100) : 0;
+
+      const mediaVideos = parseFloat(formData.media_videos) || 0;
+      const mediaPerVideo = parseFloat(formData.media_per_video) || 0;
+      const mediaTotal = mediaVideos * mediaPerVideo;
+
+      const khoOrders = parseFloat(formData.kho_orders) || 0;
+      const khoPerOrder = parseFloat(formData.kho_per_order) || 0;
+      const khoTotal = khoOrders * khoPerOrder;
+
+      const kythuatJobs = parseFloat(formData.kythuat_jobs) || 0;
+      const kythuatPerJob = parseFloat(formData.kythuat_per_job) || 0;
+      const kythuatTotal = kythuatJobs * kythuatPerJob;
+
+      const saleRevenue = parseFloat(formData.sale_revenue) || 0;
+      const saleCommission = parseFloat(formData.sale_commission) || 0;
+      const saleTotal = saleRevenue * saleCommission / 100;
+
+      const bonus = parseFloat(formData.bonus) || 0;
+      const deduction = parseFloat(formData.deduction) || 0;
+
+      return {
+        actualBasic,
+        livestreamTotal,
+        mediaTotal,
+        khoTotal,
+        kythuatTotal,
+        saleTotal,
+        bonus,
+        deduction,
+        grandTotal: actualBasic + livestreamTotal + mediaTotal + khoTotal + kythuatTotal + saleTotal + bonus - deduction
+      };
+    };
+
+    const handleOpenCreate = () => {
+      resetForm();
+      setShowCreateModal(true);
+    };
+
+    const handleSelectEmployee = (user) => {
+      setSelectedEmployee(user);
+      // Auto count tasks
+      const month = formData.month || getCurrentMonth();
+      const [year, monthNum] = month.split('-');
+      const startDate = `${year}-${monthNum}-01`;
+      const endDate = `${year}-${monthNum}-31`;
+
+      // Count Media tasks
+      const mediaCount = (tasks || []).filter(t => {
+        const isAssigned = t.assignee === user.id || t.assignee === user.name || t.assigned_to === user.id;
+        const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
+        const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
+        const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+        return isAssigned && isDone && inMonth;
+      }).length;
+
+      // Count Technical jobs
+      const kythuatCount = (technicalJobs || []).filter(j => {
+        const techs = j.technicians || [];
+        const isAssigned = techs.includes(user.id) || techs.includes(user.name) || 
+                           j.assigned_to === user.id || j.technician === user.name || j.technician === user.id;
+        const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+        const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+        const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+        return isAssigned && isDone && inMonth;
+      }).length;
+
+      setFormData(prev => ({
+        ...prev,
+        media_videos: mediaCount.toString(),
+        kythuat_jobs: kythuatCount.toString()
+      }));
+      setCreateStep(2);
+    };
+
+    const handleSaveSalary = async () => {
       if (!selectedEmployee) return;
+      setSaving(true);
+      const totals = calculateTotals();
+
       try {
-        const configData = {
+        const dataToSave = {
+          tenant_id: tenant.id,
           user_id: selectedEmployee.id,
-          user_name: selectedEmployee.name,
-          department: selectedEmployee.department,
-          base_salary: parseFloat(configBaseSalary) || 0,
-          commission_rate: parseFloat(configCommissionRate) || 0,
-          bonus_per_unit: parseFloat(configBonusPerUnit) || 0,
-          updated_at: getNowISOVN()
+          employee_name: selectedEmployee.name,
+          month: formData.month,
+          basic_salary: parseFloat(formData.basic_salary) || 0,
+          work_days: parseFloat(formData.work_days) || 0,
+          actual_basic: totals.actualBasic,
+          livestream_revenue: parseFloat(formData.livestream_revenue) || 0,
+          livestream_commission: parseFloat(formData.livestream_commission) || 0,
+          livestream_total: totals.livestreamTotal,
+          livestream_note: formData.livestream_note || '',
+          media_videos: parseFloat(formData.media_videos) || 0,
+          media_per_video: parseFloat(formData.media_per_video) || 0,
+          media_total: totals.mediaTotal,
+          media_note: formData.media_note || '',
+          kho_orders: parseFloat(formData.kho_orders) || 0,
+          kho_per_order: parseFloat(formData.kho_per_order) || 0,
+          kho_total: totals.khoTotal,
+          kho_note: formData.kho_note || '',
+          kythuat_jobs: parseFloat(formData.kythuat_jobs) || 0,
+          kythuat_per_job: parseFloat(formData.kythuat_per_job) || 0,
+          kythuat_total: totals.kythuatTotal,
+          kythuat_note: formData.kythuat_note || '',
+          sale_revenue: parseFloat(formData.sale_revenue) || 0,
+          sale_commission: parseFloat(formData.sale_commission) || 0,
+          sale_total: totals.saleTotal,
+          sale_note: formData.sale_note || '',
+          bonus: totals.bonus,
+          deduction: totals.deduction,
+          total_salary: totals.grandTotal,
+          note: formData.note || '',
+          status: 'draft',
+          created_by: currentUser?.name || '',
+          created_at: new Date().toISOString()
         };
 
-        // Upsert - update nếu tồn tại, insert nếu chưa có
-        const existing = salaryConfigs.find(c => c.user_id === selectedEmployee.id);
-        if (existing) {
-          const { error } = await supabase.from('salary_configs').update(configData).eq('user_id', selectedEmployee.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('salary_configs').insert([configData]);
-          if (error) throw error;
+        const { error } = await supabase.from('salaries').insert(dataToSave);
+        if (error) throw error;
+
+        alert('✅ Đã tạo bảng lương thành công!');
+        setShowCreateModal(false);
+        loadSalaries();
+      } catch (err) {
+        console.error('Error:', err);
+        alert('❌ Lỗi: ' + err.message);
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const handleStatusChange = async (salary, newStatus) => {
+      if (!confirm(`Xác nhận chuyển sang "${newStatus === 'approved' ? 'Đã duyệt' : 'Đã trả'}"?`)) return;
+      try {
+        const updateData = { status: newStatus };
+        if (newStatus === 'approved') {
+          updateData.approved_at = new Date().toISOString();
+          updateData.approved_by = currentUser?.name;
+        } else if (newStatus === 'paid') {
+          updateData.paid_at = new Date().toISOString();
+          updateData.paid_by = currentUser?.name;
         }
-
-        alert('Đã lưu cấu hình lương!');
-        setShowEditSalaryConfigModal(false);
-        loadSalaryConfigs();
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
-      }
-    };
-
-    const openCreateSalary = (employee) => {
-      setSelectedEmployee(employee);
-      setSalaryRevenue('');
-      setSalaryUnits('');
-      setSalaryBonus('');
-      setSalaryDeduction('');
-      setSalaryNote('');
-      setShowCreateSalaryModal(true);
-    };
-
-    const calculateSalary = () => {
-      if (!selectedEmployee) return { commission: 0, unitBonus: 0, total: 0 };
-      const base = parseFloat(selectedEmployee.base_salary) || 0;
-      const revenue = parseFloat(salaryRevenue) || 0;
-      const units = parseFloat(salaryUnits) || 0;
-      const bonus = parseFloat(salaryBonus) || 0;
-      const deduction = parseFloat(salaryDeduction) || 0;
-      
-      let commission = 0;
-      let unitBonus = 0;
-      
-      if (selectedEmployee.department === 'livestream') {
-        commission = revenue * (parseFloat(selectedEmployee.commission_rate) || 0) / 100;
-      } else {
-        unitBonus = units * (parseFloat(selectedEmployee.bonus_per_unit) || 0);
-      }
-      
-      const total = base + commission + unitBonus + bonus - deduction;
-      return { commission, unitBonus, total };
-    };
-
-    const handleCreateSalary = async () => {
-      const calc = calculateSalary();
-      try {
-        const { error } = await supabase.from('salaries').insert([{
-          tenant_id: tenant.id,
-          employee_id: selectedEmployee.id,
-          employee_name: selectedEmployee.name,
-          department: selectedEmployee.department,
-          month: selectedMonth,
-          year: selectedYear,
-          base_salary: parseFloat(selectedEmployee.base_salary),
-          revenue: parseFloat(salaryRevenue) || 0,
-          units: parseFloat(salaryUnits) || 0,
-          commission: calc.commission,
-          unit_bonus: calc.unitBonus,
-          bonus: parseFloat(salaryBonus) || 0,
-          deduction: parseFloat(salaryDeduction) || 0,
-          total_salary: calc.total,
-          note: salaryNote,
-          status: 'pending',
-          created_by: currentUser.name,
-          created_at: getNowISOVN()
-        }]);
+        const { error } = await supabase.from('salaries').update(updateData).eq('id', salary.id);
         if (error) throw error;
-        alert('Tạo bảng lương thành công!');
-        setShowCreateSalaryModal(false);
-        loadMonthlySalaries();
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
-      }
-    };
-
-    const handleApproveSalary = async (salary) => {
-      try {
-        const { error } = await supabase.from('salaries').update({
-          status: 'approved',
-          approved_by: currentUser.name,
-          approved_at: getNowISOVN()
-        }).eq('id', salary.id);
-        if (error) throw error;
-        alert('Đã duyệt bảng lương!');
-        loadMonthlySalaries();
-        setShowSalaryDetailModal(false);
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
-      }
-    };
-
-    const handlePaySalary = async (salary) => {
-      if (!window.confirm(`Xác nhận trả lương ${salary.employee_name}: ${parseFloat(salary.total_salary).toLocaleString('vi-VN')}đ?`)) return;
-      try {
-        // Cập nhật trạng thái lương
-        const { error } = await supabase.from('salaries').update({
-          status: 'paid',
-          paid_by: currentUser.name,
-          paid_at: getNowISOVN()
-        }).eq('id', salary.id);
-        if (error) throw error;
-
-        // Tạo phiếu chi
-        const dateStr = getNowISOVN().slice(0,10).replace(/-/g, '');
-        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-        await supabase.from('receipts_payments').insert([{
-          tenant_id: tenant.id,
-          receipt_number: 'PC-' + dateStr + '-' + randomNum,
-          type: 'chi',
-          amount: salary.total_salary,
-          description: 'Trả lương T' + salary.month + '/' + salary.year + ' - ' + salary.employee_name,
-          category: 'Lương nhân viên',
-          receipt_date: getTodayVN(),
-          note: 'Tự động từ bảng lương',
-          status: 'approved',
-          created_by: currentUser.name,
-          approved_by: currentUser.name,
-          approved_at: getNowISOVN(),
-          created_at: getNowISOVN()
-        }]);
-
-        alert('Đã trả lương và tạo phiếu chi!');
-        loadMonthlySalaries();
-        loadFinanceData();
-        setShowSalaryDetailModal(false);
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
+        alert('✅ Đã cập nhật!');
+        setSelectedSalary(null);
+        loadSalaries();
+      } catch (err) {
+        alert('❌ Lỗi: ' + err.message);
       }
     };
 
     const handleDeleteSalary = async (id) => {
-      if (!window.confirm('Xóa bảng lương này?')) return;
+      if (!confirm('Xác nhận xóa bảng lương này?')) return;
       try {
         const { error } = await supabase.from('salaries').delete().eq('id', id);
         if (error) throw error;
-        alert('Đã xóa!');
-        loadMonthlySalaries();
-        setShowSalaryDetailModal(false);
-      } catch (error) {
-        alert('Lỗi: ' + error.message);
+        alert('✅ Đã xóa!');
+        setSelectedSalary(null);
+        loadSalaries();
+      } catch (err) {
+        alert('❌ Lỗi: ' + err.message);
       }
     };
 
-    const openSalaryDetail = (salary) => {
-      setSelectedSalary(salary);
-      setShowSalaryDetailModal(true);
-    };
+    const totals = calculateTotals();
 
-    // Permission levels for salary:
-    // Level 1: Chỉ xem lương của mình
-    // Level 2: Xem tất cả lương (không sửa/xóa)
-    // Level 3: Full quyền (tính lương, sửa, xóa)
-    const financeLevel = getPermissionLevel('finance');
-    const canViewAllSalaries = financeLevel >= 2; // Level 2+ có thể xem tất cả
-    const canManageSalaries = financeLevel >= 3; // Level 3 mới được tính lương/sửa/xóa
-    
-    const filteredEmployees = !canManageSalaries ? [] : (activeTab === 'all' ? employees : employees.filter(e => e.department === activeTab));
-    const filteredSalaries = (() => {
-      let sals = activeTab === 'all' ? monthlySalaries : monthlySalaries.filter(s => s.department === activeTab);
-      // Level 1: chỉ xem lương của mình
-      if (!canViewAllSalaries) sals = sals.filter(s => s.employee_name === currentUser.name);
-      return sals;
-    })();
-    
-    const totalSalaryByDept = (dept) => {
-      if (!canViewAllSalaries) return 0;
-      return monthlySalaries.filter(s => dept === 'all' || s.department === dept).reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0);
-    };
-
-    const canApprove = canManageSalaries;
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Đang tải...</p>
+          </div>
+        </div>
+      );
+    }
 
     return (
-      <div className="p-6 space-y-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <h2 className="text-2xl font-bold">💰 Quản Lý Lương</h2>
-          <div className="flex items-center gap-2">
-            <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
-              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>Tháng {m}</option>)}
-            </select>
-            <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg">
-              {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800">💰 Quản Lý Lương Đa Phòng Ban</h2>
+              <p className="text-gray-600 text-sm mt-1">Tính lương theo từng phòng ban, hỗ trợ nhân viên làm nhiều bộ phận</p>
+            </div>
+            <button onClick={handleOpenCreate} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg">
+              ➕ Tạo bảng lương
+            </button>
           </div>
         </div>
 
+        {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-50 border rounded-xl p-4 cursor-pointer hover:bg-gray-100" onClick={() => setActiveTab('all')}>
-            <div className="text-sm text-gray-600">Tổng lương</div>
-            <div className="text-xl font-bold text-gray-800">{formatMoney(totalSalaryByDept('all'))}</div>
-            <div className="text-xs text-gray-500">{monthlySalaries.length} bảng lương</div>
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+            <div className="text-blue-100 text-sm mb-1">💰 Tổng tháng này</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalThisMonth)}</div>
           </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 cursor-pointer hover:bg-purple-100" onClick={() => setActiveTab('livestream')}>
-            <div className="text-sm text-purple-600">🎥 Livestream</div>
-            <div className="text-xl font-bold text-purple-700">{formatMoney(totalSalaryByDept('livestream'))}</div>
-            <div className="text-xs text-purple-500">{employees.filter(e => e.department === 'livestream').length} NV</div>
+          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
+            <div className="text-yellow-100 text-sm mb-1">📝 Chờ duyệt</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalPending)}</div>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 cursor-pointer hover:bg-blue-100" onClick={() => setActiveTab('media')}>
-            <div className="text-sm text-blue-600">🎬 Media</div>
-            <div className="text-xl font-bold text-blue-700">{formatMoney(totalSalaryByDept('media'))}</div>
-            <div className="text-xs text-blue-500">{employees.filter(e => e.department === 'media').length} NV</div>
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
+            <div className="text-green-100 text-sm mb-1">✅ Đã duyệt</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalApproved)}</div>
           </div>
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 cursor-pointer hover:bg-orange-100" onClick={() => setActiveTab('warehouse')}>
-            <div className="text-sm text-orange-600">📦 Kho</div>
-            <div className="text-xl font-bold text-orange-700">{formatMoney(totalSalaryByDept('warehouse'))}</div>
-            <div className="text-xs text-orange-500">{employees.filter(e => e.department === 'warehouse').length} NV</div>
+          <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-5 text-white">
+            <div className="text-gray-100 text-sm mb-1">💸 Đã trả</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalPaid)}</div>
           </div>
         </div>
 
-        <div className="flex gap-2 border-b">
-          <button onClick={() => setActiveTab('all')} className={activeTab === 'all' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>Tất cả</button>
-          <button onClick={() => setActiveTab('livestream')} className={activeTab === 'livestream' ? "px-4 py-2 border-b-2 border-purple-600 text-purple-600 font-medium" : "px-4 py-2 text-gray-500"}>🎥 Livestream</button>
-          <button onClick={() => setActiveTab('media')} className={activeTab === 'media' ? "px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium" : "px-4 py-2 text-gray-500"}>🎬 Media</button>
-          <button onClick={() => setActiveTab('warehouse')} className={activeTab === 'warehouse' ? "px-4 py-2 border-b-2 border-orange-600 text-orange-600 font-medium" : "px-4 py-2 text-gray-500"}>📦 Kho</button>
-        </div>
-
-        <div className={`grid grid-cols-1 ${canManageSalaries ? 'lg:grid-cols-2' : ''} gap-4`}>
-          {/* Chỉ hiển thị danh sách NV cho người có quyền quản lý */}
-          {canManageSalaries && (
-            <div className="bg-white rounded-xl border">
-              <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-                <h3 className="font-bold">👥 Danh sách nhân viên ({filteredEmployees.length})</h3>
+        {/* Filters & Table */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-4 border-b bg-gray-50">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">📅 Tháng</label>
+                <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
               </div>
-              {filteredEmployees.length === 0 ? (
-                <div className="p-6 text-center text-gray-500">Chưa có nhân viên</div>
-              ) : (
-                <div className="divide-y max-h-[400px] overflow-y-auto">
-                  {filteredEmployees.map(emp => {
-                    const hasSalary = monthlySalaries.some(s => s.employee_id === emp.id);
-                    const hasConfig = emp.base_salary > 0;
-                    return (
-                      <div key={emp.id} className="p-4 hover:bg-gray-50">
-                        <div className="flex justify-between items-start">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">👤 Nhân viên</label>
+                <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="">Tất cả</option>
+                  {(allUsers || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">📊 Trạng thái</label>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Tất cả</option>
+                  <option value="draft">Nháp</option>
+                  <option value="approved">Đã duyệt</option>
+                  <option value="paid">Đã trả</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button onClick={() => { setFilterMonth(''); setFilterUser(''); setFilterStatus('all'); }} className="w-full px-4 py-2 border rounded-lg hover:bg-gray-100">🔄 Reset</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nhân viên</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tháng</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Lương CB</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Ngày công</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Tổng lương</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Trạng thái</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredSalaries.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                      <div className="text-5xl mb-4">📭</div>
+                      <div className="text-lg font-medium">Chưa có bảng lương nào</div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSalaries.map(salary => (
+                    <tr key={salary.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{salary.employee_name}</td>
+                      <td className="px-4 py-3">{salary.month}</td>
+                      <td className="px-4 py-3 text-right">{formatMoney(salary.basic_salary)}</td>
+                      <td className="px-4 py-3 text-center">{salary.work_days || 0}</td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-600">{formatMoney(salary.total_salary)}</td>
+                      <td className="px-4 py-3 text-center">{getStatusBadge(salary.status)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <button onClick={() => setSelectedSalary(salary)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">👁️ Xem</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ========== CREATE MODAL - INLINE ========== */}
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="p-5 border-b bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold">➕ Tạo Bảng Lương</h2>
+                  <p className="text-white/80 text-sm">{createStep === 1 ? 'Bước 1: Chọn nhân viên' : `Bước 2: ${selectedEmployee?.name}`}</p>
+                </div>
+                <button onClick={() => setShowCreateModal(false)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg">×</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                {createStep === 1 && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {(allUsers || []).map(user => (
+                      <button key={user.id} onClick={() => handleSelectEmployee(user)} className="p-4 border-2 rounded-xl hover:border-blue-500 hover:bg-blue-50 text-left">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                            {user.name?.charAt(0) || '?'}
+                          </div>
                           <div>
-                            <div className="font-medium">{emp.name}</div>
-                            <div className="text-sm text-gray-500">{departments[emp.department]?.name || emp.team}</div>
-                            {hasConfig ? (
-                              <div className="text-xs text-gray-400 mt-1">
-                                Lương CB: {parseFloat(emp.base_salary).toLocaleString('vi-VN')}đ
-                                {emp.department === 'livestream' && emp.commission_rate > 0 && <span> • HH: {emp.commission_rate}%</span>}
-                                {emp.department !== 'livestream' && emp.bonus_per_unit > 0 && <span> • Thưởng: {parseFloat(emp.bonus_per_unit).toLocaleString('vi-VN')}đ</span>}
+                            <div className="font-bold">{user.name}</div>
+                            <div className="text-xs text-gray-500">{user.team || user.role}</div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {createStep === 2 && selectedEmployee && (
+                  <div className="space-y-5">
+                    {/* Basic */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                      <h3 className="font-bold text-blue-900 mb-3">📋 Thông tin cơ bản</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Tháng</label>
+                          <input 
+                            type="month" 
+                            value={formData.month} 
+                            onChange={(e) => {
+                              const newMonth = e.target.value;
+                              // Tự động cập nhật số video và job khi đổi tháng
+                              if (newMonth && selectedEmployee) {
+                                const [year, monthNum] = newMonth.split('-');
+                                const startDate = `${year}-${monthNum}-01`;
+                                const endDate = `${year}-${monthNum}-31`;
+                                
+                                const mediaCount = (tasks || []).filter(t => {
+                                  const isAssigned = t.assignee === selectedEmployee.id || t.assignee === selectedEmployee.name || t.assigned_to === selectedEmployee.id;
+                                  const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
+                                  const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
+                                  const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+                                  return isAssigned && isDone && inMonth;
+                                }).length;
+                                
+                                const kythuatCount = (technicalJobs || []).filter(j => {
+                                  const techs = j.technicians || [];
+                                  const isAssigned = techs.includes(selectedEmployee.id) || techs.includes(selectedEmployee.name) || 
+                                                     j.assigned_to === selectedEmployee.id || j.technician === selectedEmployee.name || j.technician === selectedEmployee.id;
+                                  const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+                                  const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+                                  const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+                                  return isAssigned && isDone && inMonth;
+                                }).length;
+                                
+                                setFormData(prev => ({
+                                  ...prev, 
+                                  month: newMonth,
+                                  media_videos: mediaCount.toString(),
+                                  kythuat_jobs: kythuatCount.toString()
+                                }));
+                              } else {
+                                setFormData(prev => ({...prev, month: newMonth}));
+                              }
+                            }} 
+                            className="w-full px-3 py-2 border rounded-lg" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Lương cơ bản</label>
+                          <input type="number" value={formData.basic_salary} onChange={(e) => setFormData({...formData, basic_salary: e.target.value})} placeholder="5000000" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Số ngày công</label>
+                          <input type="number" value={formData.work_days} onChange={(e) => setFormData({...formData, work_days: e.target.value})} placeholder="26" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                      </div>
+                      {formData.basic_salary && <div className="mt-2 text-sm">Lương thực tế: <strong className="text-blue-600">{formatMoney(totals.actualBasic)}</strong></div>}
+                    </div>
+
+                    {/* Livestream */}
+                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                      <h3 className="font-bold text-purple-900 mb-3">🎥 Livestream (6% khi ≥ 100 triệu)</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Doanh thu</label>
+                          <input type="number" value={formData.livestream_revenue} onChange={(e) => setFormData({...formData, livestream_revenue: e.target.value})} placeholder="100000000" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">% Hoa hồng</label>
+                          <input type="number" value={formData.livestream_commission} onChange={(e) => setFormData({...formData, livestream_commission: e.target.value})} placeholder="6" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                          <input type="text" value={formData.livestream_note} onChange={(e) => setFormData({...formData, livestream_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                      </div>
+                      {totals.livestreamTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-purple-600">+{formatMoney(totals.livestreamTotal)}</strong></div>}
+                    </div>
+
+                    {/* Media */}
+                    <div className="bg-pink-50 border border-pink-200 rounded-xl p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-bold text-pink-900">🎬 Media (Video)</h3>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const month = formData.month;
+                            if (!month || !selectedEmployee) return;
+                            const [year, monthNum] = month.split('-');
+                            const startDate = `${year}-${monthNum}-01`;
+                            const endDate = `${year}-${monthNum}-31`;
+                            
+                            // Debug log
+                            console.log('=== DEBUG MEDIA ===');
+                            console.log('Selected Employee:', selectedEmployee.name, selectedEmployee.id);
+                            console.log('Month range:', startDate, 'to', endDate);
+                            console.log('Total tasks:', (tasks || []).length);
+                            
+                            // Log first few tasks
+                            (tasks || []).slice(0, 3).forEach((t, i) => {
+                              console.log(`Task ${i}:`, {
+                                title: t.title,
+                                assignee: t.assignee,
+                                status: t.status,
+                                created_at: t.created_at,
+                                updated_at: t.updated_at
+                              });
+                            });
+                            
+                            const completedTasks = (tasks || []).filter(t => {
+                              // Kiểm tra assignee (có thể là tên hoặc ID)
+                              const isAssigned = t.assignee === selectedEmployee.id || 
+                                                 t.assignee === selectedEmployee.name ||
+                                                 t.assigned_to === selectedEmployee.id;
+                              // Kiểm tra status done
+                              const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
+                              // Kiểm tra thời gian (dùng updated_at hoặc created_at nếu không có completed_at)
+                              const taskDate = t.completed_at || t.updated_at || t.created_at;
+                              const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+                              
+                              if (isAssigned && isDone) {
+                                console.log('Found matching task:', t.title, 'date:', taskDate, 'inMonth:', inMonth);
+                              }
+                              
+                              return isAssigned && isDone && inMonth;
+                            });
+                            
+                            console.log('Completed tasks found:', completedTasks.length);
+                            
+                            setFormData(prev => ({...prev, media_videos: completedTasks.length.toString()}));
+                            if (completedTasks.length > 0) {
+                              alert(`✅ Tìm thấy ${completedTasks.length} video hoàn thành!`);
+                            } else {
+                              alert('⚠️ Không tìm thấy video hoàn thành trong tháng này. Kiểm tra Console (F12) để xem chi tiết.');
+                            }
+                          }}
+                          className="px-3 py-1 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-xs font-medium"
+                        >
+                          🔄 Lấy từ hệ thống
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Số video</label>
+                          <input type="number" value={formData.media_videos} onChange={(e) => setFormData({...formData, media_videos: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-white" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Tiền/video</label>
+                          <input type="number" value={formData.media_per_video} onChange={(e) => setFormData({...formData, media_per_video: e.target.value})} placeholder="200000" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                          <input type="text" value={formData.media_note} onChange={(e) => setFormData({...formData, media_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                      </div>
+                      {/* Danh sách video hoàn thành */}
+                      {selectedEmployee && formData.month && (() => {
+                        const [year, monthNum] = formData.month.split('-');
+                        const startDate = `${year}-${monthNum}-01`;
+                        const endDate = `${year}-${monthNum}-31`;
+                        const completedTasks = (tasks || []).filter(t => {
+                          const isAssigned = t.assignee === selectedEmployee.id || 
+                                             t.assignee === selectedEmployee.name ||
+                                             t.assigned_to === selectedEmployee.id;
+                          const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
+                          const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
+                          const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+                          return isAssigned && isDone && inMonth;
+                        });
+                        if (completedTasks.length > 0) {
+                          return (
+                            <div className="mt-3 p-3 bg-white rounded-lg border border-pink-200">
+                              <div className="text-xs font-medium text-pink-800 mb-2">📋 Video hoàn thành trong tháng ({completedTasks.length}):</div>
+                              <div className="max-h-32 overflow-y-auto space-y-1">
+                                {completedTasks.map((t, idx) => (
+                                  <div key={t.id || idx} className="text-xs text-gray-600 flex justify-between">
+                                    <span>• {t.title || t.name || 'Video #' + (idx+1)}</span>
+                                    <span className="text-gray-400">{(t.completed_at || t.updated_at || t.createdAt) ? new Date(t.completed_at || t.updated_at || t.createdAt).toLocaleDateString('vi-VN') : ''}</span>
+                                  </div>
+                                ))}
                               </div>
-                            ) : (
-                              <div className="text-xs text-orange-500 mt-1">⚠️ Chưa cấu hình lương</div>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => openEditSalaryConfig(emp)} className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm">⚙️</button>
-                            {hasConfig && !hasSalary ? (
-                              <button onClick={() => openCreateSalary(emp)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Tính lương</button>
-                            ) : hasSalary ? (
-                              <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm">Đã tính</span>
-                            ) : null}
-                          </div>
+                            </div>
+                          );
+                        }
+                        return <div className="mt-2 text-xs text-gray-500">Chưa có video hoàn thành trong tháng này</div>;
+                      })()}
+                      {totals.mediaTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-pink-600">+{formatMoney(totals.mediaTotal)}</strong></div>}
+                    </div>
+
+                    {/* Kho */}
+                    <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                      <h3 className="font-bold text-orange-900 mb-3">📦 Kho</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Số đơn</label>
+                          <input type="number" value={formData.kho_orders} onChange={(e) => setFormData({...formData, kho_orders: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Tiền/đơn</label>
+                          <input type="number" value={formData.kho_per_order} onChange={(e) => setFormData({...formData, kho_per_order: e.target.value})} placeholder="50000" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                          <input type="text" value={formData.kho_note} onChange={(e) => setFormData({...formData, kho_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-          <div className="bg-white rounded-xl border">
-            <div className="p-4 border-b bg-gray-50">
-              <h3 className="font-bold">📋 Bảng lương T{selectedMonth}/{selectedYear} ({filteredSalaries.length})</h3>
-            </div>
-            {filteredSalaries.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">Chưa có bảng lương</div>
-            ) : (
-              <div className="divide-y max-h-[400px] overflow-y-auto">
-                {filteredSalaries.map(salary => (
-                  <div key={salary.id} onClick={() => openSalaryDetail(salary)} className="p-4 hover:bg-gray-50 cursor-pointer">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-medium">{salary.employee_name}</div>
-                        <div className="text-sm text-gray-500">{departments[salary.department]?.name}</div>
-                        <div className="text-xs text-gray-400 mt-1">
-                          CB: {formatMoney(salary.base_salary)}
-                          {salary.commission > 0 && <span> + HH: {formatMoney(salary.commission)}</span>}
-                          {salary.unit_bonus > 0 && <span> + Thưởng: {formatMoney(salary.unit_bonus)}</span>}
-                          {salary.bonus > 0 && <span> + Bonus: {formatMoney(salary.bonus)}</span>}
-                          {salary.deduction > 0 && <span> - Trừ: {formatMoney(salary.deduction)}</span>}
+                      {totals.khoTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-orange-600">+{formatMoney(totals.khoTotal)}</strong></div>}
+                    </div>
+
+                    {/* Kỹ thuật */}
+                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-bold text-cyan-900">🔧 Kỹ thuật (200k/job)</h3>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const month = formData.month;
+                            if (!month || !selectedEmployee) return;
+                            const [year, monthNum] = month.split('-');
+                            const startDate = `${year}-${monthNum}-01`;
+                            const endDate = `${year}-${monthNum}-31`;
+                            const completedJobs = (technicalJobs || []).filter(j => {
+                              // Kiểm tra technicians (array) hoặc assigned_to
+                              const techs = j.technicians || [];
+                              const isAssigned = techs.includes(selectedEmployee.id) || 
+                                                 techs.includes(selectedEmployee.name) ||
+                                                 j.assigned_to === selectedEmployee.id ||
+                                                 j.technician === selectedEmployee.name ||
+                                                 j.technician === selectedEmployee.id;
+                              // Kiểm tra status
+                              const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+                              // Kiểm tra thời gian
+                              const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+                              const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+                              return isAssigned && isDone && inMonth;
+                            });
+                            setFormData(prev => ({...prev, kythuat_jobs: completedJobs.length.toString()}));
+                            if (completedJobs.length > 0) {
+                              alert(`✅ Tìm thấy ${completedJobs.length} job hoàn thành!`);
+                            } else {
+                              alert('⚠️ Không tìm thấy job hoàn thành trong tháng này');
+                            }
+                          }}
+                          className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-medium"
+                        >
+                          🔄 Lấy từ hệ thống
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Số job</label>
+                          <input type="number" value={formData.kythuat_jobs} onChange={(e) => setFormData({...formData, kythuat_jobs: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-white" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Tiền/job</label>
+                          <input type="number" value={formData.kythuat_per_job} onChange={(e) => setFormData({...formData, kythuat_per_job: e.target.value})} placeholder="200000" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                          <input type="text" value={formData.kythuat_note} onChange={(e) => setFormData({...formData, kythuat_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-blue-600">{formatMoney(salary.total_salary)}</div>
-                        <span className={salary.status === 'paid' ? "text-xs px-2 py-0.5 rounded bg-green-100 text-green-700" : salary.status === 'approved' ? "text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700" : "text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700"}>
-                          {salary.status === 'paid' ? '✅ Đã trả' : salary.status === 'approved' ? '✓ Đã duyệt' : '⏳ Chờ duyệt'}
-                        </span>
+                      {/* Danh sách job hoàn thành */}
+                      {selectedEmployee && formData.month && (() => {
+                        const [year, monthNum] = formData.month.split('-');
+                        const startDate = `${year}-${monthNum}-01`;
+                        const endDate = `${year}-${monthNum}-31`;
+                        const completedJobs = (technicalJobs || []).filter(j => {
+                          const techs = j.technicians || [];
+                          const isAssigned = techs.includes(selectedEmployee.id) || 
+                                             techs.includes(selectedEmployee.name) ||
+                                             j.assigned_to === selectedEmployee.id ||
+                                             j.technician === selectedEmployee.name ||
+                                             j.technician === selectedEmployee.id;
+                          const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+                          const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+                          const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+                          return isAssigned && isDone && inMonth;
+                        });
+                        if (completedJobs.length > 0) {
+                          return (
+                            <div className="mt-3 p-3 bg-white rounded-lg border border-cyan-200">
+                              <div className="text-xs font-medium text-cyan-800 mb-2">📋 Job hoàn thành trong tháng ({completedJobs.length}):</div>
+                              <div className="max-h-32 overflow-y-auto space-y-1">
+                                {completedJobs.map((j, idx) => (
+                                  <div key={j.id || idx} className="text-xs text-gray-600 flex justify-between">
+                                    <span>• {j.title || j.customerName || 'Job #' + (idx+1)} {j.type ? `(${j.type})` : ''}</span>
+                                    <span className="text-gray-400">{(j.completed_at || j.completedAt || j.scheduledDate) ? new Date(j.completed_at || j.completedAt || j.scheduledDate).toLocaleDateString('vi-VN') : ''}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return <div className="mt-2 text-xs text-gray-500">Chưa có job hoàn thành trong tháng này</div>;
+                      })()}
+                      {totals.kythuatTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-cyan-600">+{formatMoney(totals.kythuatTotal)}</strong></div>}
+                    </div>
+
+                    {/* Sale */}
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <h3 className="font-bold text-green-900 mb-3">🛒 Sale</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Doanh thu</label>
+                          <input type="number" value={formData.sale_revenue} onChange={(e) => setFormData({...formData, sale_revenue: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">% Hoa hồng</label>
+                          <input type="number" value={formData.sale_commission} onChange={(e) => setFormData({...formData, sale_commission: e.target.value})} placeholder="5" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                          <input type="text" value={formData.sale_note} onChange={(e) => setFormData({...formData, sale_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                      </div>
+                      {totals.saleTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-green-600">+{formatMoney(totals.saleTotal)}</strong></div>}
+                    </div>
+
+                    {/* Bonus/Deduction */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                      <h3 className="font-bold text-gray-900 mb-3">± Thưởng / Khấu trừ</h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">🎁 Thưởng</label>
+                          <input type="number" value={formData.bonus} onChange={(e) => setFormData({...formData, bonus: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">➖ Khấu trừ</label>
+                          <input type="number" value={formData.deduction} onChange={(e) => setFormData({...formData, deduction: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">📝 Ghi chú</label>
+                          <input type="text" value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Total */}
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-5 text-white">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xl">💵 TỔNG LƯƠNG</span>
+                        <span className="text-3xl font-bold">{formatMoney(totals.grandTotal)}</span>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Modal Cấu hình lương */}
-        {showEditSalaryConfigModal && selectedEmployee && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full">
-              <div className="p-6 border-b bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h2 className="text-xl font-bold">⚙️ Cấu hình lương</h2>
-                    <p className="text-white/80">{selectedEmployee.name} - {selectedEmployee.team || departments[selectedEmployee.department]?.name}</p>
-                  </div>
-                  <button onClick={() => setShowEditSalaryConfigModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
-                </div>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Lương cơ bản (VNĐ) *</label>
-                  <input type="number" value={configBaseSalary} onChange={(e) => setConfigBaseSalary(e.target.value)} placeholder="5000000" className="w-full px-4 py-3 border-2 rounded-lg" />
-                </div>
-                {selectedEmployee.department === 'livestream' ? (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">% Hoa hồng doanh số</label>
-                    <input type="number" value={configCommissionRate} onChange={(e) => setConfigCommissionRate(e.target.value)} placeholder="2" className="w-full px-4 py-3 border-2 rounded-lg" />
-                    <p className="text-xs text-gray-500 mt-1">Ví dụ: 2 = 2% doanh số</p>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Thưởng mỗi {selectedEmployee.department === 'media' ? 'video' : 'đơn vị'} (VNĐ)</label>
-                    <input type="number" value={configBonusPerUnit} onChange={(e) => setConfigBonusPerUnit(e.target.value)} placeholder="50000" className="w-full px-4 py-3 border-2 rounded-lg" />
-                    <p className="text-xs text-gray-500 mt-1">Ví dụ: 50000 = 50.000đ mỗi {selectedEmployee.department === 'media' ? 'video' : 'đơn vị'}</p>
-                  </div>
                 )}
               </div>
-              <div className="p-6 border-t bg-gray-50 flex gap-3">
-                <button onClick={() => setShowEditSalaryConfigModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
-                <button onClick={handleSaveSalaryConfig} className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">💾 Lưu</button>
+
+              <div className="p-4 border-t bg-gray-50 flex justify-between">
+                {createStep === 2 && <button onClick={() => setCreateStep(1)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">← Quay lại</button>}
+                <div className="flex gap-3 ml-auto">
+                  <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Hủy</button>
+                  {createStep === 2 && (
+                    <button onClick={handleSaveSalary} disabled={saving} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">
+                      {saving ? 'Đang lưu...' : '💾 Lưu'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {showCreateSalaryModal && selectedEmployee && (
+        {/* ========== DETAIL MODAL - INLINE ========== */}
+        {selectedSalary && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full">
-              <div className="p-6 border-b bg-gradient-to-r from-green-500 to-emerald-600 text-white">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h2 className="text-xl font-bold">💰 Tính Lương T{selectedMonth}/{selectedYear}</h2>
-                    <p className="text-white/80">{selectedEmployee.name} - {departments[selectedEmployee.department]?.name}</p>
-                  </div>
-                  <button onClick={() => setShowCreateSalaryModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
-                </div>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-sm text-gray-500">Lương cơ bản</div>
-                  <div className="font-bold">{parseFloat(selectedEmployee.base_salary).toLocaleString('vi-VN')}đ</div>
-                </div>
-                {selectedEmployee.department === 'livestream' ? (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Doanh số bán (VNĐ)</label>
-                    <input type="number" value={salaryRevenue} onChange={(e) => setSalaryRevenue(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
-                    {salaryRevenue && selectedEmployee.commission_rate > 0 && (
-                      <div className="text-sm text-green-600 mt-1">Hoa hồng {selectedEmployee.commission_rate}%: +{(parseFloat(salaryRevenue) * selectedEmployee.commission_rate / 100).toLocaleString('vi-VN')}đ</div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Số {selectedEmployee.department === 'media' ? 'video' : 'đơn hàng'}</label>
-                    <input type="number" value={salaryUnits} onChange={(e) => setSalaryUnits(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
-                    {salaryUnits && selectedEmployee.bonus_per_unit > 0 && (
-                      <div className="text-sm text-green-600 mt-1">Thưởng: +{(parseFloat(salaryUnits) * selectedEmployee.bonus_per_unit).toLocaleString('vi-VN')}đ</div>
-                    )}
-                  </div>
-                )}
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="p-5 border-b bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Thưởng thêm (VNĐ)</label>
-                  <input type="number" value={salaryBonus} onChange={(e) => setSalaryBonus(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
+                  <h2 className="text-xl font-bold">{selectedSalary.employee_name}</h2>
+                  <p className="text-white/80 text-sm">Tháng {selectedSalary.month}</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Khấu trừ (VNĐ)</label>
-                  <input type="number" value={salaryDeduction} onChange={(e) => setSalaryDeduction(e.target.value)} placeholder="0" className="w-full px-4 py-3 border-2 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Ghi chú</label>
-                  <input type="text" value={salaryNote} onChange={(e) => setSalaryNote(e.target.value)} placeholder="Ghi chú..." className="w-full px-4 py-3 border-2 rounded-lg" />
-                </div>
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="text-sm text-blue-600">Tổng thực nhận</div>
-                  <div className="text-2xl font-bold text-blue-700">{calculateSalary().total.toLocaleString('vi-VN')}đ</div>
-                </div>
+                <button onClick={() => setSelectedSalary(null)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg">×</button>
               </div>
-              <div className="p-6 border-t bg-gray-50 flex gap-3">
-                <button onClick={() => setShowCreateSalaryModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Hủy</button>
-                <button onClick={handleCreateSalary} className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">✅ Tạo bảng lương</button>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {showSalaryDetailModal && selectedSalary && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl max-w-md w-full">
-              <div className="p-6 border-b bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 <div className="flex justify-between items-center">
-                  <div>
-                    <h2 className="text-xl font-bold">📋 Chi Tiết Lương</h2>
-                    <p className="text-white/80">{selectedSalary.employee_name} - T{selectedSalary.month}/{selectedSalary.year}</p>
+                  <span>Trạng thái:</span>
+                  {getStatusBadge(selectedSalary.status)}
+                </div>
+
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <div className="flex justify-between">
+                    <span>Lương cơ bản ({selectedSalary.work_days}/26 ngày)</span>
+                    <span className="font-bold">{formatMoney(selectedSalary.actual_basic || 0)}</span>
                   </div>
-                  <button onClick={() => setShowSalaryDetailModal(false)} className="text-2xl hover:bg-white/20 w-8 h-8 rounded">×</button>
+                </div>
+
+                {selectedSalary.livestream_total > 0 && (
+                  <div className="bg-purple-50 rounded-xl p-4">
+                    <div className="flex justify-between">
+                      <span>🎥 Livestream ({formatMoney(selectedSalary.livestream_revenue)} × {selectedSalary.livestream_commission}%)</span>
+                      <span className="font-bold text-purple-600">+{formatMoney(selectedSalary.livestream_total)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedSalary.media_total > 0 && (
+                  <div className="bg-pink-50 rounded-xl p-4">
+                    <div className="flex justify-between">
+                      <span>🎬 Media ({selectedSalary.media_videos} video × {formatMoney(selectedSalary.media_per_video)})</span>
+                      <span className="font-bold text-pink-600">+{formatMoney(selectedSalary.media_total)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedSalary.kho_total > 0 && (
+                  <div className="bg-orange-50 rounded-xl p-4">
+                    <div className="flex justify-between">
+                      <span>📦 Kho ({selectedSalary.kho_orders} đơn × {formatMoney(selectedSalary.kho_per_order)})</span>
+                      <span className="font-bold text-orange-600">+{formatMoney(selectedSalary.kho_total)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedSalary.kythuat_total > 0 && (
+                  <div className="bg-cyan-50 rounded-xl p-4">
+                    <div className="flex justify-between">
+                      <span>🔧 Kỹ thuật ({selectedSalary.kythuat_jobs} job × {formatMoney(selectedSalary.kythuat_per_job)})</span>
+                      <span className="font-bold text-cyan-600">+{formatMoney(selectedSalary.kythuat_total)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedSalary.sale_total > 0 && (
+                  <div className="bg-green-50 rounded-xl p-4">
+                    <div className="flex justify-between">
+                      <span>🛒 Sale ({formatMoney(selectedSalary.sale_revenue)} × {selectedSalary.sale_commission}%)</span>
+                      <span className="font-bold text-green-600">+{formatMoney(selectedSalary.sale_total)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {(selectedSalary.bonus > 0 || selectedSalary.deduction > 0) && (
+                  <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                    {selectedSalary.bonus > 0 && <div className="flex justify-between text-green-600"><span>🎁 Thưởng</span><span>+{formatMoney(selectedSalary.bonus)}</span></div>}
+                    {selectedSalary.deduction > 0 && <div className="flex justify-between text-red-600"><span>➖ Khấu trừ</span><span>-{formatMoney(selectedSalary.deduction)}</span></div>}
+                  </div>
+                )}
+
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-5 text-white">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xl">💵 TỔNG</span>
+                    <span className="text-3xl font-bold">{formatMoney(selectedSalary.total_salary)}</span>
+                  </div>
                 </div>
               </div>
-              <div className="p-6 space-y-3">
-                <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
-                  <span>Lương cơ bản</span>
-                  <span className="font-medium">{parseFloat(selectedSalary.base_salary).toLocaleString('vi-VN')}đ</span>
-                </div>
-                {selectedSalary.revenue > 0 && (
-                  <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
-                    <span>Doanh số</span>
-                    <span className="font-medium">{parseFloat(selectedSalary.revenue).toLocaleString('vi-VN')}đ</span>
-                  </div>
-                )}
-                {selectedSalary.commission > 0 && (
-                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
-                    <span>+ Hoa hồng</span>
-                    <span className="font-medium text-green-600">+{parseFloat(selectedSalary.commission).toLocaleString('vi-VN')}đ</span>
-                  </div>
-                )}
-                {selectedSalary.units > 0 && (
-                  <div className="flex justify-between p-3 bg-gray-50 rounded-lg">
-                    <span>Số {selectedSalary.department === 'media' ? 'video' : 'đơn'}</span>
-                    <span className="font-medium">{selectedSalary.units}</span>
-                  </div>
-                )}
-                {selectedSalary.unit_bonus > 0 && (
-                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
-                    <span>+ Thưởng sản lượng</span>
-                    <span className="font-medium text-green-600">+{parseFloat(selectedSalary.unit_bonus).toLocaleString('vi-VN')}đ</span>
-                  </div>
-                )}
-                {selectedSalary.bonus > 0 && (
-                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
-                    <span>+ Thưởng thêm</span>
-                    <span className="font-medium text-green-600">+{parseFloat(selectedSalary.bonus).toLocaleString('vi-VN')}đ</span>
-                  </div>
-                )}
-                {selectedSalary.deduction > 0 && (
-                  <div className="flex justify-between p-3 bg-red-50 rounded-lg">
-                    <span>- Khấu trừ</span>
-                    <span className="font-medium text-red-600">-{parseFloat(selectedSalary.deduction).toLocaleString('vi-VN')}đ</span>
-                  </div>
-                )}
-                <div className="flex justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <span className="font-bold">THỰC NHẬN</span>
-                  <span className="font-bold text-blue-700 text-xl">{parseFloat(selectedSalary.total_salary).toLocaleString('vi-VN')}đ</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="p-2 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500">Người tạo</div>
-                    <div>{selectedSalary.created_by || 'N/A'}</div>
-                  </div>
-                  <div className="p-2 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500">Trạng thái</div>
-                    <div className={selectedSalary.status === 'paid' ? "text-green-600" : selectedSalary.status === 'approved' ? "text-blue-600" : "text-yellow-600"}>
-                      {selectedSalary.status === 'paid' ? '✅ Đã trả' : selectedSalary.status === 'approved' ? '✓ Đã duyệt' : '⏳ Chờ duyệt'}
-                    </div>
-                  </div>
-                  {selectedSalary.approved_by && (
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="text-xs text-gray-500">Người duyệt</div>
-                      <div>{selectedSalary.approved_by}</div>
-                    </div>
-                  )}
-                  {selectedSalary.paid_by && (
-                    <div className="p-2 bg-gray-50 rounded">
-                      <div className="text-xs text-gray-500">Người trả</div>
-                      <div>{selectedSalary.paid_by}</div>
-                    </div>
+
+              <div className="p-4 border-t bg-gray-50 flex justify-between">
+                <div>
+                  {selectedSalary.status === 'draft' && (
+                    <button onClick={() => handleDeleteSalary(selectedSalary.id)} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">🗑️ Xóa</button>
                   )}
                 </div>
-                {selectedSalary.note && (
-                  <div className="p-3 bg-yellow-50 rounded-lg">
-                    <div className="text-xs text-yellow-600">Ghi chú</div>
-                    <div className="text-yellow-800">{selectedSalary.note}</div>
-                  </div>
-                )}
-              </div>
-              <div className="p-6 border-t bg-gray-50 space-y-3">
-                {selectedSalary.status === 'pending' && canApprove && (
-                  <button onClick={() => handleApproveSalary(selectedSalary)} className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">✓ Duyệt bảng lương</button>
-                )}
-                {selectedSalary.status === 'approved' && canManageSalaries && (
-                  <button onClick={() => handlePaySalary(selectedSalary)} className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">💵 Trả lương</button>
-                )}
                 <div className="flex gap-3">
-                  {selectedSalary.status === 'pending' && canManageSalaries && (
-                    <button onClick={() => handleDeleteSalary(selectedSalary.id)} className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">🗑️ Xóa</button>
+                  {selectedSalary.status === 'draft' && (
+                    <button onClick={() => handleStatusChange(selectedSalary, 'approved')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">✅ Duyệt</button>
                   )}
-                  <button onClick={() => setShowSalaryDetailModal(false)} className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">Đóng</button>
+                  {selectedSalary.status === 'approved' && (
+                    <button onClick={() => handleStatusChange(selectedSalary, 'paid')} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">💰 Đã trả</button>
+                  )}
+                  <button onClick={() => setSelectedSalary(null)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Đóng</button>
                 </div>
               </div>
             </div>
           </div>
         )}
       </div>
+    );
+  }
+
+  // ============ END SALARY MANAGEMENT ============
+
+  function SalariesView() {
+    return (
+      <SalaryManagement
+        tenant={tenant}
+        currentUser={currentUser}
+        allUsers={allUsers}
+        tasks={tasks}
+        technicalJobs={technicalJobs}
+        formatMoney={formatMoney}
+        getTodayVN={getTodayVN}
+        getVietnamDate={getVietnamDate}
+        supabase={supabase}
+      />
     );
   }
 
