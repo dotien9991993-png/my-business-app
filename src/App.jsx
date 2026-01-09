@@ -1177,14 +1177,19 @@ export default function SimpleMarketingSystem() {
         .delete()
         .eq('id', notifId);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error:', error);
+        throw error;
+      }
       
       setNotifications(prev => prev.filter(n => n.id !== notifId));
       if (notif && !notif.is_read) {
         setUnreadCount(prev => Math.max(0, prev - 1));
       }
+      console.log('✅ Đã xóa thông báo:', notifId);
     } catch (err) {
       console.error('Error deleting notification:', err);
+      alert('❌ Lỗi khi xóa: ' + err.message);
     }
   };
 
@@ -1192,17 +1197,27 @@ export default function SimpleMarketingSystem() {
   const clearReadNotifications = async () => {
     if (!currentUser) return;
     try {
+      // Lấy IDs của các thông báo đã đọc
+      const readNotifIds = notifications.filter(n => n.is_read).map(n => n.id);
+      
+      if (readNotifIds.length === 0) return;
+      
       const { error } = await supabase
         .from('notifications')
         .delete()
-        .eq('user_id', currentUser.id)
-        .eq('is_read', true);
+        .in('id', readNotifIds);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error:', error);
+        throw error;
+      }
       
+      // Cập nhật local state
       setNotifications(prev => prev.filter(n => !n.is_read));
+      console.log('✅ Đã xóa', readNotifIds.length, 'thông báo');
     } catch (err) {
       console.error('Error clearing notifications:', err);
+      alert('❌ Lỗi khi xóa: ' + err.message);
     }
   };
 
@@ -8855,8 +8870,28 @@ export default function SimpleMarketingSystem() {
         created_at: getNowISOVN()
       };
       try {
-        const { error } = await supabase.from('receipts_payments').insert([newReceipt]);
+        const { data, error } = await supabase.from('receipts_payments').insert([newReceipt]).select().single();
         if (error) throw error;
+        
+        // Thông báo cho Admin/Manager
+        const admins = (allUsers || []).filter(u => 
+          u.role === 'Admin' || u.role === 'admin' || u.role === 'Manager'
+        );
+        for (const admin of admins) {
+          if (admin.id !== currentUser.id) {
+            await createNotification({
+              userId: admin.id,
+              type: 'finance_pending',
+              title: formType === 'thu' ? '💵 Phiếu thu chờ duyệt' : '💸 Phiếu chi chờ duyệt',
+              message: `${currentUser.name} tạo phiếu ${formType}: ${formatMoney(parseFloat(formAmount))} - ${formDescription}`,
+              icon: formType === 'thu' ? '💵' : '💸',
+              referenceType: 'receipt',
+              referenceId: data?.id || null,
+              data: { amount: parseFloat(formAmount), type: formType }
+            });
+          }
+        }
+        
         alert('Tạo phiếu thành công!');
         setShowCreateModal(false);
         resetForm();
@@ -8891,12 +8926,31 @@ export default function SimpleMarketingSystem() {
 
     const handleApprove = async (id) => {
       try {
+        const receipt = selectedReceipt || receiptsPayments.find(r => r.id === id);
+        
         const { error } = await supabase.from('receipts_payments').update({ 
           status: 'approved',
           approved_by: currentUser.name,
           approved_at: getNowISOVN()
         }).eq('id', id);
         if (error) throw error;
+        
+        // Thông báo cho người tạo phiếu
+        if (receipt) {
+          const creator = allUsers.find(u => u.name === receipt.created_by);
+          if (creator && creator.id !== currentUser.id) {
+            await createNotification({
+              userId: creator.id,
+              type: 'finance_approved',
+              title: '✅ Phiếu đã được duyệt',
+              message: `Phiếu ${receipt.type} ${receipt.receipt_number}: ${formatMoney(receipt.amount)} đã được ${currentUser.name} duyệt`,
+              icon: '✅',
+              referenceType: 'receipt',
+              referenceId: id
+            });
+          }
+        }
+        
         alert('Đã duyệt!');
         setShowDetailModal(false);
         loadFinanceData();
@@ -8907,12 +8961,31 @@ export default function SimpleMarketingSystem() {
 
     const handleReject = async (id) => {
       try {
+        const receipt = selectedReceipt || receiptsPayments.find(r => r.id === id);
+        
         const { error } = await supabase.from('receipts_payments').update({ 
           status: 'rejected',
           approved_by: currentUser.name,
           approved_at: getNowISOVN()
         }).eq('id', id);
         if (error) throw error;
+        
+        // Thông báo cho người tạo phiếu
+        if (receipt) {
+          const creator = allUsers.find(u => u.name === receipt.created_by);
+          if (creator && creator.id !== currentUser.id) {
+            await createNotification({
+              userId: creator.id,
+              type: 'finance_rejected',
+              title: '❌ Phiếu bị từ chối',
+              message: `Phiếu ${receipt.type} ${receipt.receipt_number}: ${formatMoney(receipt.amount)} đã bị ${currentUser.name} từ chối`,
+              icon: '❌',
+              referenceType: 'receipt',
+              referenceId: id
+            });
+          }
+        }
+        
         alert('Đã từ chối!');
         setShowDetailModal(false);
         loadFinanceData();
