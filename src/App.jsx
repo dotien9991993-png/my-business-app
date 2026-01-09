@@ -156,6 +156,10 @@ export default function SimpleMarketingSystem() {
   const [debts, setDebts] = useState([]);
   const [salaries, setSalaries] = useState([]);
 
+  // Attendance Module States (Chấm công)
+  const [attendances, setAttendances] = useState([]);
+  const [todayAttendance, setTodayAttendance] = useState(null);
+
   // Warehouse Module States
   const [products, setProducts] = useState([]);
   const [stockTransactions, setStockTransactions] = useState([]);
@@ -164,6 +168,9 @@ export default function SimpleMarketingSystem() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Attendance popup state (Chấm công nổi)
+  const [showAttendancePopup, setShowAttendancePopup] = useState(false);
 
   // Load tenant info on mount
   useEffect(() => {
@@ -379,7 +386,7 @@ export default function SimpleMarketingSystem() {
     loadFinanceData();
     loadWarehouseData();
     loadPermissions();
-    
+
     // Subscribe to realtime task changes
     const tasksChannel = supabase
       .channel('tasks-changes')
@@ -419,6 +426,30 @@ export default function SimpleMarketingSystem() {
       supabase.removeChannel(warehouseChannel);
     };
   }, [tenant]);
+
+  // Load today attendance when user logs in
+  useEffect(() => {
+    const loadTodayAttendance = async () => {
+      if (!tenant || !currentUser) return;
+      try {
+        const today = getTodayVN();
+        const { data } = await supabase
+          .from('attendances')
+          .select('*')
+          .eq('tenant_id', tenant.id)
+          .eq('user_id', currentUser.id)
+          .eq('date', today)
+          .single();
+        
+        setTodayAttendance(data || null);
+      } catch (err) {
+        // Chưa có attendance hôm nay
+        setTodayAttendance(null);
+      }
+    };
+    
+    loadTodayAttendance();
+  }, [tenant, currentUser]);
 
   // Check deadline notifications
   useEffect(() => {
@@ -546,6 +577,46 @@ export default function SimpleMarketingSystem() {
       if (salariesRes.data) setSalaries(salariesRes.data);
     } catch (error) {
       console.error('Error loading finance data:', error);
+    }
+  };
+
+  // Attendance Data Loading (Chấm công)
+  const loadAttendanceData = async () => {
+    if (!tenant || !currentUser) return;
+    try {
+      const today = getTodayVN();
+      
+      // Load tất cả chấm công (Admin) hoặc của mình (User)
+      const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'admin';
+      
+      let query = supabase
+        .from('attendances')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .order('date', { ascending: false })
+        .order('check_in', { ascending: false });
+      
+      if (!isAdmin) {
+        query = query.eq('user_id', currentUser.id);
+      }
+      
+      const { data, error } = await query.limit(100);
+      
+      if (error) throw error;
+      setAttendances(data || []);
+      
+      // Load chấm công hôm nay của user hiện tại
+      const { data: todayData } = await supabase
+        .from('attendances')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .eq('user_id', currentUser.id)
+        .eq('date', today)
+        .single();
+      
+      setTodayAttendance(todayData || null);
+    } catch (error) {
+      console.error('Error loading attendance data:', error);
     }
   };
 
@@ -7363,6 +7434,25 @@ export default function SimpleMarketingSystem() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              {/* Attendance Button on Header */}
+              <button
+                onClick={() => setShowAttendancePopup(true)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all ${
+                  todayAttendance?.check_out
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                    : todayAttendance?.check_in
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 animate-pulse'
+                }`}
+              >
+                {todayAttendance?.check_out ? (
+                  <>✅ {todayAttendance.check_in?.slice(0,5)} - {todayAttendance.check_out?.slice(0,5)}</>
+                ) : todayAttendance?.check_in ? (
+                  <>🟢 Vào: {todayAttendance.check_in?.slice(0,5)}</>
+                ) : (
+                  <>⏰ Chấm công</>
+                )}
+              </button>
               <div className="relative">
                 <button
                   onClick={() => setShowNotifications(!showNotifications)}
@@ -7377,6 +7467,25 @@ export default function SimpleMarketingSystem() {
                 </button>
                 <NotificationsDropdown />
               </div>
+              {/* Attendance Status Button */}
+              <button
+                onClick={() => setShowAttendancePopup(true)}
+                className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 ${
+                  todayAttendance?.check_out 
+                    ? 'bg-green-100 text-green-700' 
+                    : todayAttendance?.check_in 
+                      ? 'bg-blue-100 text-blue-700 animate-pulse' 
+                      : 'bg-yellow-100 text-yellow-700'
+                }`}
+              >
+                {todayAttendance?.check_out ? (
+                  <>✅ {todayAttendance.check_in} - {todayAttendance.check_out}</>
+                ) : todayAttendance?.check_in ? (
+                  <>🟢 Đang làm từ {todayAttendance.check_in}</>
+                ) : (
+                  <>⏰ Chưa chấm công</>
+                )}
+              </button>
               <div className="text-right">
                 <div className="font-medium">{currentUser.name}</div>
                 <div className="text-sm text-gray-600">{currentUser.role} • {currentUser.team}</div>
@@ -7569,6 +7678,7 @@ export default function SimpleMarketingSystem() {
                 { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
                 { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
                 { id: 'debts', l: '📋 Công Nợ', tabKey: 'debts' },
+                { id: 'attendance', l: '⏰ Chấm Công', tabKey: 'attendance' },
                 { id: 'salaries', l: '💰 Lương', tabKey: 'salaries' },
                 { id: 'reports', l: '📈 Báo Cáo', tabKey: 'reports' }
               ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => (
@@ -7713,6 +7823,7 @@ export default function SimpleMarketingSystem() {
             { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
             { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
             { id: 'debts', l: '📋 Công Nợ', tabKey: 'debts' },
+            { id: 'attendance', l: '⏰ Chấm Công', tabKey: 'attendance' },
             { id: 'salaries', l: '💰 Lương', tabKey: 'salaries' },
             { id: 'reports', l: '📈 Báo Cáo', tabKey: 'reports' }
           ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => (
@@ -7753,6 +7864,7 @@ export default function SimpleMarketingSystem() {
             { id: 'dashboard', l: '📊 Tổng Quan' },
             { id: 'receipts', l: '🧾 Thu/Chi' },
             { id: 'debts', l: '📋 Công Nợ' },
+            { id: 'attendance', l: '⏰ Chấm Công' },
             { id: 'salaries', l: '💰 Lương' },
             { id: 'reports', l: '📈 Báo Cáo' }
           ] : []).find(t => t.id === activeTab)?.l || ''}
@@ -7869,6 +7981,7 @@ export default function SimpleMarketingSystem() {
             {activeTab === 'dashboard' && canAccessTab('finance', 'overview') && <FinanceDashboard />}
             {activeTab === 'receipts' && canAccessTab('finance', 'receipts') && <ReceiptsView />}
             {activeTab === 'debts' && canAccessTab('finance', 'debts') && <DebtsView />}
+            {activeTab === 'attendance' && canAccessTab('finance', 'attendance') && <AttendanceView />}
             {activeTab === 'salaries' && canAccessTab('finance', 'salaries') && <SalariesView />}
             {activeTab === 'reports' && canAccessTab('finance', 'reports') && <ReportsView />}
             {/* Hiển thị thông báo nếu không có quyền */}
@@ -7890,6 +8003,169 @@ export default function SimpleMarketingSystem() {
       {showCreateJobModal && <CreateJobModal />}
       {showJobModal && <JobDetailModal />}
       {showPermissionsModal && <PermissionsModal />}
+
+      {/* Floating Attendance Button - Góc phải dưới */}
+      <button
+        onClick={() => setShowAttendancePopup(true)}
+        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 ${
+          todayAttendance?.check_out
+            ? 'bg-green-500 text-white'
+            : todayAttendance?.check_in
+            ? 'bg-blue-500 text-white'
+            : 'bg-yellow-500 text-white animate-bounce'
+        }`}
+        title={todayAttendance?.check_out ? 'Đã check-out' : todayAttendance?.check_in ? 'Đang làm việc' : 'Chấm công'}
+      >
+        {todayAttendance?.check_out ? '✅' : todayAttendance?.check_in ? '🟢' : '⏰'}
+      </button>
+
+      {/* Attendance Popup */}
+      {showAttendancePopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white text-center">
+              <div className="text-5xl mb-2">
+                {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+              <div className="text-blue-200">
+                {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </div>
+              <div className="mt-3 font-medium">{currentUser?.name}</div>
+            </div>
+
+            {/* Status */}
+            <div className="p-6">
+              <div className={`rounded-xl p-4 mb-6 text-center ${
+                todayAttendance?.check_out ? 'bg-green-50 border border-green-200' :
+                todayAttendance?.check_in ? 'bg-blue-50 border border-blue-200' :
+                'bg-yellow-50 border border-yellow-200'
+              }`}>
+                {!todayAttendance?.check_in && (
+                  <div className="text-yellow-700">
+                    <span className="text-2xl">⏳</span>
+                    <div className="font-medium mt-1">Chưa check-in hôm nay</div>
+                  </div>
+                )}
+                {todayAttendance?.check_in && !todayAttendance?.check_out && (
+                  <div className="text-blue-700">
+                    <span className="text-2xl">🟢</span>
+                    <div className="font-medium mt-1">Đang làm việc</div>
+                    <div className="text-sm">Check-in lúc {todayAttendance.check_in?.slice(0,5)}</div>
+                  </div>
+                )}
+                {todayAttendance?.check_out && (
+                  <div className="text-green-700">
+                    <span className="text-2xl">✅</span>
+                    <div className="font-medium mt-1">Đã hoàn thành</div>
+                    <div className="text-sm">{todayAttendance.check_in?.slice(0,5)} - {todayAttendance.check_out?.slice(0,5)}</div>
+                    <div className="text-lg font-bold mt-1">{todayAttendance.work_hours} giờ</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-4">
+                <button
+                  onClick={async () => {
+                    if (todayAttendance?.check_in) {
+                      alert('⚠️ Bạn đã check-in hôm nay rồi!');
+                      return;
+                    }
+                    try {
+                      const loc = await new Promise((resolve, reject) => {
+                        if (!navigator.geolocation) {
+                          reject(new Error('Trình duyệt không hỗ trợ GPS'));
+                          return;
+                        }
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+                          (err) => reject(new Error(err.code === 1 ? 'Vui lòng cho phép truy cập vị trí' : 'Không thể lấy vị trí')),
+                          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                        );
+                      });
+                      const now = getVietnamDate();
+                      const checkInTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                      const { data, error } = await supabase.from('attendances').insert({
+                        tenant_id: tenant.id, user_id: currentUser.id, user_name: currentUser.name,
+                        date: getTodayVN(), check_in: checkInTime,
+                        check_in_lat: loc.latitude, check_in_lng: loc.longitude, check_in_accuracy: loc.accuracy,
+                        status: 'checked_in', created_at: new Date().toISOString()
+                      }).select().single();
+                      if (error) throw error;
+                      setTodayAttendance(data);
+                      alert(`✅ Check-in thành công lúc ${checkInTime}!`);
+                    } catch (err) {
+                      alert('❌ Lỗi: ' + err.message);
+                    }
+                  }}
+                  disabled={todayAttendance?.check_in}
+                  className={`flex-1 py-4 rounded-xl font-bold text-lg transition-all ${
+                    todayAttendance?.check_in ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600 text-white shadow-lg'
+                  }`}
+                >
+                  📥 CHECK-IN
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!todayAttendance?.check_in) {
+                      alert('⚠️ Bạn chưa check-in hôm nay!');
+                      return;
+                    }
+                    if (todayAttendance?.check_out) {
+                      alert('⚠️ Bạn đã check-out rồi!');
+                      return;
+                    }
+                    try {
+                      const loc = await new Promise((resolve, reject) => {
+                        if (!navigator.geolocation) {
+                          reject(new Error('Trình duyệt không hỗ trợ GPS'));
+                          return;
+                        }
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+                          (err) => reject(new Error(err.code === 1 ? 'Vui lòng cho phép truy cập vị trí' : 'Không thể lấy vị trí')),
+                          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                        );
+                      });
+                      const now = getVietnamDate();
+                      const checkOutTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                      const [inH, inM] = todayAttendance.check_in.split(':').map(Number);
+                      const [outH, outM] = checkOutTime.split(':').map(Number);
+                      const workHours = ((outH * 60 + outM) - (inH * 60 + inM)) / 60;
+                      const { data, error } = await supabase.from('attendances').update({
+                        check_out: checkOutTime, check_out_lat: loc.latitude, check_out_lng: loc.longitude,
+                        check_out_accuracy: loc.accuracy, work_hours: parseFloat(workHours.toFixed(2)), status: 'checked_out'
+                      }).eq('id', todayAttendance.id).select().single();
+                      if (error) throw error;
+                      setTodayAttendance(data);
+                      alert(`✅ Check-out thành công!\nTổng giờ làm: ${workHours.toFixed(2)} giờ`);
+                    } catch (err) {
+                      alert('❌ Lỗi: ' + err.message);
+                    }
+                  }}
+                  disabled={!todayAttendance?.check_in || todayAttendance?.check_out}
+                  className={`flex-1 py-4 rounded-xl font-bold text-lg transition-all ${
+                    !todayAttendance?.check_in || todayAttendance?.check_out ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white shadow-lg'
+                  }`}
+                >
+                  📤 CHECK-OUT
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t bg-gray-50">
+              <button
+                onClick={() => setShowAttendancePopup(false)}
+                className="w-full py-3 bg-gray-200 hover:bg-gray-300 rounded-xl font-medium"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -9920,6 +10196,423 @@ export default function SimpleMarketingSystem() {
 
   // ============ END SALARY MANAGEMENT ============
 
+  // ============ ATTENDANCE MODULE (CHẤM CÔNG) ============
+  function AttendanceView() {
+    const [checkingIn, setCheckingIn] = useState(false);
+    const [checkingOut, setCheckingOut] = useState(false);
+    const [location, setLocation] = useState(null);
+    const [locationError, setLocationError] = useState(null);
+    const [filterMonth, setFilterMonth] = useState(() => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const [viewMode, setViewMode] = useState('my'); // 'my' or 'all'
+
+    const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin';
+
+    // Lấy vị trí GPS
+    const getLocation = () => {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Trình duyệt không hỗ trợ GPS'));
+          return;
+        }
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            resolve({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy
+            });
+          },
+          (error) => {
+            let message = 'Không thể lấy vị trí';
+            switch (error.code) {
+              case error.PERMISSION_DENIED:
+                message = 'Bạn đã từ chối quyền truy cập vị trí. Vui lòng cho phép trong cài đặt trình duyệt.';
+                break;
+              case error.POSITION_UNAVAILABLE:
+                message = 'Không thể xác định vị trí';
+                break;
+              case error.TIMEOUT:
+                message = 'Quá thời gian lấy vị trí';
+                break;
+            }
+            reject(new Error(message));
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      });
+    };
+
+    // Check-in
+    const handleCheckIn = async () => {
+      if (todayAttendance?.check_in) {
+        alert('⚠️ Bạn đã check-in hôm nay rồi!');
+        return;
+      }
+
+      setCheckingIn(true);
+      setLocationError(null);
+
+      try {
+        const loc = await getLocation();
+        setLocation(loc);
+
+        const now = getVietnamDate();
+        const checkInTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+        const { data, error } = await supabase
+          .from('attendances')
+          .insert({
+            tenant_id: tenant.id,
+            user_id: currentUser.id,
+            user_name: currentUser.name,
+            date: getTodayVN(),
+            check_in: checkInTime,
+            check_in_lat: loc.latitude,
+            check_in_lng: loc.longitude,
+            check_in_accuracy: loc.accuracy,
+            status: 'checked_in',
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setTodayAttendance(data);
+        loadAttendanceData();
+        alert(`✅ Check-in thành công lúc ${checkInTime}!`);
+      } catch (err) {
+        console.error('Check-in error:', err);
+        setLocationError(err.message);
+        alert('❌ Lỗi: ' + err.message);
+      } finally {
+        setCheckingIn(false);
+      }
+    };
+
+    // Check-out
+    const handleCheckOut = async () => {
+      if (!todayAttendance?.check_in) {
+        alert('⚠️ Bạn chưa check-in hôm nay!');
+        return;
+      }
+      if (todayAttendance?.check_out) {
+        alert('⚠️ Bạn đã check-out hôm nay rồi!');
+        return;
+      }
+
+      setCheckingOut(true);
+      setLocationError(null);
+
+      try {
+        const loc = await getLocation();
+        setLocation(loc);
+
+        const now = getVietnamDate();
+        const checkOutTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+        // Tính số giờ làm việc
+        const [inH, inM, inS] = todayAttendance.check_in.split(':').map(Number);
+        const [outH, outM, outS] = checkOutTime.split(':').map(Number);
+        const inMinutes = inH * 60 + inM;
+        const outMinutes = outH * 60 + outM;
+        const workMinutes = outMinutes - inMinutes;
+        const workHours = (workMinutes / 60).toFixed(2);
+
+        const { data, error } = await supabase
+          .from('attendances')
+          .update({
+            check_out: checkOutTime,
+            check_out_lat: loc.latitude,
+            check_out_lng: loc.longitude,
+            check_out_accuracy: loc.accuracy,
+            work_hours: parseFloat(workHours),
+            status: 'checked_out'
+          })
+          .eq('id', todayAttendance.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setTodayAttendance(data);
+        loadAttendanceData();
+        alert(`✅ Check-out thành công lúc ${checkOutTime}!\nTổng giờ làm: ${workHours} giờ`);
+      } catch (err) {
+        console.error('Check-out error:', err);
+        setLocationError(err.message);
+        alert('❌ Lỗi: ' + err.message);
+      } finally {
+        setCheckingOut(false);
+      }
+    };
+
+    // Filter attendances theo tháng
+    const filteredAttendances = (attendances || []).filter(a => {
+      if (filterMonth && a.date) {
+        return a.date.startsWith(filterMonth);
+      }
+      return true;
+    }).filter(a => {
+      if (viewMode === 'my') {
+        return a.user_id === currentUser?.id;
+      }
+      return true;
+    });
+
+    // Tính tổng giờ làm trong tháng
+    const totalHours = filteredAttendances
+      .filter(a => a.user_id === currentUser?.id)
+      .reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
+
+    const totalDays = filteredAttendances
+      .filter(a => a.user_id === currentUser?.id && a.check_in)
+      .length;
+
+    // Nhóm theo user (cho Admin)
+    const groupedByUser = {};
+    if (isAdmin && viewMode === 'all') {
+      filteredAttendances.forEach(a => {
+        if (!groupedByUser[a.user_name]) {
+          groupedByUser[a.user_name] = { days: 0, hours: 0, records: [] };
+        }
+        groupedByUser[a.user_name].days++;
+        groupedByUser[a.user_name].hours += parseFloat(a.work_hours || 0);
+        groupedByUser[a.user_name].records.push(a);
+      });
+    }
+
+    // Load data khi mount
+    useEffect(() => {
+      loadAttendanceData();
+    }, [tenant, currentUser]);
+
+    return (
+      <div className="p-6 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold">⏰ Chấm Công</h2>
+            <p className="text-gray-600 text-sm">Check-in/out với xác minh vị trí GPS</p>
+          </div>
+          {isAdmin && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('my')}
+                className={`px-4 py-2 rounded-lg font-medium ${viewMode === 'my' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+              >
+                📋 Của tôi
+              </button>
+              <button
+                onClick={() => setViewMode('all')}
+                className={`px-4 py-2 rounded-lg font-medium ${viewMode === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+              >
+                👥 Tất cả
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Check-in/out Card */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white">
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-2">
+              {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+            <div className="text-blue-200">
+              {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </div>
+          </div>
+
+          {/* Status */}
+          <div className="bg-white/20 rounded-xl p-4 mb-6">
+            <div className="text-center">
+              {!todayAttendance?.check_in && (
+                <span className="text-yellow-200">⏳ Chưa check-in hôm nay</span>
+              )}
+              {todayAttendance?.check_in && !todayAttendance?.check_out && (
+                <span className="text-green-200">✅ Đã check-in lúc {todayAttendance.check_in}</span>
+              )}
+              {todayAttendance?.check_out && (
+                <div>
+                  <span className="text-green-200">✅ Đã hoàn thành: {todayAttendance.check_in} - {todayAttendance.check_out}</span>
+                  <div className="text-white font-bold mt-1">Tổng: {todayAttendance.work_hours} giờ</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={handleCheckIn}
+              disabled={checkingIn || todayAttendance?.check_in}
+              className={`px-8 py-4 rounded-xl font-bold text-lg transition-all ${
+                todayAttendance?.check_in 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-green-500 hover:bg-green-600 shadow-lg hover:shadow-xl'
+              }`}
+            >
+              {checkingIn ? '📍 Đang lấy vị trí...' : '📥 CHECK-IN'}
+            </button>
+            <button
+              onClick={handleCheckOut}
+              disabled={checkingOut || !todayAttendance?.check_in || todayAttendance?.check_out}
+              className={`px-8 py-4 rounded-xl font-bold text-lg transition-all ${
+                !todayAttendance?.check_in || todayAttendance?.check_out
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl'
+              }`}
+            >
+              {checkingOut ? '📍 Đang lấy vị trí...' : '📤 CHECK-OUT'}
+            </button>
+          </div>
+
+          {locationError && (
+            <div className="mt-4 bg-red-500/50 rounded-lg p-3 text-center text-sm">
+              ⚠️ {locationError}
+            </div>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl p-4 border">
+            <div className="text-gray-500 text-sm">📅 Ngày công tháng này</div>
+            <div className="text-2xl font-bold text-blue-600">{totalDays} ngày</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border">
+            <div className="text-gray-500 text-sm">⏱️ Tổng giờ làm</div>
+            <div className="text-2xl font-bold text-green-600">{totalHours.toFixed(1)} giờ</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border">
+            <div className="text-gray-500 text-sm">📊 Trung bình/ngày</div>
+            <div className="text-2xl font-bold text-purple-600">
+              {totalDays > 0 ? (totalHours / totalDays).toFixed(1) : 0} giờ
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border">
+            <div className="text-gray-500 text-sm">🎯 Mục tiêu</div>
+            <div className="text-2xl font-bold text-orange-600">26 ngày</div>
+          </div>
+        </div>
+
+        {/* Filter */}
+        <div className="bg-white rounded-xl p-4 border">
+          <div className="flex items-center gap-4">
+            <label className="font-medium">📅 Tháng:</label>
+            <input
+              type="month"
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="px-4 py-2 border rounded-lg"
+            />
+          </div>
+        </div>
+
+        {/* Admin View - Summary by User */}
+        {isAdmin && viewMode === 'all' && (
+          <div className="bg-white rounded-xl border overflow-hidden">
+            <div className="p-4 border-b bg-gray-50">
+              <h3 className="font-bold">👥 Tổng hợp chấm công - Tháng {filterMonth}</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Nhân viên</th>
+                    <th className="px-4 py-3 text-center">Số ngày</th>
+                    <th className="px-4 py-3 text-center">Tổng giờ</th>
+                    <th className="px-4 py-3 text-center">TB/ngày</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {Object.entries(groupedByUser).map(([userName, data]) => (
+                    <tr key={userName} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{userName}</td>
+                      <td className="px-4 py-3 text-center">{data.days}</td>
+                      <td className="px-4 py-3 text-center">{data.hours.toFixed(1)}h</td>
+                      <td className="px-4 py-3 text-center">
+                        {data.days > 0 ? (data.hours / data.days).toFixed(1) : 0}h
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* History Table */}
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="p-4 border-b bg-gray-50">
+            <h3 className="font-bold">📋 Lịch sử chấm công {viewMode === 'my' ? 'của tôi' : ''}</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  {viewMode === 'all' && <th className="px-4 py-3 text-left">Nhân viên</th>}
+                  <th className="px-4 py-3 text-left">Ngày</th>
+                  <th className="px-4 py-3 text-center">Check-in</th>
+                  <th className="px-4 py-3 text-center">Check-out</th>
+                  <th className="px-4 py-3 text-center">Số giờ</th>
+                  <th className="px-4 py-3 text-center">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredAttendances.length === 0 ? (
+                  <tr>
+                    <td colSpan={viewMode === 'all' ? 6 : 5} className="px-6 py-12 text-center text-gray-500">
+                      <div className="text-4xl mb-2">📭</div>
+                      <div>Chưa có dữ liệu chấm công</div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAttendances.map(a => (
+                    <tr key={a.id} className="hover:bg-gray-50">
+                      {viewMode === 'all' && <td className="px-4 py-3 font-medium">{a.user_name}</td>}
+                      <td className="px-4 py-3">
+                        {new Date(a.date).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-green-600 font-medium">{a.check_in || '-'}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-red-600 font-medium">{a.check_out || '-'}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center font-bold">
+                        {a.work_hours ? `${a.work_hours}h` : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {a.check_out ? (
+                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Hoàn thành</span>
+                        ) : a.check_in ? (
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">Đang làm</span>
+                        ) : (
+                          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // ============ END ATTENDANCE MODULE ============
+
   function SalariesView() {
     return (
       <SalaryManagement
@@ -10017,6 +10710,7 @@ export default function SimpleMarketingSystem() {
         { id: 'overview', name: '📊 Tổng quan', desc: 'Dashboard tài chính' },
         { id: 'receipts', name: '🧾 Thu/Chi', desc: 'Phiếu thu, phiếu chi' },
         { id: 'debts', name: '📋 Công nợ', desc: 'Quản lý công nợ' },
+        { id: 'attendance', name: '⏰ Chấm công', desc: 'Check-in/out GPS' },
         { id: 'salaries', name: '💰 Lương', desc: 'Tính lương nhân viên' },
         { id: 'reports', name: '📈 Báo cáo', desc: 'Báo cáo tài chính' }
       ],
