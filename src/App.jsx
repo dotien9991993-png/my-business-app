@@ -1639,8 +1639,7 @@ export default function SimpleMarketingSystem() {
             equipment: equipmentArray,
             scheduled_date: editScheduledDate,
             scheduled_time: editScheduledTime,
-            customer_payment: parseFloat(editPayment) || 0,
-            updated_at: getNowISOVN()
+            customer_payment: parseFloat(editPayment) || 0
           })
           .eq('id', selectedJob.id);
 
@@ -4018,15 +4017,15 @@ export default function SimpleMarketingSystem() {
       // Admin và Manager thấy tất cả
       if (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager') return true;
       
+      // Người tạo luôn thấy job của mình
+      if (job.createdBy === currentUser.name) return true;
+      
       // Technical members thấy jobs được assign
       if (currentUser.departments && currentUser.departments.includes('technical')) {
         if (job.technicians && job.technicians.includes(currentUser.name)) return true;
       }
       
-      // Sales thấy jobs mình tạo
-      if (currentUser.departments && currentUser.departments.includes('sales')) {
-        if (job.createdBy === currentUser.name) return true;
-      }
+      // Sales thấy jobs mình tạo (đã check ở trên)
       
       return false;
     });
