@@ -158,7 +158,7 @@ export default function SimpleMarketingSystem() {
 
   // Attendance Module States (Chấm công)
   const [attendances, setAttendances] = useState([]);
-  const [todayAttendance, setTodayAttendance] = useState(null);
+  const [todayAttendances, setTodayAttendances] = useState([]); // Nhiều ca trong ngày
 
   // Warehouse Module States
   const [products, setProducts] = useState([]);
@@ -429,7 +429,7 @@ export default function SimpleMarketingSystem() {
 
   // Load today attendance when user logs in
   useEffect(() => {
-    const loadTodayAttendance = async () => {
+    const loadTodayAttendances = async () => {
       if (!tenant || !currentUser) return;
       try {
         const today = getTodayVN();
@@ -439,16 +439,15 @@ export default function SimpleMarketingSystem() {
           .eq('tenant_id', tenant.id)
           .eq('user_id', currentUser.id)
           .eq('date', today)
-          .single();
+          .order('check_in', { ascending: true });
         
-        setTodayAttendance(data || null);
+        setTodayAttendances(data || []);
       } catch (err) {
-        // Chưa có attendance hôm nay
-        setTodayAttendance(null);
+        setTodayAttendances([]);
       }
     };
     
-    loadTodayAttendance();
+    loadTodayAttendances();
   }, [tenant, currentUser]);
 
   // Check deadline notifications
@@ -7435,24 +7434,30 @@ export default function SimpleMarketingSystem() {
             </div>
             <div className="flex items-center gap-4">
               {/* Attendance Button on Header */}
-              <button
-                onClick={() => setShowAttendancePopup(true)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all ${
-                  todayAttendance?.check_out
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                    : todayAttendance?.check_in
-                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                    : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 animate-pulse'
-                }`}
-              >
-                {todayAttendance?.check_out ? (
-                  <>✅ {todayAttendance.check_in?.slice(0,5)} - {todayAttendance.check_out?.slice(0,5)}</>
-                ) : todayAttendance?.check_in ? (
-                  <>🟢 Vào: {todayAttendance.check_in?.slice(0,5)}</>
-                ) : (
-                  <>⏰ Chấm công</>
-                )}
-              </button>
+              {(() => {
+                const currentShift = todayAttendances.find(a => a.check_in && !a.check_out);
+                const totalHours = todayAttendances.reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
+                const allDone = todayAttendances.length > 0 && todayAttendances.every(a => a.check_out);
+                
+                return (
+                  <button
+                    onClick={() => setShowAttendancePopup(true)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all ${
+                      currentShift ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        : allDone ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 animate-pulse'
+                    }`}
+                  >
+                    {currentShift ? (
+                      <>🟢 Ca {todayAttendances.length}: {currentShift.check_in?.slice(0,5)}</>
+                    ) : allDone ? (
+                      <>✅ {todayAttendances.length} ca - {totalHours.toFixed(1)}h</>
+                    ) : (
+                      <>⏰ Chấm công</>
+                    )}
+                  </button>
+                );
+              })()}
               <div className="relative">
                 <button
                   onClick={() => setShowNotifications(!showNotifications)}
@@ -7467,25 +7472,6 @@ export default function SimpleMarketingSystem() {
                 </button>
                 <NotificationsDropdown />
               </div>
-              {/* Attendance Status Button */}
-              <button
-                onClick={() => setShowAttendancePopup(true)}
-                className={`px-3 py-2 rounded-lg font-medium text-sm flex items-center gap-2 ${
-                  todayAttendance?.check_out 
-                    ? 'bg-green-100 text-green-700' 
-                    : todayAttendance?.check_in 
-                      ? 'bg-blue-100 text-blue-700 animate-pulse' 
-                      : 'bg-yellow-100 text-yellow-700'
-                }`}
-              >
-                {todayAttendance?.check_out ? (
-                  <>✅ {todayAttendance.check_in} - {todayAttendance.check_out}</>
-                ) : todayAttendance?.check_in ? (
-                  <>🟢 Đang làm từ {todayAttendance.check_in}</>
-                ) : (
-                  <>⏰ Chưa chấm công</>
-                )}
-              </button>
               <div className="text-right">
                 <div className="font-medium">{currentUser.name}</div>
                 <div className="text-sm text-gray-600">{currentUser.role} • {currentUser.team}</div>
@@ -8005,143 +7991,167 @@ export default function SimpleMarketingSystem() {
       {showPermissionsModal && <PermissionsModal />}
 
       {/* Floating Attendance Button - Góc phải dưới */}
-      <button
-        onClick={() => setShowAttendancePopup(true)}
-        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 ${
-          todayAttendance?.check_out
-            ? 'bg-green-500 text-white'
-            : todayAttendance?.check_in
-            ? 'bg-blue-500 text-white'
-            : 'bg-yellow-500 text-white animate-bounce'
-        }`}
-        title={todayAttendance?.check_out ? 'Đã check-out' : todayAttendance?.check_in ? 'Đang làm việc' : 'Chấm công'}
-      >
-        {todayAttendance?.check_out ? '✅' : todayAttendance?.check_in ? '🟢' : '⏰'}
-      </button>
+      {(() => {
+        const currentShift = todayAttendances.find(a => a.check_in && !a.check_out);
+        const totalHours = todayAttendances.reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
+        const hasCheckedIn = todayAttendances.length > 0;
+        const allCheckedOut = todayAttendances.length > 0 && todayAttendances.every(a => a.check_out);
+        
+        return (
+          <button
+            onClick={() => setShowAttendancePopup(true)}
+            className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 ${
+              currentShift ? 'bg-blue-500 text-white' : allCheckedOut ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white animate-bounce'
+            }`}
+            title={currentShift ? 'Đang làm việc' : allCheckedOut ? `Đã làm ${totalHours.toFixed(1)}h` : 'Chấm công'}
+          >
+            {currentShift ? '🟢' : allCheckedOut ? '✅' : '⏰'}
+          </button>
+        );
+      })()}
 
-      {/* Attendance Popup */}
-      {showAttendancePopup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white text-center">
-              <div className="text-5xl mb-2">
-                {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-              <div className="text-blue-200">
-                {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
-              </div>
-              <div className="mt-3 font-medium">{currentUser?.name}</div>
-            </div>
-
-            {/* Status */}
-            <div className="p-6">
-              <div className={`rounded-xl p-4 mb-6 text-center ${
-                todayAttendance?.check_out ? 'bg-green-50 border border-green-200' :
-                todayAttendance?.check_in ? 'bg-blue-50 border border-blue-200' :
-                'bg-yellow-50 border border-yellow-200'
-              }`}>
-                {!todayAttendance?.check_in && (
-                  <div className="text-yellow-700">
-                    <span className="text-2xl">⏳</span>
-                    <div className="font-medium mt-1">Chưa check-in hôm nay</div>
-                  </div>
-                )}
-                {todayAttendance?.check_in && !todayAttendance?.check_out && (
-                  <div className="text-blue-700">
-                    <span className="text-2xl">🟢</span>
-                    <div className="font-medium mt-1">Đang làm việc</div>
-                    <div className="text-sm">Check-in lúc {todayAttendance.check_in?.slice(0,5)}</div>
-                  </div>
-                )}
-                {todayAttendance?.check_out && (
-                  <div className="text-green-700">
-                    <span className="text-2xl">✅</span>
-                    <div className="font-medium mt-1">Đã hoàn thành</div>
-                    <div className="text-sm">{todayAttendance.check_in?.slice(0,5)} - {todayAttendance.check_out?.slice(0,5)}</div>
-                    <div className="text-lg font-bold mt-1">{todayAttendance.work_hours} giờ</div>
-                  </div>
-                )}
+      {/* Attendance Popup - Hỗ trợ nhiều ca */}
+      {showAttendancePopup && (() => {
+        const currentShift = todayAttendances.find(a => a.check_in && !a.check_out);
+        const totalHours = todayAttendances.reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
+        const canCheckIn = !currentShift; // Chỉ check-in khi không có ca đang mở
+        const canCheckOut = !!currentShift; // Chỉ check-out khi có ca đang mở
+        
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white text-center">
+                <div className="text-5xl mb-2">
+                  {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+                <div className="text-blue-200">
+                  {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </div>
+                <div className="mt-3 font-medium">{currentUser?.name}</div>
               </div>
 
-              {/* Buttons */}
-              <div className="flex gap-4">
+              {/* Status & History */}
+              <div className="p-6">
+                {/* Trạng thái hiện tại */}
+                <div className={`rounded-xl p-4 mb-4 text-center ${
+                  currentShift ? 'bg-blue-50 border border-blue-200' : 
+                  todayAttendances.length > 0 ? 'bg-green-50 border border-green-200' : 
+                  'bg-yellow-50 border border-yellow-200'
+                }`}>
+                  {todayAttendances.length === 0 && (
+                    <div className="text-yellow-700">
+                      <span className="text-2xl">⏳</span>
+                      <div className="font-medium mt-1">Chưa chấm công hôm nay</div>
+                    </div>
+                  )}
+                  {currentShift && (
+                    <div className="text-blue-700">
+                      <span className="text-2xl">🟢</span>
+                      <div className="font-medium mt-1">Đang làm việc - Ca {todayAttendances.length}</div>
+                      <div className="text-sm">Vào lúc {currentShift.check_in?.slice(0,5)}</div>
+                    </div>
+                  )}
+                  {todayAttendances.length > 0 && !currentShift && (
+                    <div className="text-green-700">
+                      <span className="text-2xl">✅</span>
+                      <div className="font-medium mt-1">Đã hoàn thành {todayAttendances.length} ca</div>
+                      <div className="text-lg font-bold mt-1">Tổng: {totalHours.toFixed(2)} giờ</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Danh sách các ca đã chấm */}
+                {todayAttendances.length > 0 && (
+                  <div className="mb-4 space-y-2">
+                    <div className="text-sm font-medium text-gray-600">📋 Chi tiết các ca:</div>
+                    {todayAttendances.map((shift, idx) => (
+                      <div key={shift.id} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                        <span className="font-medium">Ca {idx + 1}</span>
+                        <span>{shift.check_in?.slice(0,5)} - {shift.check_out?.slice(0,5) || '...'}</span>
+                        <span className={shift.check_out ? 'text-green-600 font-medium' : 'text-blue-600'}>
+                          {shift.work_hours ? `${shift.work_hours}h` : 'Đang làm'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Buttons */}
+                <div className="flex gap-4">
+                  <button
+                    onClick={async () => {
+                      if (!canCheckIn) {
+                        alert('⚠️ Bạn đang có ca chưa check-out!');
+                        return;
+                      }
+                      try {
+                        const now = getVietnamDate();
+                        const checkInTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                        const { data, error } = await supabase.from('attendances').insert({
+                          tenant_id: tenant.id, user_id: currentUser.id, user_name: currentUser.name,
+                          date: getTodayVN(), check_in: checkInTime,
+                          status: 'checked_in', created_at: new Date().toISOString()
+                        }).select().single();
+                        if (error) throw error;
+                        setTodayAttendances([...todayAttendances, data]);
+                        alert(`✅ Check-in Ca ${todayAttendances.length + 1} lúc ${checkInTime}!`);
+                      } catch (err) {
+                        alert('❌ Lỗi: ' + err.message);
+                      }
+                    }}
+                    disabled={!canCheckIn}
+                    className={`flex-1 py-4 rounded-xl font-bold text-lg transition-all ${
+                      !canCheckIn ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600 text-white shadow-lg'
+                    }`}
+                  >
+                    📥 CHECK-IN
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!canCheckOut) {
+                        alert('⚠️ Bạn chưa check-in!');
+                        return;
+                      }
+                      try {
+                        const now = getVietnamDate();
+                        const checkOutTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                        const [inH, inM] = currentShift.check_in.split(':').map(Number);
+                        const [outH, outM] = checkOutTime.split(':').map(Number);
+                        const workHours = ((outH * 60 + outM) - (inH * 60 + inM)) / 60;
+                        const { data, error } = await supabase.from('attendances').update({
+                          check_out: checkOutTime, work_hours: parseFloat(workHours.toFixed(2)), status: 'checked_out'
+                        }).eq('id', currentShift.id).select().single();
+                        if (error) throw error;
+                        setTodayAttendances(todayAttendances.map(a => a.id === currentShift.id ? data : a));
+                        alert(`✅ Check-out Ca ${todayAttendances.length} thành công!\nGiờ ca này: ${workHours.toFixed(2)} giờ`);
+                      } catch (err) {
+                        alert('❌ Lỗi: ' + err.message);
+                      }
+                    }}
+                    disabled={!canCheckOut}
+                    className={`flex-1 py-4 rounded-xl font-bold text-lg transition-all ${
+                      !canCheckOut ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white shadow-lg'
+                    }`}
+                  >
+                    📤 CHECK-OUT
+                  </button>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t bg-gray-50">
                 <button
-                  onClick={async () => {
-                    if (todayAttendance?.check_in) {
-                      alert('⚠️ Bạn đã check-in hôm nay rồi!');
-                      return;
-                    }
-                    try {
-                      const now = getVietnamDate();
-                      const checkInTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-                      const { data, error } = await supabase.from('attendances').insert({
-                        tenant_id: tenant.id, user_id: currentUser.id, user_name: currentUser.name,
-                        date: getTodayVN(), check_in: checkInTime,
-                        status: 'checked_in', created_at: new Date().toISOString()
-                      }).select().single();
-                      if (error) throw error;
-                      setTodayAttendance(data);
-                      alert(`✅ Check-in thành công lúc ${checkInTime}!`);
-                    } catch (err) {
-                      alert('❌ Lỗi: ' + err.message);
-                    }
-                  }}
-                  disabled={todayAttendance?.check_in}
-                  className={`flex-1 py-4 rounded-xl font-bold text-lg transition-all ${
-                    todayAttendance?.check_in ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600 text-white shadow-lg'
-                  }`}
+                  onClick={() => setShowAttendancePopup(false)}
+                  className="w-full py-3 bg-gray-200 hover:bg-gray-300 rounded-xl font-medium"
                 >
-                  📥 CHECK-IN
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!todayAttendance?.check_in) {
-                      alert('⚠️ Bạn chưa check-in hôm nay!');
-                      return;
-                    }
-                    if (todayAttendance?.check_out) {
-                      alert('⚠️ Bạn đã check-out rồi!');
-                      return;
-                    }
-                    try {
-                      const now = getVietnamDate();
-                      const checkOutTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-                      const [inH, inM] = todayAttendance.check_in.split(':').map(Number);
-                      const [outH, outM] = checkOutTime.split(':').map(Number);
-                      const workHours = ((outH * 60 + outM) - (inH * 60 + inM)) / 60;
-                      const { data, error } = await supabase.from('attendances').update({
-                        check_out: checkOutTime, work_hours: parseFloat(workHours.toFixed(2)), status: 'checked_out'
-                      }).eq('id', todayAttendance.id).select().single();
-                      if (error) throw error;
-                      setTodayAttendance(data);
-                      alert(`✅ Check-out thành công!\nTổng giờ làm: ${workHours.toFixed(2)} giờ`);
-                    } catch (err) {
-                      alert('❌ Lỗi: ' + err.message);
-                    }
-                  }}
-                  disabled={!todayAttendance?.check_in || todayAttendance?.check_out}
-                  className={`flex-1 py-4 rounded-xl font-bold text-lg transition-all ${
-                    !todayAttendance?.check_in || todayAttendance?.check_out ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white shadow-lg'
-                  }`}
-                >
-                  📤 CHECK-OUT
-                </button>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t bg-gray-50">
-              <button
-                onClick={() => setShowAttendancePopup(false)}
-                className="w-full py-3 bg-gray-200 hover:bg-gray-300 rounded-xl font-medium"
-              >
                 Đóng
               </button>
             </div>
           </div>
         </div>
-      )}
+      );
+      })()}
     </div>
   );
 
