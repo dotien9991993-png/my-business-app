@@ -450,16 +450,6 @@ export default function SimpleMarketingSystem() {
     loadTodayAttendances();
   }, [tenant, currentUser]);
 
-  // Check deadline notifications
-  useEffect(() => {
-    if (!isLoggedIn || !currentUser) return;
-    
-    checkDeadlineNotifications();
-    const interval = setInterval(checkDeadlineNotifications, 30 * 60 * 1000);
-    
-    return () => clearInterval(interval);
-  }, [tasks, currentUser, isLoggedIn]);
-
   // Hàm refresh tất cả data
   const refreshAllData = async () => {
     if (!tenant) return;
@@ -1362,11 +1352,13 @@ export default function SimpleMarketingSystem() {
     }
   };
 
-  // Kiểm tra deadline và gửi thông báo
+  // Kiểm tra deadline và gửi thông báo (check trong DB để tránh trùng)
   const checkDeadlineNotifications = async () => {
-    if (!currentUser || !tasks.length) return;
+    if (!currentUser || !tasks.length || !tenant) return;
     
     const now = new Date();
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
     for (const task of tasks) {
       if (task.assignee !== currentUser.name) continue;
       if (task.status === 'Hoàn Thành') continue;
@@ -1377,14 +1369,17 @@ export default function SimpleMarketingSystem() {
       
       // Sắp hết hạn (trong 24h)
       if (diffHours > 0 && diffHours <= 24) {
-        // Check xem đã có thông báo chưa
-        const existing = notifications.find(n => 
-          n.type === 'deadline_warning' && 
-          n.reference_id === task.id &&
-          new Date(n.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
-        );
+        // Check trong DB xem đã có thông báo chưa (trong 24h qua)
+        const { data: existing } = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', currentUser.id)
+          .eq('type', 'deadline_warning')
+          .eq('reference_id', task.id)
+          .gte('created_at', oneDayAgo)
+          .limit(1);
         
-        if (!existing) {
+        if (!existing || existing.length === 0) {
           await createNotification({
             userId: currentUser.id,
             type: 'deadline_warning',
@@ -1399,13 +1394,16 @@ export default function SimpleMarketingSystem() {
       
       // Đã quá hạn
       if (diffHours < 0 && diffHours > -24) {
-        const existing = notifications.find(n => 
-          n.type === 'deadline_overdue' && 
-          n.reference_id === task.id &&
-          new Date(n.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
-        );
+        const { data: existing } = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', currentUser.id)
+          .eq('type', 'deadline_overdue')
+          .eq('reference_id', task.id)
+          .gte('created_at', oneDayAgo)
+          .limit(1);
         
-        if (!existing) {
+        if (!existing || existing.length === 0) {
           await createNotification({
             userId: currentUser.id,
             type: 'deadline_overdue',
@@ -1450,15 +1448,22 @@ export default function SimpleMarketingSystem() {
     };
   }, [tenant, currentUser]);
 
-  // Check deadline mỗi giờ
+  // Check deadline mỗi giờ (chỉ khi tasks thay đổi, KHÔNG dependency notifications)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !tasks.length) return;
     
-    checkDeadlineNotifications();
+    // Delay để tránh chạy ngay khi mount
+    const timeout = setTimeout(() => {
+      checkDeadlineNotifications();
+    }, 5000);
+    
     const interval = setInterval(checkDeadlineNotifications, 60 * 60 * 1000); // Mỗi giờ
     
-    return () => clearInterval(interval);
-  }, [tasks, currentUser, notifications]);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [tasks, currentUser]); // Bỏ notifications khỏi dependency
 
   // Legacy addNotification for backward compatibility
   const addNotification = (notif) => {
