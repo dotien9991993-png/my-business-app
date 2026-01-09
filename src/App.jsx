@@ -9302,6 +9302,9 @@ export default function SimpleMarketingSystem() {
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({});
 
+    // Phân quyền: Admin/Manager thấy tất cả, nhân viên chỉ thấy của mình
+    const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin' || currentUser?.role === 'Manager';
+
     const getCurrentMonth = () => {
       const vn = getVietnamDate();
       return `${vn.getFullYear()}-${String(vn.getMonth() + 1).padStart(2, '0')}`;
@@ -9342,11 +9345,18 @@ export default function SimpleMarketingSystem() {
     const loadSalaries = async () => {
       if (!tenant) return;
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('salaries')
           .select('*')
           .eq('tenant_id', tenant.id)
           .order('created_at', { ascending: false });
+        
+        // Nếu không phải admin, chỉ load bảng lương của mình
+        if (!isAdmin) {
+          query = query.eq('user_id', currentUser.id);
+        }
+        
+        const { data, error } = await query;
         if (error) throw error;
         setSalaries(data || []);
       } catch (err) {
@@ -9573,70 +9583,77 @@ export default function SimpleMarketingSystem() {
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-800">💰 Quản Lý Lương Đa Phòng Ban</h2>
-              <p className="text-gray-600 text-sm mt-1">Tính lương theo từng phòng ban, hỗ trợ nhân viên làm nhiều bộ phận</p>
+              <h2 className="text-2xl font-bold text-gray-800">💰 {isAdmin ? 'Quản Lý Lương Đa Phòng Ban' : 'Bảng Lương Của Tôi'}</h2>
+              <p className="text-gray-600 text-sm mt-1">{isAdmin ? 'Tính lương theo từng phòng ban, hỗ trợ nhân viên làm nhiều bộ phận' : 'Xem chi tiết lương hàng tháng'}</p>
             </div>
-            <button onClick={handleOpenCreate} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg">
-              ➕ Tạo bảng lương
-            </button>
+            {isAdmin && (
+              <button onClick={handleOpenCreate} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg">
+                ➕ Tạo bảng lương
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
-            <div className="text-blue-100 text-sm mb-1">💰 Tổng tháng này</div>
-            <div className="text-2xl font-bold">{formatMoney(stats.totalThisMonth)}</div>
+        {/* Stats - Chỉ Admin thấy */}
+        {isAdmin && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+              <div className="text-blue-100 text-sm mb-1">💰 Tổng tháng này</div>
+              <div className="text-2xl font-bold">{formatMoney(stats.totalThisMonth)}</div>
+            </div>
+            <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
+              <div className="text-yellow-100 text-sm mb-1">📝 Chờ duyệt</div>
+              <div className="text-2xl font-bold">{formatMoney(stats.totalPending)}</div>
+            </div>
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
+              <div className="text-green-100 text-sm mb-1">✅ Đã duyệt</div>
+              <div className="text-2xl font-bold">{formatMoney(stats.totalApproved)}</div>
+            </div>
+            <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-5 text-white">
+              <div className="text-gray-100 text-sm mb-1">💸 Đã trả</div>
+              <div className="text-2xl font-bold">{formatMoney(stats.totalPaid)}</div>
+            </div>
           </div>
-          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
-            <div className="text-yellow-100 text-sm mb-1">📝 Chờ duyệt</div>
-            <div className="text-2xl font-bold">{formatMoney(stats.totalPending)}</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
-            <div className="text-green-100 text-sm mb-1">✅ Đã duyệt</div>
-            <div className="text-2xl font-bold">{formatMoney(stats.totalApproved)}</div>
-          </div>
-          <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-5 text-white">
-            <div className="text-gray-100 text-sm mb-1">💸 Đã trả</div>
-            <div className="text-2xl font-bold">{formatMoney(stats.totalPaid)}</div>
-          </div>
-        </div>
+        )}
 
         {/* Filters & Table */}
         <div className="bg-white rounded-xl shadow-sm border">
-          <div className="p-4 border-b bg-gray-50">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">📅 Tháng</label>
-                <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">👤 Nhân viên</label>
-                <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
-                  <option value="">Tất cả</option>
-                  {(allUsers || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">📊 Trạng thái</label>
-                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
-                  <option value="all">Tất cả</option>
-                  <option value="draft">Nháp</option>
-                  <option value="approved">Đã duyệt</option>
-                  <option value="paid">Đã trả</option>
-                </select>
-              </div>
-              <div className="flex items-end">
-                <button onClick={() => { setFilterMonth(''); setFilterUser(''); setFilterStatus('all'); }} className="w-full px-4 py-2 border rounded-lg hover:bg-gray-100">🔄 Reset</button>
+          {/* Filters - Chỉ Admin thấy đầy đủ */}
+          {isAdmin && (
+            <div className="p-4 border-b bg-gray-50">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">📅 Tháng</label>
+                  <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">👤 Nhân viên</label>
+                  <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="">Tất cả</option>
+                    {(allUsers || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">📊 Trạng thái</label>
+                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                    <option value="all">Tất cả</option>
+                    <option value="draft">Nháp</option>
+                    <option value="approved">Đã duyệt</option>
+                    <option value="paid">Đã trả</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button onClick={() => { setFilterMonth(''); setFilterUser(''); setFilterStatus('all'); }} className="w-full px-4 py-2 border rounded-lg hover:bg-gray-100">🔄 Reset</button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nhân viên</th>
+                  {isAdmin && <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nhân viên</th>}
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tháng</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Lương CB</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Ngày công</th>
@@ -9648,15 +9665,15 @@ export default function SimpleMarketingSystem() {
               <tbody className="divide-y">
                 {filteredSalaries.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan={isAdmin ? 7 : 6} className="px-6 py-12 text-center text-gray-500">
                       <div className="text-5xl mb-4">📭</div>
-                      <div className="text-lg font-medium">Chưa có bảng lương nào</div>
+                      <div className="text-lg font-medium">{isAdmin ? 'Chưa có bảng lương nào' : 'Chưa có bảng lương nào cho bạn'}</div>
                     </td>
                   </tr>
                 ) : (
                   filteredSalaries.map(salary => (
                     <tr key={salary.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{salary.employee_name}</td>
+                      {isAdmin && <td className="px-4 py-3 font-medium">{salary.employee_name}</td>}
                       <td className="px-4 py-3">{salary.month}</td>
                       <td className="px-4 py-3 text-right">{formatMoney(salary.basic_salary)}</td>
                       <td className="px-4 py-3 text-center">{salary.work_days || 0}</td>
