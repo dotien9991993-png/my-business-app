@@ -460,6 +460,46 @@ export default function SimpleMarketingSystem() {
     return () => clearInterval(interval);
   }, [tasks, currentUser, isLoggedIn]);
 
+  // Hàm refresh tất cả data
+  const refreshAllData = async () => {
+    if (!tenant) return;
+    console.log('🔄 Refreshing all data...');
+    await Promise.all([
+      loadUsers(),
+      loadTasks(),
+      loadTechnicalJobs(),
+      loadFinanceData(),
+      loadWarehouseData(),
+      loadPermissions()
+    ]);
+    console.log('✅ Data refreshed!');
+  };
+
+  // Auto refresh khi app được focus lại (quan trọng cho PWA trên iOS)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && tenant && isLoggedIn) {
+        console.log('📱 App visible - refreshing data...');
+        refreshAllData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Cũng refresh khi window được focus
+    const handleFocus = () => {
+      if (tenant && isLoggedIn) {
+        refreshAllData();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [tenant, isLoggedIn]);
+
   const loadUsers = async () => {
     if (!tenant) return;
     try {
@@ -7407,6 +7447,22 @@ export default function SimpleMarketingSystem() {
               <img src="/logo.png" alt="Logo" className="h-10 w-10 rounded-lg object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
             </div>
             <div className="flex items-center gap-2">
+              {/* Refresh Button Mobile */}
+              <button
+                onClick={() => {
+                  refreshAllData();
+                  // Hiệu ứng xoay
+                  const btn = document.getElementById('refresh-btn-mobile');
+                  if (btn) {
+                    btn.classList.add('animate-spin');
+                    setTimeout(() => btn.classList.remove('animate-spin'), 1000);
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full"
+                title="Làm mới dữ liệu"
+              >
+                <span id="refresh-btn-mobile" className="text-xl inline-block">🔄</span>
+              </button>
               {/* Attendance Button Mobile */}
               {(() => {
                 const currentShift = todayAttendances.find(a => a.check_in && !a.check_out);
