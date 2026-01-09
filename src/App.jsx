@@ -7674,9 +7674,9 @@ export default function SimpleMarketingSystem() {
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
-            { id: 'jobs', l: '📋 Công Việc', tabKey: 'jobs' },
-            { id: 'wages', l: '💰 Tiền Công', tabKey: 'wages' },
-            { id: 'summary', l: '📊 Tổng Hợp', tabKey: 'summary' }
+            { id: 'jobs', l: '📋 Công Việc' },
+            { id: 'wages', l: '💰 Tiền Công' },
+            { id: 'summary', l: '📊 Tổng Hợp' }
           ] : activeModule === 'finance' ? [
             { id: 'dashboard', l: '📊 Tổng Quan', tabKey: 'overview' },
             { id: 'receipts', l: '🧾 Thu/Chi', tabKey: 'receipts' },
