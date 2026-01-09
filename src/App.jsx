@@ -7406,19 +7406,39 @@ export default function SimpleMarketingSystem() {
             <div className="flex items-center">
               <img src="/logo.png" alt="Logo" className="h-10 w-10 rounded-lg object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
             </div>
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative p-2 hover:bg-gray-100 rounded-full"
-              >
-                <span className="text-xl">🔔</span>
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </button>
-              <NotificationsDropdown />
+            <div className="flex items-center gap-2">
+              {/* Attendance Button Mobile */}
+              {(() => {
+                const currentShift = todayAttendances.find(a => a.check_in && !a.check_out);
+                const totalHours = todayAttendances.reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
+                const allDone = todayAttendances.length > 0 && todayAttendances.every(a => a.check_out);
+                
+                return (
+                  <button
+                    onClick={() => setShowAttendancePopup(true)}
+                    className={`relative p-2 rounded-full ${
+                      currentShift ? 'bg-blue-100' : allDone ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'
+                    }`}
+                  >
+                    <span className="text-xl">{currentShift ? '🟢' : allDone ? '✅' : '⏰'}</span>
+                  </button>
+                );
+              })()}
+              {/* Notifications */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 hover:bg-gray-100 rounded-full"
+                >
+                  <span className="text-xl">🔔</span>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+                <NotificationsDropdown />
+              </div>
             </div>
           </div>
 
@@ -7989,7 +8009,7 @@ export default function SimpleMarketingSystem() {
       {showJobModal && <JobDetailModal />}
       {showPermissionsModal && <PermissionsModal />}
 
-      {/* Floating Attendance Button - Góc phải dưới */}
+      {/* Floating Attendance Button - Chỉ hiện trên Desktop */}
       {(() => {
         const currentShift = todayAttendances.find(a => a.check_in && !a.check_out);
         const totalHours = todayAttendances.reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
@@ -7999,7 +8019,7 @@ export default function SimpleMarketingSystem() {
         return (
           <button
             onClick={() => setShowAttendancePopup(true)}
-            className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 ${
+            className={`hidden md:flex fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg items-center justify-center text-2xl transition-all hover:scale-110 ${
               currentShift ? 'bg-blue-500 text-white' : allCheckedOut ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white animate-bounce'
             }`}
             title={currentShift ? 'Đang làm việc' : allCheckedOut ? `Đã làm ${totalHours.toFixed(1)}h` : 'Chấm công'}
