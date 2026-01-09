@@ -731,14 +731,18 @@ export default function SimpleMarketingSystem() {
       
       // Notify assignee if different from creator
       if (assignee !== currentUser.name) {
-        addNotification({
-          type: 'assigned',
-          taskId: null,
-          title: '📋 Video mới',
-          message: `${currentUser.name} đã giao task cho bạn: "${title}"`,
-          read: false,
-          createdAt: getNowISOVN()
-        });
+        const assigneeUser = allUsers.find(u => u.name === assignee);
+        if (assigneeUser) {
+          await createNotification({
+            userId: assigneeUser.id,
+            type: 'task_assigned',
+            title: '📋 Video mới được giao',
+            message: `${currentUser.name} đã giao task cho bạn: "${title}"`,
+            icon: '📋',
+            referenceType: 'task',
+            referenceId: null // Task vừa tạo chưa có ID
+          });
+        }
       }
       
       alert('✅ Đã tạo task mới!');
@@ -777,18 +781,22 @@ export default function SimpleMarketingSystem() {
       if (error) throw error;
       
       // Notify all technicians
-      jobData.technicians.forEach(techName => {
+      for (const techName of jobData.technicians) {
         if (techName !== currentUser.name) {
-          addNotification({
-            type: 'assigned',
-            taskId: null,
-            title: '🔧 Công việc mới',
-            message: `${currentUser.name} đã giao công việc: "${jobData.title}"`,
-            read: false,
-            createdAt: getNowISOVN()
-          });
+          const techUser = allUsers.find(u => u.name === techName);
+          if (techUser) {
+            await createNotification({
+              userId: techUser.id,
+              type: 'job_assigned',
+              title: '🔧 Công việc kỹ thuật mới',
+              message: `${currentUser.name} đã giao: "${jobData.title}" tại ${jobData.address || 'N/A'}`,
+              icon: '🔧',
+              referenceType: 'job',
+              referenceId: null
+            });
+          }
         }
-      });
+      }
       
       alert('✅ Đã tạo công việc kỹ thuật!');
       setShowCreateJobModal(false);
@@ -1030,61 +1038,430 @@ export default function SimpleMarketingSystem() {
     }
   };
 
-  // Notification functions
-  const addNotification = (notif) => {
-    setNotifications(prev => [notif, ...prev]);
-    setUnreadCount(prev => prev + 1);
-  };
-
-  const markAsRead = (index) => {
-    setNotifications(prev => 
-      prev.map((n, i) => i === index ? { ...n, read: true } : n)
-    );
-    setUnreadCount(prev => Math.max(0, prev - 1));
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    setUnreadCount(0);
-  };
-
-  const deleteNotification = (index) => {
-    const notif = notifications[index];
-    setNotifications(prev => prev.filter((_, i) => i !== index));
-    if (!notif.read) {
-      setUnreadCount(prev => Math.max(0, prev - 1));
+  // ============ NOTIFICATION SYSTEM (Supabase-based) ============
+  
+  // Load notifications từ Supabase
+  const loadNotifications = async () => {
+    if (!tenant || !currentUser) return;
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      if (error) throw error;
+      setNotifications(data || []);
+      setUnreadCount((data || []).filter(n => !n.is_read).length);
+    } catch (err) {
+      console.error('Error loading notifications:', err);
     }
   };
 
-  const checkDeadlineNotifications = () => {
+  // Tạo thông báo mới (lưu vào Supabase)
+  const createNotification = async ({
+    userId,
+    type,
+    title,
+    message,
+    icon = '🔔',
+    referenceType = null,
+    referenceId = null,
+    data = {}
+  }) => {
+    if (!tenant) return;
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .insert({
+          tenant_id: tenant.id,
+          user_id: userId,
+          type,
+          title,
+          message,
+          icon,
+          reference_type: referenceType,
+          reference_id: referenceId,
+          data,
+          created_by: currentUser?.id
+        });
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error creating notification:', err);
+    }
+  };
+
+  // Gửi thông báo cho nhiều người
+  const notifyUsers = async (userIds, notifData) => {
+    if (!tenant || !userIds.length) return;
+    try {
+      const notifications = userIds.map(userId => ({
+        tenant_id: tenant.id,
+        user_id: userId,
+        type: notifData.type,
+        title: notifData.title,
+        message: notifData.message,
+        icon: notifData.icon || '🔔',
+        reference_type: notifData.referenceType || null,
+        reference_id: notifData.referenceId || null,
+        data: notifData.data || {},
+        created_by: currentUser?.id
+      }));
+      
+      const { error } = await supabase
+        .from('notifications')
+        .insert(notifications);
+      
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error notifying users:', err);
+    }
+  };
+
+  // Thông báo cho Admin/Manager
+  const notifyAdmins = async (notifData) => {
+    const adminIds = (allUsers || [])
+      .filter(u => u.role === 'Admin' || u.role === 'admin' || u.role === 'Manager')
+      .map(u => u.id);
+    await notifyUsers(adminIds, notifData);
+  };
+
+  // Đánh dấu đã đọc 1 thông báo
+  const markAsRead = async (notifId) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true, read_at: new Date().toISOString() })
+        .eq('id', notifId);
+      
+      if (error) throw error;
+      
+      setNotifications(prev => 
+        prev.map(n => n.id === notifId ? { ...n, is_read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error('Error marking as read:', err);
+    }
+  };
+
+  // Đánh dấu tất cả đã đọc
+  const markAllAsRead = async () => {
+    if (!currentUser) return;
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true, read_at: new Date().toISOString() })
+        .eq('user_id', currentUser.id)
+        .eq('is_read', false);
+      
+      if (error) throw error;
+      
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Error marking all as read:', err);
+    }
+  };
+
+  // Xóa thông báo
+  const deleteNotification = async (notifId) => {
+    try {
+      const notif = notifications.find(n => n.id === notifId);
+      
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', notifId);
+      
+      if (error) throw error;
+      
+      setNotifications(prev => prev.filter(n => n.id !== notifId));
+      if (notif && !notif.is_read) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch (err) {
+      console.error('Error deleting notification:', err);
+    }
+  };
+
+  // Xóa tất cả thông báo đã đọc
+  const clearReadNotifications = async () => {
+    if (!currentUser) return;
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .eq('is_read', true);
+      
+      if (error) throw error;
+      
+      setNotifications(prev => prev.filter(n => !n.is_read));
+    } catch (err) {
+      console.error('Error clearing notifications:', err);
+    }
+  };
+
+  // ============ NOTIFICATION HELPERS (Gọi khi có sự kiện) ============
+
+  // Khi giao task mới
+  const notifyTaskAssigned = async (task, assigneeId) => {
+    await createNotification({
+      userId: assigneeId,
+      type: 'task_assigned',
+      title: '📝 Task mới được giao',
+      message: `Bạn được giao task: "${task.title}"`,
+      icon: '📝',
+      referenceType: 'task',
+      referenceId: task.id,
+      data: { taskTitle: task.title, dueDate: task.dueDate }
+    });
+  };
+
+  // Khi task hoàn thành
+  const notifyTaskCompleted = async (task) => {
+    // Thông báo cho Manager/Admin
+    await notifyAdmins({
+      type: 'task_completed',
+      title: '✅ Task hoàn thành',
+      message: `${currentUser.name} đã hoàn thành: "${task.title}"`,
+      icon: '✅',
+      referenceType: 'task',
+      referenceId: task.id
+    });
+  };
+
+  // Khi task bị từ chối
+  const notifyTaskRejected = async (task, assigneeId, reason) => {
+    await createNotification({
+      userId: assigneeId,
+      type: 'task_rejected',
+      title: '❌ Task bị từ chối',
+      message: `Task "${task.title}" bị từ chối: ${reason || 'Không đạt yêu cầu'}`,
+      icon: '❌',
+      referenceType: 'task',
+      referenceId: task.id,
+      data: { reason }
+    });
+  };
+
+  // Khi có job kỹ thuật mới
+  const notifyNewJob = async (job, technicianIds) => {
+    await notifyUsers(technicianIds, {
+      type: 'job_assigned',
+      title: '🔧 Công việc kỹ thuật mới',
+      message: `Công việc mới: "${job.title}" tại ${job.address}`,
+      icon: '🔧',
+      referenceType: 'job',
+      referenceId: job.id,
+      data: { address: job.address, scheduledDate: job.scheduled_date }
+    });
+  };
+
+  // Khi job thay đổi trạng thái
+  const notifyJobStatusChanged = async (job, creatorId) => {
+    await createNotification({
+      userId: creatorId,
+      type: 'job_status_changed',
+      title: `📍 Cập nhật công việc`,
+      message: `"${job.title}" → ${job.status}`,
+      icon: job.status === 'Hoàn thành' ? '✅' : '📍',
+      referenceType: 'job',
+      referenceId: job.id
+    });
+  };
+
+  // Khi có phiếu thu/chi chờ duyệt
+  const notifyFinancePending = async (receipt) => {
+    await notifyAdmins({
+      type: 'finance_pending',
+      title: receipt.type === 'thu' ? '💵 Phiếu thu chờ duyệt' : '💸 Phiếu chi chờ duyệt',
+      message: `${currentUser.name} tạo phiếu ${receipt.type}: ${formatMoney(receipt.amount)}`,
+      icon: receipt.type === 'thu' ? '💵' : '💸',
+      referenceType: 'receipt',
+      referenceId: receipt.id,
+      data: { amount: receipt.amount, type: receipt.type }
+    });
+  };
+
+  // Khi phiếu được duyệt/từ chối
+  const notifyFinanceApproved = async (receipt, creatorId, approved) => {
+    await createNotification({
+      userId: creatorId,
+      type: approved ? 'finance_approved' : 'finance_rejected',
+      title: approved ? '✅ Phiếu đã được duyệt' : '❌ Phiếu bị từ chối',
+      message: `Phiếu ${receipt.type} ${receipt.receipt_number}: ${formatMoney(receipt.amount)}`,
+      icon: approved ? '✅' : '❌',
+      referenceType: 'receipt',
+      referenceId: receipt.id
+    });
+  };
+
+  // Khi có bảng lương mới
+  const notifySalaryCreated = async (salary, employeeId) => {
+    await createNotification({
+      userId: employeeId,
+      type: 'salary_created',
+      title: '💰 Bảng lương mới',
+      message: `Bảng lương tháng ${salary.month} đã sẵn sàng: ${formatMoney(salary.total_salary)}`,
+      icon: '💰',
+      referenceType: 'salary',
+      referenceId: salary.id,
+      data: { month: salary.month, amount: salary.total_salary }
+    });
+  };
+
+  // Khi lương được duyệt/thanh toán
+  const notifySalaryPaid = async (salary, employeeId) => {
+    await createNotification({
+      userId: employeeId,
+      type: 'salary_paid',
+      title: '💵 Lương đã thanh toán',
+      message: `Lương tháng ${salary.month}: ${formatMoney(salary.total_salary)} đã được thanh toán`,
+      icon: '💵',
+      referenceType: 'salary',
+      referenceId: salary.id
+    });
+  };
+
+  // Khi có comment mới
+  const notifyNewComment = async (task, commenterId, commentText) => {
+    // Thông báo cho người được giao task (nếu không phải người comment)
+    if (task.assignee_id && task.assignee_id !== commenterId) {
+      const assigneeUser = allUsers.find(u => u.name === task.assignee);
+      if (assigneeUser) {
+        await createNotification({
+          userId: assigneeUser.id,
+          type: 'comment_new',
+          title: '💬 Bình luận mới',
+          message: `${currentUser.name}: "${commentText.substring(0, 50)}${commentText.length > 50 ? '...' : ''}"`,
+          icon: '💬',
+          referenceType: 'task',
+          referenceId: task.id
+        });
+      }
+    }
+  };
+
+  // Kiểm tra deadline và gửi thông báo
+  const checkDeadlineNotifications = async () => {
     if (!currentUser || !tasks.length) return;
     
     const now = new Date();
-    tasks.forEach(task => {
-      if (task.assignee !== currentUser.name) return;
-      if (task.status === 'Hoàn Thành') return;
+    for (const task of tasks) {
+      if (task.assignee !== currentUser.name) continue;
+      if (task.status === 'Hoàn Thành') continue;
+      if (!task.dueDate) continue;
       
       const dueDate = new Date(task.dueDate);
       const diffHours = (dueDate - now) / (1000 * 60 * 60);
       
+      // Sắp hết hạn (trong 24h)
       if (diffHours > 0 && diffHours <= 24) {
-        const existingNotif = notifications.find(n => 
-          n.type === 'deadline' && n.taskId === task.id
+        // Check xem đã có thông báo chưa
+        const existing = notifications.find(n => 
+          n.type === 'deadline_warning' && 
+          n.reference_id === task.id &&
+          new Date(n.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
         );
         
-        if (!existingNotif) {
-          addNotification({
-            type: 'deadline',
-            taskId: task.id,
+        if (!existing) {
+          await createNotification({
+            userId: currentUser.id,
+            type: 'deadline_warning',
             title: '⏰ Sắp đến deadline',
             message: `Task "${task.title}" sẽ đến hạn trong ${Math.floor(diffHours)} giờ`,
-            read: false,
-            createdAt: getNowISOVN()
+            icon: '⏰',
+            referenceType: 'task',
+            referenceId: task.id
           });
         }
       }
-    });
+      
+      // Đã quá hạn
+      if (diffHours < 0 && diffHours > -24) {
+        const existing = notifications.find(n => 
+          n.type === 'deadline_overdue' && 
+          n.reference_id === task.id &&
+          new Date(n.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+        );
+        
+        if (!existing) {
+          await createNotification({
+            userId: currentUser.id,
+            type: 'deadline_overdue',
+            title: '🚨 Task quá hạn!',
+            message: `Task "${task.title}" đã quá hạn ${Math.abs(Math.floor(diffHours))} giờ`,
+            icon: '🚨',
+            referenceType: 'task',
+            referenceId: task.id
+          });
+        }
+      }
+    }
   };
+
+  // Subscribe realtime notifications
+  useEffect(() => {
+    if (!tenant || !currentUser) return;
+    
+    // Load notifications ban đầu
+    loadNotifications();
+    
+    // Subscribe to realtime
+    const notifChannel = supabase
+      .channel('notifications-realtime')
+      .on('postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'notifications',
+          filter: `user_id=eq.${currentUser.id}`
+        }, 
+        (payload) => {
+          console.log('🔔 New notification:', payload.new);
+          setNotifications(prev => [payload.new, ...prev]);
+          setUnreadCount(prev => prev + 1);
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(notifChannel);
+    };
+  }, [tenant, currentUser]);
+
+  // Check deadline mỗi giờ
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    checkDeadlineNotifications();
+    const interval = setInterval(checkDeadlineNotifications, 60 * 60 * 1000); // Mỗi giờ
+    
+    return () => clearInterval(interval);
+  }, [tasks, currentUser, notifications]);
+
+  // Legacy addNotification for backward compatibility
+  const addNotification = (notif) => {
+    // Chuyển sang dùng createNotification mới
+    if (currentUser) {
+      createNotification({
+        userId: currentUser.id,
+        type: notif.type || 'general',
+        title: notif.title,
+        message: notif.message,
+        icon: notif.title?.charAt(0) || '🔔',
+        referenceType: notif.taskId ? 'task' : null,
+        referenceId: notif.taskId || null
+      });
+    }
+  };
+
+  // ============ END NOTIFICATION SYSTEM ============
 
   const handleLogin = async (email, password) => {
     try {
@@ -1258,14 +1635,16 @@ export default function SimpleMarketingSystem() {
         <div className="p-4 border-b bg-gradient-to-r from-blue-500 to-purple-600 text-white">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-lg">🔔 Thông Báo</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full"
-              >
-                Đánh dấu đã đọc
-              </button>
-            )}
+            <div className="flex gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full"
+                >
+                  ✓ Đọc tất cả
+                </button>
+              )}
+            </div>
           </div>
         </div>
         
@@ -1277,29 +1656,54 @@ export default function SimpleMarketingSystem() {
             </div>
           ) : (
             <div className="divide-y">
-              {notifications.map((notif, index) => (
+              {notifications.map((notif) => (
                 <div
-                  key={index}
-                  className={`p-4 hover:bg-gray-50 cursor-pointer ${!notif.read ? 'bg-blue-50' : ''}`}
-                  onClick={() => markAsRead(index)}
+                  key={notif.id}
+                  className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${!notif.is_read ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}
+                  onClick={() => {
+                    markAsRead(notif.id);
+                    // Navigate to reference if exists
+                    if (notif.reference_type === 'task') {
+                      const task = tasks.find(t => t.id === notif.reference_id);
+                      if (task) {
+                        setSelectedTask(task);
+                        setShowModal(true);
+                        setActiveModule('media');
+                      }
+                    } else if (notif.reference_type === 'job') {
+                      const job = technicalJobs.find(j => j.id === notif.reference_id);
+                      if (job) {
+                        setSelectedJob(job);
+                        setShowJobModal(true);
+                        setActiveModule('technical');
+                      }
+                    } else if (notif.reference_type === 'salary') {
+                      setActiveModule('finance');
+                      setActiveTab('salaries');
+                    }
+                    setShowNotifications(false);
+                  }}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-gray-900">{notif.title}</span>
-                        {!notif.read && <span className="w-2 h-2 bg-blue-500 rounded-full"></span>}
+                    <div className="flex gap-3">
+                      <span className="text-2xl">{notif.icon || '🔔'}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-gray-900">{notif.title}</span>
+                          {!notif.is_read && <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>}
+                        </div>
+                        <p className="text-sm text-gray-600 line-clamp-2">{notif.message}</p>
+                        <p className="text-xs text-gray-400 mt-2">
+                          {new Date(notif.created_at).toLocaleString('vi-VN')}
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-600">{notif.message}</p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {new Date(notif.createdAt).toLocaleString('vi-VN')}
-                      </p>
                     </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteNotification(index);
+                        deleteNotification(notif.id);
                       }}
-                      className="text-gray-400 hover:text-red-500 text-xl"
+                      className="text-gray-400 hover:text-red-500 text-xl p-1"
                     >
                       ×
                     </button>
@@ -1311,15 +1715,13 @@ export default function SimpleMarketingSystem() {
         </div>
         
         {notifications.length > 0 && (
-          <div className="p-3 border-t bg-gray-50 text-center">
+          <div className="p-3 border-t bg-gray-50 flex justify-between items-center">
+            <span className="text-sm text-gray-500">{notifications.length} thông báo</span>
             <button
-              onClick={() => {
-                setNotifications([]);
-                setUnreadCount(0);
-              }}
+              onClick={clearReadNotifications}
               className="text-sm text-red-600 hover:text-red-700 font-medium"
             >
-              🗑️ Xóa tất cả
+              🗑️ Xóa đã đọc
             </button>
           </div>
         )}
