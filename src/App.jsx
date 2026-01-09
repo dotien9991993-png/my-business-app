@@ -8073,23 +8073,11 @@ export default function SimpleMarketingSystem() {
                       return;
                     }
                     try {
-                      const loc = await new Promise((resolve, reject) => {
-                        if (!navigator.geolocation) {
-                          reject(new Error('Trình duyệt không hỗ trợ GPS'));
-                          return;
-                        }
-                        navigator.geolocation.getCurrentPosition(
-                          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-                          (err) => reject(new Error(err.code === 1 ? 'Vui lòng cho phép truy cập vị trí' : 'Không thể lấy vị trí')),
-                          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                        );
-                      });
                       const now = getVietnamDate();
                       const checkInTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
                       const { data, error } = await supabase.from('attendances').insert({
                         tenant_id: tenant.id, user_id: currentUser.id, user_name: currentUser.name,
                         date: getTodayVN(), check_in: checkInTime,
-                        check_in_lat: loc.latitude, check_in_lng: loc.longitude, check_in_accuracy: loc.accuracy,
                         status: 'checked_in', created_at: new Date().toISOString()
                       }).select().single();
                       if (error) throw error;
@@ -8117,25 +8105,13 @@ export default function SimpleMarketingSystem() {
                       return;
                     }
                     try {
-                      const loc = await new Promise((resolve, reject) => {
-                        if (!navigator.geolocation) {
-                          reject(new Error('Trình duyệt không hỗ trợ GPS'));
-                          return;
-                        }
-                        navigator.geolocation.getCurrentPosition(
-                          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-                          (err) => reject(new Error(err.code === 1 ? 'Vui lòng cho phép truy cập vị trí' : 'Không thể lấy vị trí')),
-                          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                        );
-                      });
                       const now = getVietnamDate();
                       const checkOutTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
                       const [inH, inM] = todayAttendance.check_in.split(':').map(Number);
                       const [outH, outM] = checkOutTime.split(':').map(Number);
                       const workHours = ((outH * 60 + outM) - (inH * 60 + inM)) / 60;
                       const { data, error } = await supabase.from('attendances').update({
-                        check_out: checkOutTime, check_out_lat: loc.latitude, check_out_lng: loc.longitude,
-                        check_out_accuracy: loc.accuracy, work_hours: parseFloat(workHours.toFixed(2)), status: 'checked_out'
+                        check_out: checkOutTime, work_hours: parseFloat(workHours.toFixed(2)), status: 'checked_out'
                       }).eq('id', todayAttendance.id).select().single();
                       if (error) throw error;
                       setTodayAttendance(data);
