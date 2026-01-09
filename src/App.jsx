@@ -9302,8 +9302,8 @@ export default function SimpleMarketingSystem() {
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({});
 
-    // Phân quyền: Admin/Manager thấy tất cả, nhân viên chỉ thấy của mình
-    const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin' || currentUser?.role === 'Manager';
+    // Phân quyền: Chỉ Admin mới thấy tất cả và tạo bảng lương
+    const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin';
 
     const getCurrentMonth = () => {
       const vn = getVietnamDate();
