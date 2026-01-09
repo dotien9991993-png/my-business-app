@@ -3203,12 +3203,18 @@ export default function SimpleMarketingSystem() {
       let totalExpenses = 0;
       let totalWages = 0;
       
+      // Lấy danh sách kỹ thuật viên có công việc trong tháng
+      const techniciansInMonth = new Set();
+      
       const jobDetails = completedJobsInMonth.map(job => {
         const revenue = job.customerPayment || 0;
         const expenseItems = job.expenses || [];
         const expenseTotal = expenseItems.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
         const techCount = (job.technicians || []).length;
         const wages = techCount * BASE_WAGE;
+        
+        // Lưu danh sách kỹ thuật viên
+        (job.technicians || []).forEach(tech => techniciansInMonth.add(tech));
         
         totalRevenue += revenue;
         totalExpenses += expenseTotal;
@@ -3224,10 +3230,9 @@ export default function SimpleMarketingSystem() {
         };
       });
       
-      // Thêm công phát sinh
-      const totalBonus = Object.keys(bonusAmounts)
-        .filter(key => !key.includes('_'))
-        .reduce((sum, key) => sum + (bonusAmounts[key] || 0), 0);
+      // Chỉ tính công phát sinh của những kỹ thuật viên CÓ công việc trong tháng
+      const totalBonus = Array.from(techniciansInMonth)
+        .reduce((sum, techName) => sum + (bonusAmounts[techName] || 0), 0);
       
       totalWages += totalBonus;
       
