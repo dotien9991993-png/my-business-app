@@ -306,7 +306,7 @@ export default function SimpleMarketingSystem() {
   // ===================
 
   // Load data from Supabase on mount
-  // Restore session từ localStorage khi load trang
+  // Restore session từ localStorage khi load trang - LUÔN FETCH USER MỚI TỪ SUPABASE
   useEffect(() => {
     if (!tenant) return; // Chờ tenant load xong
     
@@ -318,12 +318,43 @@ export default function SimpleMarketingSystem() {
         const user = JSON.parse(savedUser);
         // Verify user belongs to this tenant
         if (user.tenant_id === tenant.id) {
-          setCurrentUser(user);
-          setIsLoggedIn(true);
-          // Set default route if no hash
-          if (!window.location.hash) {
-            navigate('media/dashboard');
-          }
+          // QUAN TRỌNG: Fetch user mới nhất từ Supabase để cập nhật quyền
+          const fetchLatestUser = async () => {
+            try {
+              const { data: latestUser, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', user.id)
+                .eq('tenant_id', tenant.id)
+                .single();
+              
+              if (error || !latestUser) {
+                // User không tồn tại hoặc bị xóa -> logout
+                console.log('User not found, clearing session');
+                localStorage.removeItem(`${tenant.slug}_user`);
+                localStorage.removeItem(`${tenant.slug}_loggedIn`);
+                return;
+              }
+              
+              // Cập nhật với dữ liệu mới nhất
+              setCurrentUser(latestUser);
+              setIsLoggedIn(true);
+              // Cập nhật localStorage với dữ liệu mới
+              localStorage.setItem(`${tenant.slug}_user`, JSON.stringify(latestUser));
+              
+              // Set default route if no hash
+              if (!window.location.hash) {
+                navigate('media/dashboard');
+              }
+            } catch (err) {
+              console.error('Error fetching latest user:', err);
+              // Fallback to saved user nếu không fetch được
+              setCurrentUser(user);
+              setIsLoggedIn(true);
+            }
+          };
+          
+          fetchLatestUser();
         } else {
           // Wrong tenant, clear session
           localStorage.removeItem(`${tenant.slug}_user`);
