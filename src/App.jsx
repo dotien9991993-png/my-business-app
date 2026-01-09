@@ -172,6 +172,15 @@ export default function SimpleMarketingSystem() {
   // Attendance popup state (Chấm công nổi)
   const [showAttendancePopup, setShowAttendancePopup] = useState(false);
 
+  // TasksView filter state (giữ khi đóng/mở modal)
+  const [taskFilterTeam, setTaskFilterTeam] = useState('all');
+  const [taskFilterStatus, setTaskFilterStatus] = useState('all');
+  const [taskFilterAssignee, setTaskFilterAssignee] = useState('all');
+  const [taskFilterCategory, setTaskFilterCategory] = useState('all');
+  const [taskDateFilter, setTaskDateFilter] = useState('all');
+  const [taskCustomStartDate, setTaskCustomStartDate] = useState('');
+  const [taskCustomEndDate, setTaskCustomEndDate] = useState('');
+
   // Load tenant info on mount
   useEffect(() => {
     const loadTenant = async () => {
@@ -3727,13 +3736,21 @@ export default function SimpleMarketingSystem() {
   );
 
   const TasksView = () => {
-    const [filterTeam, setFilterTeam] = useState('all');
-    const [filterStatus, setFilterStatus] = useState('all');
-    const [filterAssignee, setFilterAssignee] = useState('all');
-    const [filterCategory, setFilterCategory] = useState('all');
-    const [dateFilter, setDateFilter] = useState('all');
-    const [customStartDate, setCustomStartDate] = useState('');
-    const [customEndDate, setCustomEndDate] = useState('');
+    // Dùng filter state từ App (không bị reset khi đóng modal)
+    const filterTeam = taskFilterTeam;
+    const setFilterTeam = setTaskFilterTeam;
+    const filterStatus = taskFilterStatus;
+    const setFilterStatus = setTaskFilterStatus;
+    const filterAssignee = taskFilterAssignee;
+    const setFilterAssignee = setTaskFilterAssignee;
+    const filterCategory = taskFilterCategory;
+    const setFilterCategory = setTaskFilterCategory;
+    const dateFilter = taskDateFilter;
+    const setDateFilter = setTaskDateFilter;
+    const customStartDate = taskCustomStartDate;
+    const setCustomStartDate = setTaskCustomStartDate;
+    const customEndDate = taskCustomEndDate;
+    const setCustomEndDate = setTaskCustomEndDate;
     const [showCustomDate, setShowCustomDate] = useState(false);
 
     const videoCategories = [
