@@ -1697,9 +1697,23 @@ export default function SimpleMarketingSystem() {
                         setShowJobModal(true);
                         setActiveModule('technical');
                       }
+                    } else if (notif.reference_type === 'receipt') {
+                      // Mở module tài chính và tab thu/chi
+                      setActiveModule('finance');
+                      setActiveTab('receipts');
+                      // Tìm và highlight phiếu nếu có
+                      const receipt = receiptsPayments.find(r => r.id === notif.reference_id);
+                      if (receipt) {
+                        // Có thể set state để mở modal chi tiết phiếu
+                        console.log('Opening receipt:', receipt);
+                      }
                     } else if (notif.reference_type === 'salary') {
                       setActiveModule('finance');
                       setActiveTab('salaries');
+                    } else if (notif.type?.includes('finance')) {
+                      // Fallback cho các thông báo tài chính không có reference_id
+                      setActiveModule('finance');
+                      setActiveTab('receipts');
                     }
                     setShowNotifications(false);
                   }}
