@@ -239,23 +239,24 @@ export default function SimpleMarketingSystem() {
     if (!currentUser) return false;
     if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
     const level = currentUser.permissions?.finance || 0;
-    return level === 1 || level >= 3; // Level 1 hoặc Level 3 được tạo
+    return level >= 1; // Level 1, 2, 3 đều được tạo
   };
 
-  // Check if user can edit/delete finance data (level 3 hoặc level 1 với data của mình)
+  // Check if user can edit/delete finance data (level 3 hoặc level 1,2 với data của mình)
   const canEditFinance = () => {
     if (!currentUser) return false;
     if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
     return (currentUser.permissions?.finance || 0) >= 3;
   };
   
-  // Check if user can edit their own finance data (level 1)
+  // Check if user can edit their own finance data (level 1, 2)
   const canEditOwnFinance = (createdBy) => {
     if (!currentUser) return false;
     if (currentUser.role === 'Admin' || currentUser.role === 'admin') return true;
     const level = currentUser.permissions?.finance || 0;
     if (level >= 3) return true;
-    if (level === 1 && createdBy === currentUser.name) return true;
+    // Level 1 và 2 được sửa/xóa của mình
+    if ((level === 1 || level === 2) && createdBy === currentUser.name) return true;
     return false;
   };
 
@@ -10030,7 +10031,7 @@ export default function SimpleMarketingSystem() {
     const permissionLevels = [
       { value: 0, label: 'Không có quyền', desc: 'Ẩn hoàn toàn module', color: 'gray' },
       { value: 1, label: 'Xem của mình', desc: 'Xem dữ liệu mình tạo/được gán', color: 'yellow' },
-      { value: 2, label: 'Xem tất cả', desc: 'Xem toàn bộ dữ liệu (không sửa/xóa)', color: 'blue' },
+      { value: 2, label: 'Xem tất cả', desc: 'Tạo + Sửa của mình + Xem tất cả', color: 'blue' },
       { value: 3, label: 'Toàn quyền', desc: 'Xem + Tạo + Sửa + Xóa (như Admin)', color: 'green' }
     ];
 
