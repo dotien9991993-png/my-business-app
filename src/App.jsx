@@ -10184,202 +10184,88 @@ export default function SimpleMarketingSystem() {
 
   // ============ ATTENDANCE MODULE (CHẤM CÔNG) ============
   function AttendanceView() {
-    const [checkingIn, setCheckingIn] = useState(false);
-    const [checkingOut, setCheckingOut] = useState(false);
-    const [location, setLocation] = useState(null);
-    const [locationError, setLocationError] = useState(null);
     const [filterMonth, setFilterMonth] = useState(() => {
       const now = new Date();
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
     const [viewMode, setViewMode] = useState('my'); // 'my' or 'all'
+    const [allAttendances, setAllAttendances] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin';
 
-    // Lấy vị trí GPS
-    const getLocation = () => {
-      return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-          reject(new Error('Trình duyệt không hỗ trợ GPS'));
-          return;
-        }
-        
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            resolve({
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              accuracy: position.coords.accuracy
-            });
-          },
-          (error) => {
-            let message = 'Không thể lấy vị trí';
-            switch (error.code) {
-              case error.PERMISSION_DENIED:
-                message = 'Bạn đã từ chối quyền truy cập vị trí. Vui lòng cho phép trong cài đặt trình duyệt.';
-                break;
-              case error.POSITION_UNAVAILABLE:
-                message = 'Không thể xác định vị trí';
-                break;
-              case error.TIMEOUT:
-                message = 'Quá thời gian lấy vị trí';
-                break;
-            }
-            reject(new Error(message));
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
+    // Load attendance data
+    useEffect(() => {
+      const loadData = async () => {
+        if (!tenant || !currentUser) return;
+        setLoading(true);
+        try {
+          let query = supabase
+            .from('attendances')
+            .select('*')
+            .eq('tenant_id', tenant.id)
+            .order('date', { ascending: false })
+            .order('check_in', { ascending: true });
+          
+          if (!isAdmin) {
+            query = query.eq('user_id', currentUser.id);
           }
-        );
-      });
-    };
-
-    // Check-in
-    const handleCheckIn = async () => {
-      if (todayAttendance?.check_in) {
-        alert('⚠️ Bạn đã check-in hôm nay rồi!');
-        return;
-      }
-
-      setCheckingIn(true);
-      setLocationError(null);
-
-      try {
-        const loc = await getLocation();
-        setLocation(loc);
-
-        const now = getVietnamDate();
-        const checkInTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-
-        const { data, error } = await supabase
-          .from('attendances')
-          .insert({
-            tenant_id: tenant.id,
-            user_id: currentUser.id,
-            user_name: currentUser.name,
-            date: getTodayVN(),
-            check_in: checkInTime,
-            check_in_lat: loc.latitude,
-            check_in_lng: loc.longitude,
-            check_in_accuracy: loc.accuracy,
-            status: 'checked_in',
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        setTodayAttendance(data);
-        loadAttendanceData();
-        alert(`✅ Check-in thành công lúc ${checkInTime}!`);
-      } catch (err) {
-        console.error('Check-in error:', err);
-        setLocationError(err.message);
-        alert('❌ Lỗi: ' + err.message);
-      } finally {
-        setCheckingIn(false);
-      }
-    };
-
-    // Check-out
-    const handleCheckOut = async () => {
-      if (!todayAttendance?.check_in) {
-        alert('⚠️ Bạn chưa check-in hôm nay!');
-        return;
-      }
-      if (todayAttendance?.check_out) {
-        alert('⚠️ Bạn đã check-out hôm nay rồi!');
-        return;
-      }
-
-      setCheckingOut(true);
-      setLocationError(null);
-
-      try {
-        const loc = await getLocation();
-        setLocation(loc);
-
-        const now = getVietnamDate();
-        const checkOutTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-
-        // Tính số giờ làm việc
-        const [inH, inM, inS] = todayAttendance.check_in.split(':').map(Number);
-        const [outH, outM, outS] = checkOutTime.split(':').map(Number);
-        const inMinutes = inH * 60 + inM;
-        const outMinutes = outH * 60 + outM;
-        const workMinutes = outMinutes - inMinutes;
-        const workHours = (workMinutes / 60).toFixed(2);
-
-        const { data, error } = await supabase
-          .from('attendances')
-          .update({
-            check_out: checkOutTime,
-            check_out_lat: loc.latitude,
-            check_out_lng: loc.longitude,
-            check_out_accuracy: loc.accuracy,
-            work_hours: parseFloat(workHours),
-            status: 'checked_out'
-          })
-          .eq('id', todayAttendance.id)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        setTodayAttendance(data);
-        loadAttendanceData();
-        alert(`✅ Check-out thành công lúc ${checkOutTime}!\nTổng giờ làm: ${workHours} giờ`);
-      } catch (err) {
-        console.error('Check-out error:', err);
-        setLocationError(err.message);
-        alert('❌ Lỗi: ' + err.message);
-      } finally {
-        setCheckingOut(false);
-      }
-    };
+          
+          const { data, error } = await query.limit(500);
+          if (error) throw error;
+          setAllAttendances(data || []);
+        } catch (err) {
+          console.error('Error loading attendances:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadData();
+    }, [tenant, currentUser, isAdmin]);
 
     // Filter attendances theo tháng
-    const filteredAttendances = (attendances || []).filter(a => {
+    const filteredAttendances = allAttendances.filter(a => {
       if (filterMonth && a.date) {
-        return a.date.startsWith(filterMonth);
+        if (!a.date.startsWith(filterMonth)) return false;
       }
-      return true;
-    }).filter(a => {
       if (viewMode === 'my') {
         return a.user_id === currentUser?.id;
       }
       return true;
     });
 
-    // Tính tổng giờ làm trong tháng
-    const totalHours = filteredAttendances
-      .filter(a => a.user_id === currentUser?.id)
-      .reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
-
-    const totalDays = filteredAttendances
-      .filter(a => a.user_id === currentUser?.id && a.check_in)
-      .length;
+    // Tính tổng giờ làm trong tháng (của user hiện tại)
+    const myAttendances = filteredAttendances.filter(a => a.user_id === currentUser?.id);
+    const totalHours = myAttendances.reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
+    const totalShifts = myAttendances.filter(a => a.check_in).length;
+    
+    // Đếm số ngày (unique dates)
+    const uniqueDates = [...new Set(myAttendances.map(a => a.date))];
+    const totalDays = uniqueDates.length;
 
     // Nhóm theo user (cho Admin)
     const groupedByUser = {};
     if (isAdmin && viewMode === 'all') {
       filteredAttendances.forEach(a => {
         if (!groupedByUser[a.user_name]) {
-          groupedByUser[a.user_name] = { days: 0, hours: 0, records: [] };
+          groupedByUser[a.user_name] = { shifts: 0, hours: 0, dates: new Set() };
         }
-        groupedByUser[a.user_name].days++;
+        groupedByUser[a.user_name].shifts++;
         groupedByUser[a.user_name].hours += parseFloat(a.work_hours || 0);
-        groupedByUser[a.user_name].records.push(a);
+        groupedByUser[a.user_name].dates.add(a.date);
       });
     }
 
-    // Load data khi mount
-    useEffect(() => {
-      loadAttendanceData();
-    }, [tenant, currentUser]);
+    if (loading) {
+      return (
+        <div className="p-6 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-4xl mb-2">⏳</div>
+            <div>Đang tải dữ liệu...</div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="p-6 space-y-6">
@@ -10387,112 +10273,58 @@ export default function SimpleMarketingSystem() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold">⏰ Chấm Công</h2>
-            <p className="text-gray-600 text-sm">Check-in/out với xác minh vị trí GPS</p>
+            <p className="text-gray-600 text-sm">Lịch sử và thống kê chấm công</p>
           </div>
-          {isAdmin && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode('my')}
-                className={`px-4 py-2 rounded-lg font-medium ${viewMode === 'my' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-              >
-                📋 Của tôi
-              </button>
-              <button
-                onClick={() => setViewMode('all')}
-                className={`px-4 py-2 rounded-lg font-medium ${viewMode === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-              >
-                👥 Tất cả
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Check-in/out Card */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white">
-          <div className="text-center mb-6">
-            <div className="text-5xl mb-2">
-              {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-            </div>
-            <div className="text-blue-200">
-              {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </div>
-          </div>
-
-          {/* Status */}
-          <div className="bg-white/20 rounded-xl p-4 mb-6">
-            <div className="text-center">
-              {!todayAttendance?.check_in && (
-                <span className="text-yellow-200">⏳ Chưa check-in hôm nay</span>
-              )}
-              {todayAttendance?.check_in && !todayAttendance?.check_out && (
-                <span className="text-green-200">✅ Đã check-in lúc {todayAttendance.check_in}</span>
-              )}
-              {todayAttendance?.check_out && (
-                <div>
-                  <span className="text-green-200">✅ Đã hoàn thành: {todayAttendance.check_in} - {todayAttendance.check_out}</span>
-                  <div className="text-white font-bold mt-1">Tổng: {todayAttendance.work_hours} giờ</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Buttons */}
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-2">
+            {isAdmin && (
+              <>
+                <button
+                  onClick={() => setViewMode('my')}
+                  className={`px-4 py-2 rounded-lg font-medium ${viewMode === 'my' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+                >
+                  📋 Của tôi
+                </button>
+                <button
+                  onClick={() => setViewMode('all')}
+                  className={`px-4 py-2 rounded-lg font-medium ${viewMode === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+                >
+                  👥 Tất cả
+                </button>
+              </>
+            )}
             <button
-              onClick={handleCheckIn}
-              disabled={checkingIn || todayAttendance?.check_in}
-              className={`px-8 py-4 rounded-xl font-bold text-lg transition-all ${
-                todayAttendance?.check_in 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-green-500 hover:bg-green-600 shadow-lg hover:shadow-xl'
-              }`}
+              onClick={() => setShowAttendancePopup(true)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
             >
-              {checkingIn ? '📍 Đang lấy vị trí...' : '📥 CHECK-IN'}
-            </button>
-            <button
-              onClick={handleCheckOut}
-              disabled={checkingOut || !todayAttendance?.check_in || todayAttendance?.check_out}
-              className={`px-8 py-4 rounded-xl font-bold text-lg transition-all ${
-                !todayAttendance?.check_in || todayAttendance?.check_out
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-red-500 hover:bg-red-600 shadow-lg hover:shadow-xl'
-              }`}
-            >
-              {checkingOut ? '📍 Đang lấy vị trí...' : '📤 CHECK-OUT'}
+              ⏰ Chấm công ngay
             </button>
           </div>
-
-          {locationError && (
-            <div className="mt-4 bg-red-500/50 rounded-lg p-3 text-center text-sm">
-              ⚠️ {locationError}
-            </div>
-          )}
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl p-4 border">
-            <div className="text-gray-500 text-sm">📅 Ngày công tháng này</div>
+          <div className="bg-white rounded-xl p-4 border shadow-sm">
+            <div className="text-gray-500 text-sm">📅 Số ngày công</div>
             <div className="text-2xl font-bold text-blue-600">{totalDays} ngày</div>
           </div>
-          <div className="bg-white rounded-xl p-4 border">
+          <div className="bg-white rounded-xl p-4 border shadow-sm">
+            <div className="text-gray-500 text-sm">🔄 Số ca làm</div>
+            <div className="text-2xl font-bold text-purple-600">{totalShifts} ca</div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border shadow-sm">
             <div className="text-gray-500 text-sm">⏱️ Tổng giờ làm</div>
             <div className="text-2xl font-bold text-green-600">{totalHours.toFixed(1)} giờ</div>
           </div>
-          <div className="bg-white rounded-xl p-4 border">
-            <div className="text-gray-500 text-sm">📊 Trung bình/ngày</div>
-            <div className="text-2xl font-bold text-purple-600">
+          <div className="bg-white rounded-xl p-4 border shadow-sm">
+            <div className="text-gray-500 text-sm">📊 TB giờ/ngày</div>
+            <div className="text-2xl font-bold text-orange-600">
               {totalDays > 0 ? (totalHours / totalDays).toFixed(1) : 0} giờ
             </div>
-          </div>
-          <div className="bg-white rounded-xl p-4 border">
-            <div className="text-gray-500 text-sm">🎯 Mục tiêu</div>
-            <div className="text-2xl font-bold text-orange-600">26 ngày</div>
           </div>
         </div>
 
         {/* Filter */}
-        <div className="bg-white rounded-xl p-4 border">
+        <div className="bg-white rounded-xl p-4 border shadow-sm">
           <div className="flex items-center gap-4">
             <label className="font-medium">📅 Tháng:</label>
             <input
@@ -10505,10 +10337,10 @@ export default function SimpleMarketingSystem() {
         </div>
 
         {/* Admin View - Summary by User */}
-        {isAdmin && viewMode === 'all' && (
-          <div className="bg-white rounded-xl border overflow-hidden">
+        {isAdmin && viewMode === 'all' && Object.keys(groupedByUser).length > 0 && (
+          <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
             <div className="p-4 border-b bg-gray-50">
-              <h3 className="font-bold">👥 Tổng hợp chấm công - Tháng {filterMonth}</h3>
+              <h3 className="font-bold">👥 Tổng hợp theo nhân viên - Tháng {filterMonth}</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -10516,18 +10348,22 @@ export default function SimpleMarketingSystem() {
                   <tr>
                     <th className="px-4 py-3 text-left">Nhân viên</th>
                     <th className="px-4 py-3 text-center">Số ngày</th>
+                    <th className="px-4 py-3 text-center">Số ca</th>
                     <th className="px-4 py-3 text-center">Tổng giờ</th>
                     <th className="px-4 py-3 text-center">TB/ngày</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {Object.entries(groupedByUser).map(([userName, data]) => (
+                  {Object.entries(groupedByUser)
+                    .sort((a, b) => b[1].hours - a[1].hours)
+                    .map(([userName, data]) => (
                     <tr key={userName} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium">{userName}</td>
-                      <td className="px-4 py-3 text-center">{data.days}</td>
-                      <td className="px-4 py-3 text-center">{data.hours.toFixed(1)}h</td>
+                      <td className="px-4 py-3 text-center">{data.dates.size}</td>
+                      <td className="px-4 py-3 text-center">{data.shifts}</td>
+                      <td className="px-4 py-3 text-center font-medium text-green-600">{data.hours.toFixed(1)}h</td>
                       <td className="px-4 py-3 text-center">
-                        {data.days > 0 ? (data.hours / data.days).toFixed(1) : 0}h
+                        {data.dates.size > 0 ? (data.hours / data.dates.size).toFixed(1) : 0}h
                       </td>
                     </tr>
                   ))}
@@ -10538,9 +10374,9 @@ export default function SimpleMarketingSystem() {
         )}
 
         {/* History Table */}
-        <div className="bg-white rounded-xl border overflow-hidden">
+        <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
           <div className="p-4 border-b bg-gray-50">
-            <h3 className="font-bold">📋 Lịch sử chấm công {viewMode === 'my' ? 'của tôi' : ''}</h3>
+            <h3 className="font-bold">📋 Chi tiết chấm công {viewMode === 'my' ? 'của tôi' : ''}</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -10559,7 +10395,7 @@ export default function SimpleMarketingSystem() {
                   <tr>
                     <td colSpan={viewMode === 'all' ? 6 : 5} className="px-6 py-12 text-center text-gray-500">
                       <div className="text-4xl mb-2">📭</div>
-                      <div>Chưa có dữ liệu chấm công</div>
+                      <div>Chưa có dữ liệu chấm công trong tháng này</div>
                     </td>
                   </tr>
                 ) : (
@@ -10570,10 +10406,10 @@ export default function SimpleMarketingSystem() {
                         {new Date(a.date).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className="text-green-600 font-medium">{a.check_in || '-'}</span>
+                        <span className="text-green-600 font-medium">{a.check_in?.slice(0,5) || '-'}</span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className="text-red-600 font-medium">{a.check_out || '-'}</span>
+                        <span className="text-red-600 font-medium">{a.check_out?.slice(0,5) || '-'}</span>
                       </td>
                       <td className="px-4 py-3 text-center font-bold">
                         {a.work_hours ? `${a.work_hours}h` : '-'}
