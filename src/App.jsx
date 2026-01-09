@@ -3769,27 +3769,38 @@ export default function SimpleMarketingSystem() {
       
       switch(dateFilter) {
         case 'today': {
+          // Hôm nay: deadline đúng ngày hôm nay
           const tomorrow = new Date(today);
           tomorrow.setDate(tomorrow.getDate() + 1);
           return { start: today, end: tomorrow };
         }
         case 'week': {
-          const weekEnd = new Date(today);
-          weekEnd.setDate(weekEnd.getDate() + 7);
-          return { start: today, end: weekEnd };
+          // Tuần này: từ đầu tuần (Thứ 2) đến cuối tuần (Chủ nhật)
+          const dayOfWeek = today.getDay(); // 0 = CN, 1 = T2, ...
+          const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() + mondayOffset);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 7); // Đến hết Chủ nhật
+          return { start: weekStart, end: weekEnd };
         }
         case 'month': {
-          const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-          return { start: today, end: monthEnd };
+          // Tháng này: từ ngày 1 đến cuối tháng
+          const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+          const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1); // Ngày đầu tháng sau
+          return { start: monthStart, end: monthEnd };
         }
         case 'overdue': {
+          // Quá hạn: deadline trước hôm nay
           return { start: new Date(2000, 0, 1), end: today };
         }
         case 'custom': {
           if (!customStartDate || !customEndDate) return null;
+          const endDate = new Date(customEndDate);
+          endDate.setDate(endDate.getDate() + 1); // Bao gồm ngày cuối
           return { 
             start: new Date(customStartDate), 
-            end: new Date(customEndDate) 
+            end: endDate 
           };
         }
         default:
@@ -3809,6 +3820,7 @@ export default function SimpleMarketingSystem() {
         if (!range) return false;
         
         // Parse task date - chuyển về ngày thuần túy để so sánh
+        if (!t.dueDate) return false;
         const taskDateParts = t.dueDate.split('-');
         const taskDate = new Date(parseInt(taskDateParts[0]), parseInt(taskDateParts[1]) - 1, parseInt(taskDateParts[2]));
         
@@ -3816,8 +3828,8 @@ export default function SimpleMarketingSystem() {
           // Overdue: deadline < today AND not completed
           if (!(taskDate < range.end && t.status !== 'Hoàn Thành')) return false;
         } else {
-          // Other filters: within range
-          if (!(taskDate >= range.start && taskDate <= range.end)) return false;
+          // Other filters: start <= taskDate < end
+          if (!(taskDate >= range.start && taskDate < range.end)) return false;
         }
       }
       
