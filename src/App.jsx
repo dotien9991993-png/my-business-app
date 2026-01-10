@@ -10329,7 +10329,7 @@ export default function SimpleMarketingSystem() {
       // Count Media tasks
       const mediaCount = (tasks || []).filter(t => {
         const isAssigned = t.assignee === user.id || t.assignee === user.name || t.assigned_to === user.id;
-        const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
+        const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
         const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
         const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
         return isAssigned && isDone && inMonth;
@@ -10623,7 +10623,7 @@ export default function SimpleMarketingSystem() {
                                 
                                 const mediaCount = (tasks || []).filter(t => {
                                   const isAssigned = t.assignee === selectedEmployee.id || t.assignee === selectedEmployee.name || t.assigned_to === selectedEmployee.id;
-                                  const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
+                                  const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
                                   const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
                                   const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
                                   return isAssigned && isDone && inMonth;
@@ -10699,34 +10699,54 @@ export default function SimpleMarketingSystem() {
                             
                             // Debug log
                             console.log('=== DEBUG MEDIA ===');
-                            console.log('Selected Employee:', selectedEmployee.name, selectedEmployee.id);
+                            console.log('Selected Employee:', selectedEmployee.name, 'ID:', selectedEmployee.id);
                             console.log('Month range:', startDate, 'to', endDate);
                             console.log('Total tasks:', (tasks || []).length);
                             
-                            // Log first few tasks
-                            (tasks || []).slice(0, 3).forEach((t, i) => {
-                              console.log(`Task ${i}:`, {
+                            // Log ALL tasks with status 'Hoàn Thành'
+                            const allDoneTasks = (tasks || []).filter(t => 
+                              t.status === 'Hoàn Thành' || t.status === 'Hoàn thành' || t.status === 'done' || t.status === 'completed'
+                            );
+                            console.log('All completed tasks:', allDoneTasks.length);
+                            allDoneTasks.forEach((t, i) => {
+                              console.log(`Done Task ${i}:`, {
                                 title: t.title,
                                 assignee: t.assignee,
+                                assigned_to: t.assigned_to,
                                 status: t.status,
-                                created_at: t.created_at,
                                 updated_at: t.updated_at
                               });
                             });
                             
                             const completedTasks = (tasks || []).filter(t => {
-                              // Kiểm tra assignee (có thể là tên hoặc ID)
-                              const isAssigned = t.assignee === selectedEmployee.id || 
-                                                 t.assignee === selectedEmployee.name ||
-                                                 t.assigned_to === selectedEmployee.id;
+                              // Kiểm tra assignee - LINH HOẠT hơn (so sánh không phân biệt hoa thường)
+                              const empName = (selectedEmployee.name || '').toLowerCase().trim();
+                              const empId = selectedEmployee.id;
+                              const taskAssignee = (t.assignee || '').toLowerCase().trim();
+                              const taskAssignedTo = t.assigned_to;
+                              
+                              const isAssigned = taskAssignee === empName || 
+                                                 t.assignee === empId || 
+                                                 taskAssignedTo === empId ||
+                                                 taskAssignedTo === empName ||
+                                                 (t.assignee && t.assignee.includes && t.assignee.toLowerCase().includes(empName));
+                              
                               // Kiểm tra status done
-                              const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
-                              // Kiểm tra thời gian (dùng updated_at hoặc created_at nếu không có completed_at)
+                              const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
+                              
+                              // Kiểm tra thời gian
                               const taskDate = t.completed_at || t.updated_at || t.created_at;
                               const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
                               
-                              if (isAssigned && isDone) {
-                                console.log('Found matching task:', t.title, 'date:', taskDate, 'inMonth:', inMonth);
+                              // Debug từng task done
+                              if (isDone) {
+                                console.log('Checking task:', t.title, {
+                                  assignee: t.assignee,
+                                  empName: empName,
+                                  isAssigned: isAssigned,
+                                  taskDate: taskDate,
+                                  inMonth: inMonth
+                                });
                               }
                               
                               return isAssigned && isDone && inMonth;
@@ -10766,10 +10786,17 @@ export default function SimpleMarketingSystem() {
                         const startDate = `${year}-${monthNum}-01`;
                         const endDate = `${year}-${monthNum}-31`;
                         const completedTasks = (tasks || []).filter(t => {
-                          const isAssigned = t.assignee === selectedEmployee.id || 
-                                             t.assignee === selectedEmployee.name ||
-                                             t.assigned_to === selectedEmployee.id;
-                          const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành';
+                          // So sánh linh hoạt
+                          const empName = (selectedEmployee.name || '').toLowerCase().trim();
+                          const empId = selectedEmployee.id;
+                          const taskAssignee = (t.assignee || '').toLowerCase().trim();
+                          
+                          const isAssigned = taskAssignee === empName || 
+                                             t.assignee === empId || 
+                                             t.assigned_to === empId ||
+                                             (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
+                          
+                          const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
                           const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
                           const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
                           return isAssigned && isDone && inMonth;

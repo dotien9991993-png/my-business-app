@@ -4792,49 +4792,88 @@ export default function SimpleMarketingSystem() {
                   setSelectedJob(job);
                   setShowJobModal(true);
                 }}
-                className="bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer border-l-4 border-orange-500"
+                className="bg-white rounded-xl shadow hover:shadow-lg transition-all cursor-pointer border-l-4 border-orange-500 overflow-hidden"
               >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold mb-2">{job.title}</h3>
-                    <div className="flex gap-2 flex-wrap">
-                      <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(job.status)}`}>
-                        {job.status}
-                      </span>
-                      <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
-                        {job.type}
-                      </span>
-                    </div>
+                {/* Header với ngày và trạng thái */}
+                <div className="bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-2 border-b flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📅</span>
+                    <span className="font-bold text-orange-700">
+                      {job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }) : 'Chưa xếp lịch'}
+                    </span>
+                    {job.scheduledTime && (
+                      <span className="text-orange-600 font-medium">• {job.scheduledTime}</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(job.status)}`}>
+                      {job.status}
+                    </span>
+                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                      {job.type}
+                    </span>
                   </div>
                 </div>
 
-                <div className="space-y-2 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <span>👤</span>
-                    <span>{job.customerName} - {job.customerPhone}</span>
+                {/* Body - Thông tin chính */}
+                <div className="p-4">
+                  {/* Tiêu đề công việc */}
+                  <h3 className="text-lg font-bold text-gray-800 mb-3">{job.title}</h3>
+                  
+                  {/* Grid thông tin quan trọng */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Cột trái - Khách hàng */}
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2 bg-blue-50 rounded-lg p-2">
+                        <span className="text-blue-500">👤</span>
+                        <div>
+                          <div className="font-semibold text-blue-800">{job.customerName}</div>
+                          <div className="text-blue-600 text-sm">{job.customerPhone}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 text-gray-600 text-sm">
+                        <span>📍</span>
+                        <span className="line-clamp-2">{job.address}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Cột phải - KTV & Tiền */}
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2 bg-purple-50 rounded-lg p-2">
+                        <span className="text-purple-500">🔧</span>
+                        <div className="text-sm">
+                          <div className="text-purple-600 font-medium">Kỹ thuật viên:</div>
+                          <div className="text-purple-800 font-semibold">
+                            {job.technicians && job.technicians.length > 0 ? job.technicians.join(', ') : 'Chưa phân công'}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Tiền thu - Nổi bật */}
+                      {job.customerPayment > 0 ? (
+                        <div className="flex items-center gap-2 bg-green-100 rounded-lg p-2 border border-green-300">
+                          <span className="text-xl">💰</span>
+                          <div>
+                            <div className="text-xs text-green-600">Thu khách</div>
+                            <div className="font-bold text-green-700 text-lg">
+                              {job.customerPayment.toLocaleString('vi-VN')}đ
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-2 text-gray-500 text-sm">
+                          <span>💰</span>
+                          <span>Chưa nhập tiền thu</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span>📍</span>
-                    <span>{job.address}</span>
-                  </div>
+
+                  {/* Footer - Người tạo */}
                   {job.createdBy && (
-                    <div className="flex items-center gap-2">
+                    <div className="mt-3 pt-2 border-t text-xs text-gray-500 flex items-center gap-1">
                       <span>📝</span>
                       <span>Người tạo: {job.createdBy}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <span>🔧</span>
-                    <span>Kỹ thuật viên: {job.technicians ? job.technicians.join(', ') : job.technician}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span>📅</span>
-                    <span>{job.scheduledDate} {job.scheduledTime && `- ${job.scheduledTime}`}</span>
-                  </div>
-                  {job.customerPayment > 0 && (
-                    <div className="flex items-center gap-2">
-                      <span>💰</span>
-                      <span>Thu: {job.customerPayment.toLocaleString('vi-VN')} VNĐ</span>
                     </div>
                   )}
                 </div>
