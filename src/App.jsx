@@ -10326,9 +10326,16 @@ export default function SimpleMarketingSystem() {
       const startDate = `${year}-${monthNum}-01`;
       const endDate = `${year}-${monthNum}-31`;
 
-      // Count Media tasks
+      // Count Media tasks - ĐỒNG BỘ logic với nút "Lấy từ hệ thống"
+      const empName = (user.name || '').toLowerCase().trim();
+      const empId = user.id;
+      
       const mediaCount = (tasks || []).filter(t => {
-        const isAssigned = t.assignee === user.id || t.assignee === user.name || t.assigned_to === user.id;
+        const taskAssignee = (t.assignee || '').toLowerCase().trim();
+        const isAssigned = taskAssignee === empName || 
+                           t.assignee === empId || 
+                           t.assigned_to === empId ||
+                           (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
         const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
         const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
         const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
@@ -10621,8 +10628,16 @@ export default function SimpleMarketingSystem() {
                                 const startDate = `${year}-${monthNum}-01`;
                                 const endDate = `${year}-${monthNum}-31`;
                                 
+                                // ĐỒNG BỘ logic với nút "Lấy từ hệ thống"
+                                const empName = (selectedEmployee.name || '').toLowerCase().trim();
+                                const empId = selectedEmployee.id;
+                                
                                 const mediaCount = (tasks || []).filter(t => {
-                                  const isAssigned = t.assignee === selectedEmployee.id || t.assignee === selectedEmployee.name || t.assigned_to === selectedEmployee.id;
+                                  const taskAssignee = (t.assignee || '').toLowerCase().trim();
+                                  const isAssigned = taskAssignee === empName || 
+                                                     t.assignee === empId || 
+                                                     t.assigned_to === empId ||
+                                                     (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
                                   const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
                                   const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
                                   const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
