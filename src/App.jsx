@@ -120,6 +120,980 @@ const formatMoney = (amount) => {
   return new Intl.NumberFormat('vi-VN').format(num) + 'đ';
 };
 
+function SalaryManagement({ 
+  tenant, 
+  currentUser, 
+  allUsers, 
+  tasks, 
+  technicalJobs, 
+  formatMoney,
+  getTodayVN,
+  getVietnamDate,
+  supabase 
+}) {
+  const [salaries, setSalaries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedSalary, setSelectedSalary] = useState(null);
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterUser, setFilterUser] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  
+  // Create modal states
+  const [createStep, setCreateStep] = useState(1);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState({});
+  
+  // *** FIX: Cache tasks và jobs khi modal mở để tránh bị reset khi realtime update ***
+  const [cachedTasks, setCachedTasks] = useState([]);
+  const [cachedJobs, setCachedJobs] = useState([]);
+
+  // Phân quyền: Chỉ Admin mới thấy tất cả và tạo bảng lương
+  const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin';
+
+  const getCurrentMonth = () => {
+    const vn = getVietnamDate();
+    return `${vn.getFullYear()}-${String(vn.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const resetForm = () => {
+    setFormData({
+      month: getCurrentMonth(),
+      basic_salary: '',
+      work_days: '26',
+      livestream_revenue: '',
+      livestream_commission: '6',
+      livestream_note: '',
+      media_videos: '',
+      media_per_video: '',
+      media_note: '',
+      kho_orders: '',
+      kho_per_order: '',
+      kho_note: '',
+      kythuat_jobs: '',
+      kythuat_per_job: '200000',
+      kythuat_note: '',
+      sale_revenue: '',
+      sale_commission: '',
+      sale_note: '',
+      bonus: '',
+      deduction: '',
+      note: ''
+    });
+    setCreateStep(1);
+    setSelectedEmployee(null);
+  };
+
+  useEffect(() => {
+    loadSalaries();
+  }, [tenant]);
+
+  const loadSalaries = async () => {
+    if (!tenant) return;
+    try {
+      let query = supabase
+        .from('salaries')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .order('created_at', { ascending: false });
+      
+      // Nếu không phải admin, chỉ load bảng lương của mình
+      if (!isAdmin) {
+        query = query.eq('user_id', currentUser.id);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      setSalaries(data || []);
+    } catch (err) {
+      console.error('Error loading salaries:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredSalaries = (salaries || []).filter(s => {
+    if (filterMonth && s.month !== filterMonth) return false;
+    if (filterUser && s.user_id !== filterUser) return false;
+    if (filterStatus !== 'all' && s.status !== filterStatus) return false;
+    return true;
+  });
+
+  const getStatusBadge = (status) => {
+    const badges = {
+      draft: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '📝 Nháp' },
+      approved: { bg: 'bg-green-100', text: 'text-green-700', label: '✅ Đã duyệt' },
+      paid: { bg: 'bg-blue-100', text: 'text-blue-700', label: '💰 Đã trả' }
+    };
+    const badge = badges[status] || badges.draft;
+    return <span className={`px-3 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>{badge.label}</span>;
+  };
+
+  const stats = {
+    totalThisMonth: (salaries || []).filter(s => s.month === getCurrentMonth()).reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
+    totalPending: (salaries || []).filter(s => s.status === 'draft').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
+    totalApproved: (salaries || []).filter(s => s.status === 'approved').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
+    totalPaid: (salaries || []).filter(s => s.status === 'paid').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0)
+  };
+
+  // Calculate totals for create form
+  const calculateTotals = () => {
+    const basicSalary = parseFloat(formData.basic_salary) || 0;
+    const workDays = parseFloat(formData.work_days) || 0;
+    const actualBasic = workDays > 0 ? (basicSalary / 26) * workDays : 0;
+
+    const livestreamRevenue = parseFloat(formData.livestream_revenue) || 0;
+    const livestreamCommission = parseFloat(formData.livestream_commission) || 0;
+    const livestreamTotal = livestreamRevenue >= 100000000 ? (livestreamRevenue * livestreamCommission / 100) : 0;
+
+    const mediaVideos = parseFloat(formData.media_videos) || 0;
+    const mediaPerVideo = parseFloat(formData.media_per_video) || 0;
+    const mediaTotal = mediaVideos * mediaPerVideo;
+
+    const khoOrders = parseFloat(formData.kho_orders) || 0;
+    const khoPerOrder = parseFloat(formData.kho_per_order) || 0;
+    const khoTotal = khoOrders * khoPerOrder;
+
+    const kythuatJobs = parseFloat(formData.kythuat_jobs) || 0;
+    const kythuatPerJob = parseFloat(formData.kythuat_per_job) || 0;
+    const kythuatTotal = kythuatJobs * kythuatPerJob;
+
+    const saleRevenue = parseFloat(formData.sale_revenue) || 0;
+    const saleCommission = parseFloat(formData.sale_commission) || 0;
+    const saleTotal = saleRevenue * saleCommission / 100;
+
+    const bonus = parseFloat(formData.bonus) || 0;
+    const deduction = parseFloat(formData.deduction) || 0;
+
+    return {
+      actualBasic,
+      livestreamTotal,
+      mediaTotal,
+      khoTotal,
+      kythuatTotal,
+      saleTotal,
+      bonus,
+      deduction,
+      grandTotal: actualBasic + livestreamTotal + mediaTotal + khoTotal + kythuatTotal + saleTotal + bonus - deduction
+    };
+  };
+
+  const handleOpenCreate = () => {
+    resetForm();
+    // *** FIX: Cache tasks và jobs khi mở modal để tránh bị reset ***
+    setCachedTasks([...(tasks || [])]);
+    setCachedJobs([...(technicalJobs || [])]);
+    setShowCreateModal(true);
+  };
+
+  // *** Sử dụng cachedTasks/cachedJobs khi modal đang mở ***
+  const tasksToUse = showCreateModal ? cachedTasks : (tasks || []);
+  const jobsToUse = showCreateModal ? cachedJobs : (technicalJobs || []);
+
+  const handleSelectEmployee = (user) => {
+    setSelectedEmployee(user);
+    // Auto count tasks
+    const month = formData.month || getCurrentMonth();
+    const [year, monthNum] = month.split('-');
+    const startDate = `${year}-${monthNum}-01`;
+    const endDate = `${year}-${monthNum}-31`;
+
+    // Count Media tasks - ĐỒNG BỘ logic với nút "Lấy từ hệ thống"
+    const empName = (user.name || '').toLowerCase().trim();
+    const empId = user.id;
+    
+    const mediaCount = tasksToUse.filter(t => {
+      const taskAssignee = (t.assignee || '').toLowerCase().trim();
+      const isAssigned = taskAssignee === empName || 
+                         t.assignee === empId || 
+                         t.assigned_to === empId ||
+                         (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
+      const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
+      const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
+      const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+      return isAssigned && isDone && inMonth;
+    }).length;
+
+    // Count Technical jobs
+    const kythuatCount = jobsToUse.filter(j => {
+      const techs = j.technicians || [];
+      const isAssigned = techs.includes(user.id) || techs.includes(user.name) || 
+                         j.assigned_to === user.id || j.technician === user.name || j.technician === user.id;
+      const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+      const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+      const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+      return isAssigned && isDone && inMonth;
+    }).length;
+
+    setFormData(prev => ({
+      ...prev,
+      media_videos: mediaCount.toString(),
+      kythuat_jobs: kythuatCount.toString()
+    }));
+    setCreateStep(2);
+  };
+
+  const handleSaveSalary = async () => {
+    if (!selectedEmployee) return;
+    setSaving(true);
+    const totals = calculateTotals();
+
+    try {
+      const dataToSave = {
+        tenant_id: tenant.id,
+        user_id: selectedEmployee.id,
+        employee_name: selectedEmployee.name,
+        month: formData.month,
+        basic_salary: parseFloat(formData.basic_salary) || 0,
+        work_days: parseFloat(formData.work_days) || 0,
+        actual_basic: totals.actualBasic,
+        livestream_revenue: parseFloat(formData.livestream_revenue) || 0,
+        livestream_commission: parseFloat(formData.livestream_commission) || 0,
+        livestream_total: totals.livestreamTotal,
+        livestream_note: formData.livestream_note || '',
+        media_videos: parseFloat(formData.media_videos) || 0,
+        media_per_video: parseFloat(formData.media_per_video) || 0,
+        media_total: totals.mediaTotal,
+        media_note: formData.media_note || '',
+        kho_orders: parseFloat(formData.kho_orders) || 0,
+        kho_per_order: parseFloat(formData.kho_per_order) || 0,
+        kho_total: totals.khoTotal,
+        kho_note: formData.kho_note || '',
+        kythuat_jobs: parseFloat(formData.kythuat_jobs) || 0,
+        kythuat_per_job: parseFloat(formData.kythuat_per_job) || 0,
+        kythuat_total: totals.kythuatTotal,
+        kythuat_note: formData.kythuat_note || '',
+        sale_revenue: parseFloat(formData.sale_revenue) || 0,
+        sale_commission: parseFloat(formData.sale_commission) || 0,
+        sale_total: totals.saleTotal,
+        sale_note: formData.sale_note || '',
+        bonus: totals.bonus,
+        deduction: totals.deduction,
+        total_salary: totals.grandTotal,
+        note: formData.note || '',
+        status: 'draft',
+        created_by: currentUser?.name || '',
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase.from('salaries').insert(dataToSave);
+      if (error) throw error;
+
+      alert('✅ Đã tạo bảng lương thành công!');
+      setShowCreateModal(false);
+      loadSalaries();
+    } catch (err) {
+      console.error('Error:', err);
+      alert('❌ Lỗi: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStatusChange = async (salary, newStatus) => {
+    if (!confirm(`Xác nhận chuyển sang "${newStatus === 'approved' ? 'Đã duyệt' : 'Đã trả'}"?`)) return;
+    try {
+      const updateData = { status: newStatus };
+      if (newStatus === 'approved') {
+        updateData.approved_at = new Date().toISOString();
+        updateData.approved_by = currentUser?.name;
+      } else if (newStatus === 'paid') {
+        updateData.paid_at = new Date().toISOString();
+        updateData.paid_by = currentUser?.name;
+      }
+      const { error } = await supabase.from('salaries').update(updateData).eq('id', salary.id);
+      if (error) throw error;
+      alert('✅ Đã cập nhật!');
+      setSelectedSalary(null);
+      loadSalaries();
+    } catch (err) {
+      alert('❌ Lỗi: ' + err.message);
+    }
+  };
+
+  const handleDeleteSalary = async (id) => {
+    if (!confirm('Xác nhận xóa bảng lương này?')) return;
+    try {
+      const { error } = await supabase.from('salaries').delete().eq('id', id);
+      if (error) throw error;
+      alert('✅ Đã xóa!');
+      setSelectedSalary(null);
+      loadSalaries();
+    } catch (err) {
+      alert('❌ Lỗi: ' + err.message);
+    }
+  };
+
+  const totals = calculateTotals();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Đang tải...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">💰 {isAdmin ? 'Quản Lý Lương Đa Phòng Ban' : 'Bảng Lương Của Tôi'}</h2>
+            <p className="text-gray-600 text-sm mt-1">{isAdmin ? 'Tính lương theo từng phòng ban, hỗ trợ nhân viên làm nhiều bộ phận' : 'Xem chi tiết lương hàng tháng'}</p>
+          </div>
+          {isAdmin && (
+            <button onClick={handleOpenCreate} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg">
+              ➕ Tạo bảng lương
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Stats - Chỉ Admin thấy */}
+      {isAdmin && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+            <div className="text-blue-100 text-sm mb-1">💰 Tổng tháng này</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalThisMonth)}</div>
+          </div>
+          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
+            <div className="text-yellow-100 text-sm mb-1">📝 Chờ duyệt</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalPending)}</div>
+          </div>
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
+            <div className="text-green-100 text-sm mb-1">✅ Đã duyệt</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalApproved)}</div>
+          </div>
+          <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-5 text-white">
+            <div className="text-gray-100 text-sm mb-1">💸 Đã trả</div>
+            <div className="text-2xl font-bold">{formatMoney(stats.totalPaid)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters & Table */}
+      <div className="bg-white rounded-xl shadow-sm border">
+        {/* Filters - Chỉ Admin thấy đầy đủ */}
+        {isAdmin && (
+          <div className="p-4 border-b bg-gray-50">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">📅 Tháng</label>
+                <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">👤 Nhân viên</label>
+                <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="">Tất cả</option>
+                  {(allUsers || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">📊 Trạng thái</label>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Tất cả</option>
+                  <option value="draft">Nháp</option>
+                  <option value="approved">Đã duyệt</option>
+                  <option value="paid">Đã trả</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button onClick={() => { setFilterMonth(''); setFilterUser(''); setFilterStatus('all'); }} className="w-full px-4 py-2 border rounded-lg hover:bg-gray-100">🔄 Reset</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                {isAdmin && <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nhân viên</th>}
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tháng</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Lương CB</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Ngày công</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Tổng lương</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Trạng thái</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filteredSalaries.length === 0 ? (
+                <tr>
+                  <td colSpan={isAdmin ? 7 : 6} className="px-6 py-12 text-center text-gray-500">
+                    <div className="text-5xl mb-4">📭</div>
+                    <div className="text-lg font-medium">{isAdmin ? 'Chưa có bảng lương nào' : 'Chưa có bảng lương nào cho bạn'}</div>
+                  </td>
+                </tr>
+              ) : (
+                filteredSalaries.map(salary => (
+                  <tr key={salary.id} className="hover:bg-gray-50">
+                    {isAdmin && <td className="px-4 py-3 font-medium">{salary.employee_name}</td>}
+                    <td className="px-4 py-3">{salary.month}</td>
+                    <td className="px-4 py-3 text-right">{formatMoney(salary.basic_salary)}</td>
+                    <td className="px-4 py-3 text-center">{salary.work_days || 0}</td>
+                    <td className="px-4 py-3 text-right font-bold text-blue-600">{formatMoney(salary.total_salary)}</td>
+                    <td className="px-4 py-3 text-center">{getStatusBadge(salary.status)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => setSelectedSalary(salary)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">👁️ Xem</button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ========== CREATE MODAL - INLINE ========== */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-5 border-b bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold">➕ Tạo Bảng Lương</h2>
+                <p className="text-white/80 text-sm">{createStep === 1 ? 'Bước 1: Chọn nhân viên' : `Bước 2: ${selectedEmployee?.name}`}</p>
+              </div>
+              <button onClick={() => setShowCreateModal(false)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg">×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {createStep === 1 && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {(allUsers || []).map(user => (
+                    <button key={user.id} onClick={() => handleSelectEmployee(user)} className="p-4 border-2 rounded-xl hover:border-blue-500 hover:bg-blue-50 text-left">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                          {user.name?.charAt(0) || '?'}
+                        </div>
+                        <div>
+                          <div className="font-bold">{user.name}</div>
+                          <div className="text-xs text-gray-500">{user.team || user.role}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {createStep === 2 && selectedEmployee && (
+                <div className="space-y-5">
+                  {/* Basic */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <h3 className="font-bold text-blue-900 mb-3">📋 Thông tin cơ bản</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tháng</label>
+                        <input 
+                          type="month" 
+                          value={formData.month} 
+                          onChange={(e) => {
+                            const newMonth = e.target.value;
+                            // Tự động cập nhật số video và job khi đổi tháng
+                            if (newMonth && selectedEmployee) {
+                              const [year, monthNum] = newMonth.split('-');
+                              const startDate = `${year}-${monthNum}-01`;
+                              const endDate = `${year}-${monthNum}-31`;
+                              
+                              // ĐỒNG BỘ logic với nút "Lấy từ hệ thống"
+                              const empName = (selectedEmployee.name || '').toLowerCase().trim();
+                              const empId = selectedEmployee.id;
+                              
+                              const mediaCount = tasksToUse.filter(t => {
+                                const taskAssignee = (t.assignee || '').toLowerCase().trim();
+                                const isAssigned = taskAssignee === empName || 
+                                                   t.assignee === empId || 
+                                                   t.assigned_to === empId ||
+                                                   (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
+                                const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
+                                const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
+                                const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+                                return isAssigned && isDone && inMonth;
+                              }).length;
+                              
+                              const kythuatCount = jobsToUse.filter(j => {
+                                const techs = j.technicians || [];
+                                const isAssigned = techs.includes(selectedEmployee.id) || techs.includes(selectedEmployee.name) || 
+                                                   j.assigned_to === selectedEmployee.id || j.technician === selectedEmployee.name || j.technician === selectedEmployee.id;
+                                const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+                                const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+                                const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+                                return isAssigned && isDone && inMonth;
+                              }).length;
+                              
+                              setFormData(prev => ({
+                                ...prev, 
+                                month: newMonth,
+                                media_videos: mediaCount.toString(),
+                                kythuat_jobs: kythuatCount.toString()
+                              }));
+                            } else {
+                              setFormData(prev => ({...prev, month: newMonth}));
+                            }
+                          }} 
+                          className="w-full px-3 py-2 border rounded-lg" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Lương cơ bản</label>
+                        <input type="number" value={formData.basic_salary} onChange={(e) => setFormData({...formData, basic_salary: e.target.value})} placeholder="5000000" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Số ngày công</label>
+                        <input type="number" value={formData.work_days} onChange={(e) => setFormData({...formData, work_days: e.target.value})} placeholder="26" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
+                    {formData.basic_salary && <div className="mt-2 text-sm">Lương thực tế: <strong className="text-blue-600">{formatMoney(totals.actualBasic)}</strong></div>}
+                  </div>
+
+                  {/* Livestream */}
+                  <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                    <h3 className="font-bold text-purple-900 mb-3">🎥 Livestream (6% khi ≥ 100 triệu)</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Doanh thu</label>
+                        <input type="number" value={formData.livestream_revenue} onChange={(e) => setFormData({...formData, livestream_revenue: e.target.value})} placeholder="100000000" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">% Hoa hồng</label>
+                        <input type="number" value={formData.livestream_commission} onChange={(e) => setFormData({...formData, livestream_commission: e.target.value})} placeholder="6" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                        <input type="text" value={formData.livestream_note} onChange={(e) => setFormData({...formData, livestream_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
+                    {totals.livestreamTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-purple-600">+{formatMoney(totals.livestreamTotal)}</strong></div>}
+                  </div>
+
+                  {/* Media */}
+                  <div className="bg-pink-50 border border-pink-200 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="font-bold text-pink-900">🎬 Media (Video)</h3>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const month = formData.month;
+                          if (!month || !selectedEmployee) return;
+                          const [year, monthNum] = month.split('-');
+                          const startDate = `${year}-${monthNum}-01`;
+                          const endDate = `${year}-${monthNum}-31`;
+                          
+                          // Debug log
+                          console.log('=== DEBUG MEDIA ===');
+                          console.log('Selected Employee:', selectedEmployee.name, 'ID:', selectedEmployee.id);
+                          console.log('Month range:', startDate, 'to', endDate);
+                          console.log('Total tasks:', tasksToUse.length);
+                          
+                          // Log ALL tasks with status 'Hoàn Thành'
+                          const allDoneTasks = tasksToUse.filter(t => 
+                            t.status === 'Hoàn Thành' || t.status === 'Hoàn thành' || t.status === 'done' || t.status === 'completed'
+                          );
+                          console.log('All completed tasks:', allDoneTasks.length);
+                          allDoneTasks.forEach((t, i) => {
+                            console.log(`Done Task ${i}:`, {
+                              title: t.title,
+                              assignee: t.assignee,
+                              assigned_to: t.assigned_to,
+                              status: t.status,
+                              updated_at: t.updated_at
+                            });
+                          });
+                          
+                          const completedTasks = tasksToUse.filter(t => {
+                            // Kiểm tra assignee - LINH HOẠT hơn (so sánh không phân biệt hoa thường)
+                            const empName = (selectedEmployee.name || '').toLowerCase().trim();
+                            const empId = selectedEmployee.id;
+                            const taskAssignee = (t.assignee || '').toLowerCase().trim();
+                            const taskAssignedTo = t.assigned_to;
+                            
+                            const isAssigned = taskAssignee === empName || 
+                                               t.assignee === empId || 
+                                               taskAssignedTo === empId ||
+                                               taskAssignedTo === empName ||
+                                               (t.assignee && t.assignee.includes && t.assignee.toLowerCase().includes(empName));
+                            
+                            // Kiểm tra status done
+                            const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
+                            
+                            // Kiểm tra thời gian
+                            const taskDate = t.completed_at || t.updated_at || t.created_at;
+                            const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+                            
+                            // Debug từng task done
+                            if (isDone) {
+                              console.log('Checking task:', t.title, {
+                                assignee: t.assignee,
+                                empName: empName,
+                                isAssigned: isAssigned,
+                                taskDate: taskDate,
+                                inMonth: inMonth
+                              });
+                            }
+                            
+                            return isAssigned && isDone && inMonth;
+                          });
+                          
+                          console.log('Completed tasks found:', completedTasks.length);
+                          
+                          setFormData(prev => ({...prev, media_videos: completedTasks.length.toString()}));
+                          if (completedTasks.length > 0) {
+                            alert(`✅ Tìm thấy ${completedTasks.length} video hoàn thành!`);
+                          } else {
+                            alert('⚠️ Không tìm thấy video hoàn thành trong tháng này. Kiểm tra Console (F12) để xem chi tiết.');
+                          }
+                        }}
+                        className="px-3 py-1 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-xs font-medium"
+                      >
+                        🔄 Lấy từ hệ thống
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Số video</label>
+                        <input type="number" value={formData.media_videos} onChange={(e) => setFormData({...formData, media_videos: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-white" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tiền/video</label>
+                        <input type="number" value={formData.media_per_video} onChange={(e) => setFormData({...formData, media_per_video: e.target.value})} placeholder="200000" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                        <input type="text" value={formData.media_note} onChange={(e) => setFormData({...formData, media_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
+                    {/* Danh sách video hoàn thành */}
+                    {selectedEmployee && formData.month && (() => {
+                      const [year, monthNum] = formData.month.split('-');
+                      const startDate = `${year}-${monthNum}-01`;
+                      const endDate = `${year}-${monthNum}-31`;
+                      const completedTasks = tasksToUse.filter(t => {
+                        // So sánh linh hoạt
+                        const empName = (selectedEmployee.name || '').toLowerCase().trim();
+                        const empId = selectedEmployee.id;
+                        const taskAssignee = (t.assignee || '').toLowerCase().trim();
+                        
+                        const isAssigned = taskAssignee === empName || 
+                                           t.assignee === empId || 
+                                           t.assigned_to === empId ||
+                                           (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
+                        
+                        const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
+                        const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
+                        const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
+                        return isAssigned && isDone && inMonth;
+                      });
+                      if (completedTasks.length > 0) {
+                        return (
+                          <div className="mt-3 p-3 bg-white rounded-lg border border-pink-200">
+                            <div className="text-xs font-medium text-pink-800 mb-2">📋 Video hoàn thành trong tháng ({completedTasks.length}):</div>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {completedTasks.map((t, idx) => (
+                                <div key={t.id || idx} className="text-xs text-gray-600 flex justify-between">
+                                  <span>• {t.title || t.name || 'Video #' + (idx+1)}</span>
+                                  <span className="text-gray-400">{(t.completed_at || t.updated_at || t.createdAt) ? new Date(t.completed_at || t.updated_at || t.createdAt).toLocaleDateString('vi-VN') : ''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return <div className="mt-2 text-xs text-gray-500">Chưa có video hoàn thành trong tháng này</div>;
+                    })()}
+                    {totals.mediaTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-pink-600">+{formatMoney(totals.mediaTotal)}</strong></div>}
+                  </div>
+
+                  {/* Kho */}
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                    <h3 className="font-bold text-orange-900 mb-3">📦 Kho</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Số đơn</label>
+                        <input type="number" value={formData.kho_orders} onChange={(e) => setFormData({...formData, kho_orders: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tiền/đơn</label>
+                        <input type="number" value={formData.kho_per_order} onChange={(e) => setFormData({...formData, kho_per_order: e.target.value})} placeholder="50000" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                        <input type="text" value={formData.kho_note} onChange={(e) => setFormData({...formData, kho_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
+                    {totals.khoTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-orange-600">+{formatMoney(totals.khoTotal)}</strong></div>}
+                  </div>
+
+                  {/* Kỹ thuật */}
+                  <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="font-bold text-cyan-900">🔧 Kỹ thuật (200k/job)</h3>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const month = formData.month;
+                          if (!month || !selectedEmployee) return;
+                          const [year, monthNum] = month.split('-');
+                          const startDate = `${year}-${monthNum}-01`;
+                          const endDate = `${year}-${monthNum}-31`;
+                          const completedJobs = jobsToUse.filter(j => {
+                            // Kiểm tra technicians (array) hoặc assigned_to
+                            const techs = j.technicians || [];
+                            const isAssigned = techs.includes(selectedEmployee.id) || 
+                                               techs.includes(selectedEmployee.name) ||
+                                               j.assigned_to === selectedEmployee.id ||
+                                               j.technician === selectedEmployee.name ||
+                                               j.technician === selectedEmployee.id;
+                            // Kiểm tra status
+                            const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+                            // Kiểm tra thời gian
+                            const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+                            const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+                            return isAssigned && isDone && inMonth;
+                          });
+                          setFormData(prev => ({...prev, kythuat_jobs: completedJobs.length.toString()}));
+                          if (completedJobs.length > 0) {
+                            alert(`✅ Tìm thấy ${completedJobs.length} job hoàn thành!`);
+                          } else {
+                            alert('⚠️ Không tìm thấy job hoàn thành trong tháng này');
+                          }
+                        }}
+                        className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-medium"
+                      >
+                        🔄 Lấy từ hệ thống
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Số job</label>
+                        <input type="number" value={formData.kythuat_jobs} onChange={(e) => setFormData({...formData, kythuat_jobs: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-white" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Tiền/job</label>
+                        <input type="number" value={formData.kythuat_per_job} onChange={(e) => setFormData({...formData, kythuat_per_job: e.target.value})} placeholder="200000" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                        <input type="text" value={formData.kythuat_note} onChange={(e) => setFormData({...formData, kythuat_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
+                    {/* Danh sách job hoàn thành */}
+                    {selectedEmployee && formData.month && (() => {
+                      const [year, monthNum] = formData.month.split('-');
+                      const startDate = `${year}-${monthNum}-01`;
+                      const endDate = `${year}-${monthNum}-31`;
+                      const completedJobs = jobsToUse.filter(j => {
+                        const techs = j.technicians || [];
+                        const isAssigned = techs.includes(selectedEmployee.id) || 
+                                           techs.includes(selectedEmployee.name) ||
+                                           j.assigned_to === selectedEmployee.id ||
+                                           j.technician === selectedEmployee.name ||
+                                           j.technician === selectedEmployee.id;
+                        const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
+                        const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
+                        const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
+                        return isAssigned && isDone && inMonth;
+                      });
+                      if (completedJobs.length > 0) {
+                        return (
+                          <div className="mt-3 p-3 bg-white rounded-lg border border-cyan-200">
+                            <div className="text-xs font-medium text-cyan-800 mb-2">📋 Job hoàn thành trong tháng ({completedJobs.length}):</div>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {completedJobs.map((j, idx) => (
+                                <div key={j.id || idx} className="text-xs text-gray-600 flex justify-between">
+                                  <span>• {j.title || j.customerName || 'Job #' + (idx+1)} {j.type ? `(${j.type})` : ''}</span>
+                                  <span className="text-gray-400">{(j.completed_at || j.completedAt || j.scheduledDate) ? new Date(j.completed_at || j.completedAt || j.scheduledDate).toLocaleDateString('vi-VN') : ''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return <div className="mt-2 text-xs text-gray-500">Chưa có job hoàn thành trong tháng này</div>;
+                    })()}
+                    {totals.kythuatTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-cyan-600">+{formatMoney(totals.kythuatTotal)}</strong></div>}
+                  </div>
+
+                  {/* Sale */}
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                    <h3 className="font-bold text-green-900 mb-3">🛒 Sale</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Doanh thu</label>
+                        <input type="number" value={formData.sale_revenue} onChange={(e) => setFormData({...formData, sale_revenue: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">% Hoa hồng</label>
+                        <input type="number" value={formData.sale_commission} onChange={(e) => setFormData({...formData, sale_commission: e.target.value})} placeholder="5" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Ghi chú</label>
+                        <input type="text" value={formData.sale_note} onChange={(e) => setFormData({...formData, sale_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
+                    {totals.saleTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-green-600">+{formatMoney(totals.saleTotal)}</strong></div>}
+                  </div>
+
+                  {/* Bonus/Deduction */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <h3 className="font-bold text-gray-900 mb-3">± Thưởng / Khấu trừ</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">🎁 Thưởng</label>
+                        <input type="number" value={formData.bonus} onChange={(e) => setFormData({...formData, bonus: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">➖ Khấu trừ</label>
+                        <input type="number" value={formData.deduction} onChange={(e) => setFormData({...formData, deduction: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">📝 Ghi chú</label>
+                        <input type="text" value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Total */}
+                  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-5 text-white">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xl">💵 TỔNG LƯƠNG</span>
+                      <span className="text-3xl font-bold">{formatMoney(totals.grandTotal)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-between">
+              {createStep === 2 && <button onClick={() => setCreateStep(1)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">← Quay lại</button>}
+              <div className="flex gap-3 ml-auto">
+                <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Hủy</button>
+                {createStep === 2 && (
+                  <button onClick={handleSaveSalary} disabled={saving} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">
+                    {saving ? 'Đang lưu...' : '💾 Lưu'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== DETAIL MODAL - INLINE ========== */}
+      {selectedSalary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-5 border-b bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold">{selectedSalary.employee_name}</h2>
+                <p className="text-white/80 text-sm">Tháng {selectedSalary.month}</p>
+              </div>
+              <button onClick={() => setSelectedSalary(null)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg">×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="flex justify-between items-center">
+                <span>Trạng thái:</span>
+                {getStatusBadge(selectedSalary.status)}
+              </div>
+
+              <div className="bg-blue-50 rounded-xl p-4">
+                <div className="flex justify-between">
+                  <span>Lương cơ bản ({selectedSalary.work_days}/26 ngày)</span>
+                  <span className="font-bold">{formatMoney(selectedSalary.actual_basic || 0)}</span>
+                </div>
+              </div>
+
+              {selectedSalary.livestream_total > 0 && (
+                <div className="bg-purple-50 rounded-xl p-4">
+                  <div className="flex justify-between">
+                    <span>🎥 Livestream ({formatMoney(selectedSalary.livestream_revenue)} × {selectedSalary.livestream_commission}%)</span>
+                    <span className="font-bold text-purple-600">+{formatMoney(selectedSalary.livestream_total)}</span>
+                  </div>
+                </div>
+              )}
+
+              {selectedSalary.media_total > 0 && (
+                <div className="bg-pink-50 rounded-xl p-4">
+                  <div className="flex justify-between">
+                    <span>🎬 Media ({selectedSalary.media_videos} video × {formatMoney(selectedSalary.media_per_video)})</span>
+                    <span className="font-bold text-pink-600">+{formatMoney(selectedSalary.media_total)}</span>
+                  </div>
+                </div>
+              )}
+
+              {selectedSalary.kho_total > 0 && (
+                <div className="bg-orange-50 rounded-xl p-4">
+                  <div className="flex justify-between">
+                    <span>📦 Kho ({selectedSalary.kho_orders} đơn × {formatMoney(selectedSalary.kho_per_order)})</span>
+                    <span className="font-bold text-orange-600">+{formatMoney(selectedSalary.kho_total)}</span>
+                  </div>
+                </div>
+              )}
+
+              {selectedSalary.kythuat_total > 0 && (
+                <div className="bg-cyan-50 rounded-xl p-4">
+                  <div className="flex justify-between">
+                    <span>🔧 Kỹ thuật ({selectedSalary.kythuat_jobs} job × {formatMoney(selectedSalary.kythuat_per_job)})</span>
+                    <span className="font-bold text-cyan-600">+{formatMoney(selectedSalary.kythuat_total)}</span>
+                  </div>
+                </div>
+              )}
+
+              {selectedSalary.sale_total > 0 && (
+                <div className="bg-green-50 rounded-xl p-4">
+                  <div className="flex justify-between">
+                    <span>🛒 Sale ({formatMoney(selectedSalary.sale_revenue)} × {selectedSalary.sale_commission}%)</span>
+                    <span className="font-bold text-green-600">+{formatMoney(selectedSalary.sale_total)}</span>
+                  </div>
+                </div>
+              )}
+
+              {(selectedSalary.bonus > 0 || selectedSalary.deduction > 0) && (
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                  {selectedSalary.bonus > 0 && <div className="flex justify-between text-green-600"><span>🎁 Thưởng</span><span>+{formatMoney(selectedSalary.bonus)}</span></div>}
+                  {selectedSalary.deduction > 0 && <div className="flex justify-between text-red-600"><span>➖ Khấu trừ</span><span>-{formatMoney(selectedSalary.deduction)}</span></div>}
+                </div>
+              )}
+
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-5 text-white">
+                <div className="flex justify-between items-center">
+                  <span className="text-xl">💵 TỔNG</span>
+                  <span className="text-3xl font-bold">{formatMoney(selectedSalary.total_salary)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-between">
+              <div>
+                {selectedSalary.status === 'draft' && (
+                  <button onClick={() => handleDeleteSalary(selectedSalary.id)} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">🗑️ Xóa</button>
+                )}
+              </div>
+              <div className="flex gap-3">
+                {selectedSalary.status === 'draft' && (
+                  <button onClick={() => handleStatusChange(selectedSalary, 'approved')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">✅ Duyệt</button>
+                )}
+                {selectedSalary.status === 'approved' && (
+                  <button onClick={() => handleStatusChange(selectedSalary, 'paid')} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">💰 Đã trả</button>
+                )}
+                <button onClick={() => setSelectedSalary(null)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Đóng</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ END SALARY MANAGEMENT (MOVED OUTSIDE) ============
+
 export default function SimpleMarketingSystem() {
   const { path, navigate } = useHashRouter();
   
@@ -10158,977 +11132,6 @@ export default function SimpleMarketingSystem() {
   // ============================================
 
   // ============ SALARY MANAGEMENT - MULTI DEPARTMENT v85 ============
-  function SalaryManagement({ 
-    tenant, 
-    currentUser, 
-    allUsers, 
-    tasks, 
-    technicalJobs, 
-    formatMoney,
-    getTodayVN,
-    getVietnamDate,
-    supabase 
-  }) {
-    const [salaries, setSalaries] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [showCreateModal, setShowCreateModal] = useState(false);
-    const [selectedSalary, setSelectedSalary] = useState(null);
-    const [filterMonth, setFilterMonth] = useState('');
-    const [filterUser, setFilterUser] = useState('');
-    const [filterStatus, setFilterStatus] = useState('all');
-    
-    // Create modal states
-    const [createStep, setCreateStep] = useState(1);
-    const [selectedEmployee, setSelectedEmployee] = useState(null);
-    const [saving, setSaving] = useState(false);
-    const [formData, setFormData] = useState({});
-    
-    // *** FIX: Cache tasks và jobs khi modal mở để tránh bị reset khi realtime update ***
-    const [cachedTasks, setCachedTasks] = useState([]);
-    const [cachedJobs, setCachedJobs] = useState([]);
-
-    // Phân quyền: Chỉ Admin mới thấy tất cả và tạo bảng lương
-    const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin';
-
-    const getCurrentMonth = () => {
-      const vn = getVietnamDate();
-      return `${vn.getFullYear()}-${String(vn.getMonth() + 1).padStart(2, '0')}`;
-    };
-
-    const resetForm = () => {
-      setFormData({
-        month: getCurrentMonth(),
-        basic_salary: '',
-        work_days: '26',
-        livestream_revenue: '',
-        livestream_commission: '6',
-        livestream_note: '',
-        media_videos: '',
-        media_per_video: '',
-        media_note: '',
-        kho_orders: '',
-        kho_per_order: '',
-        kho_note: '',
-        kythuat_jobs: '',
-        kythuat_per_job: '200000',
-        kythuat_note: '',
-        sale_revenue: '',
-        sale_commission: '',
-        sale_note: '',
-        bonus: '',
-        deduction: '',
-        note: ''
-      });
-      setCreateStep(1);
-      setSelectedEmployee(null);
-    };
-
-    useEffect(() => {
-      loadSalaries();
-    }, [tenant]);
-
-    const loadSalaries = async () => {
-      if (!tenant) return;
-      try {
-        let query = supabase
-          .from('salaries')
-          .select('*')
-          .eq('tenant_id', tenant.id)
-          .order('created_at', { ascending: false });
-        
-        // Nếu không phải admin, chỉ load bảng lương của mình
-        if (!isAdmin) {
-          query = query.eq('user_id', currentUser.id);
-        }
-        
-        const { data, error } = await query;
-        if (error) throw error;
-        setSalaries(data || []);
-      } catch (err) {
-        console.error('Error loading salaries:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const filteredSalaries = (salaries || []).filter(s => {
-      if (filterMonth && s.month !== filterMonth) return false;
-      if (filterUser && s.user_id !== filterUser) return false;
-      if (filterStatus !== 'all' && s.status !== filterStatus) return false;
-      return true;
-    });
-
-    const getStatusBadge = (status) => {
-      const badges = {
-        draft: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '📝 Nháp' },
-        approved: { bg: 'bg-green-100', text: 'text-green-700', label: '✅ Đã duyệt' },
-        paid: { bg: 'bg-blue-100', text: 'text-blue-700', label: '💰 Đã trả' }
-      };
-      const badge = badges[status] || badges.draft;
-      return <span className={`px-3 py-1 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>{badge.label}</span>;
-    };
-
-    const stats = {
-      totalThisMonth: (salaries || []).filter(s => s.month === getCurrentMonth()).reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
-      totalPending: (salaries || []).filter(s => s.status === 'draft').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
-      totalApproved: (salaries || []).filter(s => s.status === 'approved').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0),
-      totalPaid: (salaries || []).filter(s => s.status === 'paid').reduce((sum, s) => sum + parseFloat(s.total_salary || 0), 0)
-    };
-
-    // Calculate totals for create form
-    const calculateTotals = () => {
-      const basicSalary = parseFloat(formData.basic_salary) || 0;
-      const workDays = parseFloat(formData.work_days) || 0;
-      const actualBasic = workDays > 0 ? (basicSalary / 26) * workDays : 0;
-
-      const livestreamRevenue = parseFloat(formData.livestream_revenue) || 0;
-      const livestreamCommission = parseFloat(formData.livestream_commission) || 0;
-      const livestreamTotal = livestreamRevenue >= 100000000 ? (livestreamRevenue * livestreamCommission / 100) : 0;
-
-      const mediaVideos = parseFloat(formData.media_videos) || 0;
-      const mediaPerVideo = parseFloat(formData.media_per_video) || 0;
-      const mediaTotal = mediaVideos * mediaPerVideo;
-
-      const khoOrders = parseFloat(formData.kho_orders) || 0;
-      const khoPerOrder = parseFloat(formData.kho_per_order) || 0;
-      const khoTotal = khoOrders * khoPerOrder;
-
-      const kythuatJobs = parseFloat(formData.kythuat_jobs) || 0;
-      const kythuatPerJob = parseFloat(formData.kythuat_per_job) || 0;
-      const kythuatTotal = kythuatJobs * kythuatPerJob;
-
-      const saleRevenue = parseFloat(formData.sale_revenue) || 0;
-      const saleCommission = parseFloat(formData.sale_commission) || 0;
-      const saleTotal = saleRevenue * saleCommission / 100;
-
-      const bonus = parseFloat(formData.bonus) || 0;
-      const deduction = parseFloat(formData.deduction) || 0;
-
-      return {
-        actualBasic,
-        livestreamTotal,
-        mediaTotal,
-        khoTotal,
-        kythuatTotal,
-        saleTotal,
-        bonus,
-        deduction,
-        grandTotal: actualBasic + livestreamTotal + mediaTotal + khoTotal + kythuatTotal + saleTotal + bonus - deduction
-      };
-    };
-
-    const handleOpenCreate = () => {
-      resetForm();
-      // *** FIX: Cache tasks và jobs khi mở modal để tránh bị reset ***
-      setCachedTasks([...(tasks || [])]);
-      setCachedJobs([...(technicalJobs || [])]);
-      setShowCreateModal(true);
-    };
-
-    // *** Sử dụng cachedTasks/cachedJobs khi modal đang mở ***
-    const tasksToUse = showCreateModal ? cachedTasks : (tasks || []);
-    const jobsToUse = showCreateModal ? cachedJobs : (technicalJobs || []);
-
-    const handleSelectEmployee = (user) => {
-      setSelectedEmployee(user);
-      // Auto count tasks
-      const month = formData.month || getCurrentMonth();
-      const [year, monthNum] = month.split('-');
-      const startDate = `${year}-${monthNum}-01`;
-      const endDate = `${year}-${monthNum}-31`;
-
-      // Count Media tasks - ĐỒNG BỘ logic với nút "Lấy từ hệ thống"
-      const empName = (user.name || '').toLowerCase().trim();
-      const empId = user.id;
-      
-      const mediaCount = tasksToUse.filter(t => {
-        const taskAssignee = (t.assignee || '').toLowerCase().trim();
-        const isAssigned = taskAssignee === empName || 
-                           t.assignee === empId || 
-                           t.assigned_to === empId ||
-                           (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
-        const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
-        const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
-        const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
-        return isAssigned && isDone && inMonth;
-      }).length;
-
-      // Count Technical jobs
-      const kythuatCount = jobsToUse.filter(j => {
-        const techs = j.technicians || [];
-        const isAssigned = techs.includes(user.id) || techs.includes(user.name) || 
-                           j.assigned_to === user.id || j.technician === user.name || j.technician === user.id;
-        const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
-        const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
-        const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
-        return isAssigned && isDone && inMonth;
-      }).length;
-
-      setFormData(prev => ({
-        ...prev,
-        media_videos: mediaCount.toString(),
-        kythuat_jobs: kythuatCount.toString()
-      }));
-      setCreateStep(2);
-    };
-
-    const handleSaveSalary = async () => {
-      if (!selectedEmployee) return;
-      setSaving(true);
-      const totals = calculateTotals();
-
-      try {
-        const dataToSave = {
-          tenant_id: tenant.id,
-          user_id: selectedEmployee.id,
-          employee_name: selectedEmployee.name,
-          month: formData.month,
-          basic_salary: parseFloat(formData.basic_salary) || 0,
-          work_days: parseFloat(formData.work_days) || 0,
-          actual_basic: totals.actualBasic,
-          livestream_revenue: parseFloat(formData.livestream_revenue) || 0,
-          livestream_commission: parseFloat(formData.livestream_commission) || 0,
-          livestream_total: totals.livestreamTotal,
-          livestream_note: formData.livestream_note || '',
-          media_videos: parseFloat(formData.media_videos) || 0,
-          media_per_video: parseFloat(formData.media_per_video) || 0,
-          media_total: totals.mediaTotal,
-          media_note: formData.media_note || '',
-          kho_orders: parseFloat(formData.kho_orders) || 0,
-          kho_per_order: parseFloat(formData.kho_per_order) || 0,
-          kho_total: totals.khoTotal,
-          kho_note: formData.kho_note || '',
-          kythuat_jobs: parseFloat(formData.kythuat_jobs) || 0,
-          kythuat_per_job: parseFloat(formData.kythuat_per_job) || 0,
-          kythuat_total: totals.kythuatTotal,
-          kythuat_note: formData.kythuat_note || '',
-          sale_revenue: parseFloat(formData.sale_revenue) || 0,
-          sale_commission: parseFloat(formData.sale_commission) || 0,
-          sale_total: totals.saleTotal,
-          sale_note: formData.sale_note || '',
-          bonus: totals.bonus,
-          deduction: totals.deduction,
-          total_salary: totals.grandTotal,
-          note: formData.note || '',
-          status: 'draft',
-          created_by: currentUser?.name || '',
-          created_at: new Date().toISOString()
-        };
-
-        const { error } = await supabase.from('salaries').insert(dataToSave);
-        if (error) throw error;
-
-        alert('✅ Đã tạo bảng lương thành công!');
-        setShowCreateModal(false);
-        loadSalaries();
-      } catch (err) {
-        console.error('Error:', err);
-        alert('❌ Lỗi: ' + err.message);
-      } finally {
-        setSaving(false);
-      }
-    };
-
-    const handleStatusChange = async (salary, newStatus) => {
-      if (!confirm(`Xác nhận chuyển sang "${newStatus === 'approved' ? 'Đã duyệt' : 'Đã trả'}"?`)) return;
-      try {
-        const updateData = { status: newStatus };
-        if (newStatus === 'approved') {
-          updateData.approved_at = new Date().toISOString();
-          updateData.approved_by = currentUser?.name;
-        } else if (newStatus === 'paid') {
-          updateData.paid_at = new Date().toISOString();
-          updateData.paid_by = currentUser?.name;
-        }
-        const { error } = await supabase.from('salaries').update(updateData).eq('id', salary.id);
-        if (error) throw error;
-        alert('✅ Đã cập nhật!');
-        setSelectedSalary(null);
-        loadSalaries();
-      } catch (err) {
-        alert('❌ Lỗi: ' + err.message);
-      }
-    };
-
-    const handleDeleteSalary = async (id) => {
-      if (!confirm('Xác nhận xóa bảng lương này?')) return;
-      try {
-        const { error } = await supabase.from('salaries').delete().eq('id', id);
-        if (error) throw error;
-        alert('✅ Đã xóa!');
-        setSelectedSalary(null);
-        loadSalaries();
-      } catch (err) {
-        alert('❌ Lỗi: ' + err.message);
-      }
-    };
-
-    const totals = calculateTotals();
-
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Đang tải...</p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">💰 {isAdmin ? 'Quản Lý Lương Đa Phòng Ban' : 'Bảng Lương Của Tôi'}</h2>
-              <p className="text-gray-600 text-sm mt-1">{isAdmin ? 'Tính lương theo từng phòng ban, hỗ trợ nhân viên làm nhiều bộ phận' : 'Xem chi tiết lương hàng tháng'}</p>
-            </div>
-            {isAdmin && (
-              <button onClick={handleOpenCreate} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg">
-                ➕ Tạo bảng lương
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Stats - Chỉ Admin thấy */}
-        {isAdmin && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
-              <div className="text-blue-100 text-sm mb-1">💰 Tổng tháng này</div>
-              <div className="text-2xl font-bold">{formatMoney(stats.totalThisMonth)}</div>
-            </div>
-            <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
-              <div className="text-yellow-100 text-sm mb-1">📝 Chờ duyệt</div>
-              <div className="text-2xl font-bold">{formatMoney(stats.totalPending)}</div>
-            </div>
-            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
-              <div className="text-green-100 text-sm mb-1">✅ Đã duyệt</div>
-              <div className="text-2xl font-bold">{formatMoney(stats.totalApproved)}</div>
-            </div>
-            <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-5 text-white">
-              <div className="text-gray-100 text-sm mb-1">💸 Đã trả</div>
-              <div className="text-2xl font-bold">{formatMoney(stats.totalPaid)}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Filters & Table */}
-        <div className="bg-white rounded-xl shadow-sm border">
-          {/* Filters - Chỉ Admin thấy đầy đủ */}
-          {isAdmin && (
-            <div className="p-4 border-b bg-gray-50">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">📅 Tháng</label>
-                  <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">👤 Nhân viên</label>
-                  <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="">Tất cả</option>
-                    {(allUsers || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">📊 Trạng thái</label>
-                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
-                    <option value="all">Tất cả</option>
-                    <option value="draft">Nháp</option>
-                    <option value="approved">Đã duyệt</option>
-                    <option value="paid">Đã trả</option>
-                  </select>
-                </div>
-                <div className="flex items-end">
-                  <button onClick={() => { setFilterMonth(''); setFilterUser(''); setFilterStatus('all'); }} className="w-full px-4 py-2 border rounded-lg hover:bg-gray-100">🔄 Reset</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  {isAdmin && <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Nhân viên</th>}
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tháng</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Lương CB</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Ngày công</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Tổng lương</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Trạng thái</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filteredSalaries.length === 0 ? (
-                  <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="px-6 py-12 text-center text-gray-500">
-                      <div className="text-5xl mb-4">📭</div>
-                      <div className="text-lg font-medium">{isAdmin ? 'Chưa có bảng lương nào' : 'Chưa có bảng lương nào cho bạn'}</div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSalaries.map(salary => (
-                    <tr key={salary.id} className="hover:bg-gray-50">
-                      {isAdmin && <td className="px-4 py-3 font-medium">{salary.employee_name}</td>}
-                      <td className="px-4 py-3">{salary.month}</td>
-                      <td className="px-4 py-3 text-right">{formatMoney(salary.basic_salary)}</td>
-                      <td className="px-4 py-3 text-center">{salary.work_days || 0}</td>
-                      <td className="px-4 py-3 text-right font-bold text-blue-600">{formatMoney(salary.total_salary)}</td>
-                      <td className="px-4 py-3 text-center">{getStatusBadge(salary.status)}</td>
-                      <td className="px-4 py-3 text-center">
-                        <button onClick={() => setSelectedSalary(salary)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">👁️ Xem</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* ========== CREATE MODAL - INLINE ========== */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="p-5 border-b bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-bold">➕ Tạo Bảng Lương</h2>
-                  <p className="text-white/80 text-sm">{createStep === 1 ? 'Bước 1: Chọn nhân viên' : `Bước 2: ${selectedEmployee?.name}`}</p>
-                </div>
-                <button onClick={() => setShowCreateModal(false)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg">×</button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6">
-                {createStep === 1 && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {(allUsers || []).map(user => (
-                      <button key={user.id} onClick={() => handleSelectEmployee(user)} className="p-4 border-2 rounded-xl hover:border-blue-500 hover:bg-blue-50 text-left">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                            {user.name?.charAt(0) || '?'}
-                          </div>
-                          <div>
-                            <div className="font-bold">{user.name}</div>
-                            <div className="text-xs text-gray-500">{user.team || user.role}</div>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {createStep === 2 && selectedEmployee && (
-                  <div className="space-y-5">
-                    {/* Basic */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <h3 className="font-bold text-blue-900 mb-3">📋 Thông tin cơ bản</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Tháng</label>
-                          <input 
-                            type="month" 
-                            value={formData.month} 
-                            onChange={(e) => {
-                              const newMonth = e.target.value;
-                              // Tự động cập nhật số video và job khi đổi tháng
-                              if (newMonth && selectedEmployee) {
-                                const [year, monthNum] = newMonth.split('-');
-                                const startDate = `${year}-${monthNum}-01`;
-                                const endDate = `${year}-${monthNum}-31`;
-                                
-                                // ĐỒNG BỘ logic với nút "Lấy từ hệ thống"
-                                const empName = (selectedEmployee.name || '').toLowerCase().trim();
-                                const empId = selectedEmployee.id;
-                                
-                                const mediaCount = tasksToUse.filter(t => {
-                                  const taskAssignee = (t.assignee || '').toLowerCase().trim();
-                                  const isAssigned = taskAssignee === empName || 
-                                                     t.assignee === empId || 
-                                                     t.assigned_to === empId ||
-                                                     (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
-                                  const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
-                                  const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
-                                  const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
-                                  return isAssigned && isDone && inMonth;
-                                }).length;
-                                
-                                const kythuatCount = jobsToUse.filter(j => {
-                                  const techs = j.technicians || [];
-                                  const isAssigned = techs.includes(selectedEmployee.id) || techs.includes(selectedEmployee.name) || 
-                                                     j.assigned_to === selectedEmployee.id || j.technician === selectedEmployee.name || j.technician === selectedEmployee.id;
-                                  const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
-                                  const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
-                                  const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
-                                  return isAssigned && isDone && inMonth;
-                                }).length;
-                                
-                                setFormData(prev => ({
-                                  ...prev, 
-                                  month: newMonth,
-                                  media_videos: mediaCount.toString(),
-                                  kythuat_jobs: kythuatCount.toString()
-                                }));
-                              } else {
-                                setFormData(prev => ({...prev, month: newMonth}));
-                              }
-                            }} 
-                            className="w-full px-3 py-2 border rounded-lg" 
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Lương cơ bản</label>
-                          <input type="number" value={formData.basic_salary} onChange={(e) => setFormData({...formData, basic_salary: e.target.value})} placeholder="5000000" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Số ngày công</label>
-                          <input type="number" value={formData.work_days} onChange={(e) => setFormData({...formData, work_days: e.target.value})} placeholder="26" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                      </div>
-                      {formData.basic_salary && <div className="mt-2 text-sm">Lương thực tế: <strong className="text-blue-600">{formatMoney(totals.actualBasic)}</strong></div>}
-                    </div>
-
-                    {/* Livestream */}
-                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-                      <h3 className="font-bold text-purple-900 mb-3">🎥 Livestream (6% khi ≥ 100 triệu)</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Doanh thu</label>
-                          <input type="number" value={formData.livestream_revenue} onChange={(e) => setFormData({...formData, livestream_revenue: e.target.value})} placeholder="100000000" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">% Hoa hồng</label>
-                          <input type="number" value={formData.livestream_commission} onChange={(e) => setFormData({...formData, livestream_commission: e.target.value})} placeholder="6" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
-                          <input type="text" value={formData.livestream_note} onChange={(e) => setFormData({...formData, livestream_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                      </div>
-                      {totals.livestreamTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-purple-600">+{formatMoney(totals.livestreamTotal)}</strong></div>}
-                    </div>
-
-                    {/* Media */}
-                    <div className="bg-pink-50 border border-pink-200 rounded-xl p-4">
-                      <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-bold text-pink-900">🎬 Media (Video)</h3>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const month = formData.month;
-                            if (!month || !selectedEmployee) return;
-                            const [year, monthNum] = month.split('-');
-                            const startDate = `${year}-${monthNum}-01`;
-                            const endDate = `${year}-${monthNum}-31`;
-                            
-                            // Debug log
-                            console.log('=== DEBUG MEDIA ===');
-                            console.log('Selected Employee:', selectedEmployee.name, 'ID:', selectedEmployee.id);
-                            console.log('Month range:', startDate, 'to', endDate);
-                            console.log('Total tasks:', tasksToUse.length);
-                            
-                            // Log ALL tasks with status 'Hoàn Thành'
-                            const allDoneTasks = tasksToUse.filter(t => 
-                              t.status === 'Hoàn Thành' || t.status === 'Hoàn thành' || t.status === 'done' || t.status === 'completed'
-                            );
-                            console.log('All completed tasks:', allDoneTasks.length);
-                            allDoneTasks.forEach((t, i) => {
-                              console.log(`Done Task ${i}:`, {
-                                title: t.title,
-                                assignee: t.assignee,
-                                assigned_to: t.assigned_to,
-                                status: t.status,
-                                updated_at: t.updated_at
-                              });
-                            });
-                            
-                            const completedTasks = tasksToUse.filter(t => {
-                              // Kiểm tra assignee - LINH HOẠT hơn (so sánh không phân biệt hoa thường)
-                              const empName = (selectedEmployee.name || '').toLowerCase().trim();
-                              const empId = selectedEmployee.id;
-                              const taskAssignee = (t.assignee || '').toLowerCase().trim();
-                              const taskAssignedTo = t.assigned_to;
-                              
-                              const isAssigned = taskAssignee === empName || 
-                                                 t.assignee === empId || 
-                                                 taskAssignedTo === empId ||
-                                                 taskAssignedTo === empName ||
-                                                 (t.assignee && t.assignee.includes && t.assignee.toLowerCase().includes(empName));
-                              
-                              // Kiểm tra status done
-                              const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
-                              
-                              // Kiểm tra thời gian
-                              const taskDate = t.completed_at || t.updated_at || t.created_at;
-                              const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
-                              
-                              // Debug từng task done
-                              if (isDone) {
-                                console.log('Checking task:', t.title, {
-                                  assignee: t.assignee,
-                                  empName: empName,
-                                  isAssigned: isAssigned,
-                                  taskDate: taskDate,
-                                  inMonth: inMonth
-                                });
-                              }
-                              
-                              return isAssigned && isDone && inMonth;
-                            });
-                            
-                            console.log('Completed tasks found:', completedTasks.length);
-                            
-                            setFormData(prev => ({...prev, media_videos: completedTasks.length.toString()}));
-                            if (completedTasks.length > 0) {
-                              alert(`✅ Tìm thấy ${completedTasks.length} video hoàn thành!`);
-                            } else {
-                              alert('⚠️ Không tìm thấy video hoàn thành trong tháng này. Kiểm tra Console (F12) để xem chi tiết.');
-                            }
-                          }}
-                          className="px-3 py-1 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-xs font-medium"
-                        >
-                          🔄 Lấy từ hệ thống
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Số video</label>
-                          <input type="number" value={formData.media_videos} onChange={(e) => setFormData({...formData, media_videos: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-white" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Tiền/video</label>
-                          <input type="number" value={formData.media_per_video} onChange={(e) => setFormData({...formData, media_per_video: e.target.value})} placeholder="200000" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
-                          <input type="text" value={formData.media_note} onChange={(e) => setFormData({...formData, media_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                      </div>
-                      {/* Danh sách video hoàn thành */}
-                      {selectedEmployee && formData.month && (() => {
-                        const [year, monthNum] = formData.month.split('-');
-                        const startDate = `${year}-${monthNum}-01`;
-                        const endDate = `${year}-${monthNum}-31`;
-                        const completedTasks = tasksToUse.filter(t => {
-                          // So sánh linh hoạt
-                          const empName = (selectedEmployee.name || '').toLowerCase().trim();
-                          const empId = selectedEmployee.id;
-                          const taskAssignee = (t.assignee || '').toLowerCase().trim();
-                          
-                          const isAssigned = taskAssignee === empName || 
-                                             t.assignee === empId || 
-                                             t.assigned_to === empId ||
-                                             (t.assignee && t.assignee.toLowerCase && t.assignee.toLowerCase().includes(empName));
-                          
-                          const isDone = t.status === 'done' || t.status === 'completed' || t.status === 'Hoàn thành' || t.status === 'Hoàn Thành';
-                          const taskDate = t.completed_at || t.updated_at || t.createdAt || t.created_at;
-                          const inMonth = taskDate && taskDate >= startDate && taskDate <= endDate + 'T23:59:59';
-                          return isAssigned && isDone && inMonth;
-                        });
-                        if (completedTasks.length > 0) {
-                          return (
-                            <div className="mt-3 p-3 bg-white rounded-lg border border-pink-200">
-                              <div className="text-xs font-medium text-pink-800 mb-2">📋 Video hoàn thành trong tháng ({completedTasks.length}):</div>
-                              <div className="max-h-32 overflow-y-auto space-y-1">
-                                {completedTasks.map((t, idx) => (
-                                  <div key={t.id || idx} className="text-xs text-gray-600 flex justify-between">
-                                    <span>• {t.title || t.name || 'Video #' + (idx+1)}</span>
-                                    <span className="text-gray-400">{(t.completed_at || t.updated_at || t.createdAt) ? new Date(t.completed_at || t.updated_at || t.createdAt).toLocaleDateString('vi-VN') : ''}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        }
-                        return <div className="mt-2 text-xs text-gray-500">Chưa có video hoàn thành trong tháng này</div>;
-                      })()}
-                      {totals.mediaTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-pink-600">+{formatMoney(totals.mediaTotal)}</strong></div>}
-                    </div>
-
-                    {/* Kho */}
-                    <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-                      <h3 className="font-bold text-orange-900 mb-3">📦 Kho</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Số đơn</label>
-                          <input type="number" value={formData.kho_orders} onChange={(e) => setFormData({...formData, kho_orders: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Tiền/đơn</label>
-                          <input type="number" value={formData.kho_per_order} onChange={(e) => setFormData({...formData, kho_per_order: e.target.value})} placeholder="50000" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
-                          <input type="text" value={formData.kho_note} onChange={(e) => setFormData({...formData, kho_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                      </div>
-                      {totals.khoTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-orange-600">+{formatMoney(totals.khoTotal)}</strong></div>}
-                    </div>
-
-                    {/* Kỹ thuật */}
-                    <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4">
-                      <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-bold text-cyan-900">🔧 Kỹ thuật (200k/job)</h3>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const month = formData.month;
-                            if (!month || !selectedEmployee) return;
-                            const [year, monthNum] = month.split('-');
-                            const startDate = `${year}-${monthNum}-01`;
-                            const endDate = `${year}-${monthNum}-31`;
-                            const completedJobs = jobsToUse.filter(j => {
-                              // Kiểm tra technicians (array) hoặc assigned_to
-                              const techs = j.technicians || [];
-                              const isAssigned = techs.includes(selectedEmployee.id) || 
-                                                 techs.includes(selectedEmployee.name) ||
-                                                 j.assigned_to === selectedEmployee.id ||
-                                                 j.technician === selectedEmployee.name ||
-                                                 j.technician === selectedEmployee.id;
-                              // Kiểm tra status
-                              const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
-                              // Kiểm tra thời gian
-                              const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
-                              const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
-                              return isAssigned && isDone && inMonth;
-                            });
-                            setFormData(prev => ({...prev, kythuat_jobs: completedJobs.length.toString()}));
-                            if (completedJobs.length > 0) {
-                              alert(`✅ Tìm thấy ${completedJobs.length} job hoàn thành!`);
-                            } else {
-                              alert('⚠️ Không tìm thấy job hoàn thành trong tháng này');
-                            }
-                          }}
-                          className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-medium"
-                        >
-                          🔄 Lấy từ hệ thống
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Số job</label>
-                          <input type="number" value={formData.kythuat_jobs} onChange={(e) => setFormData({...formData, kythuat_jobs: e.target.value})} className="w-full px-3 py-2 border rounded-lg bg-white" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Tiền/job</label>
-                          <input type="number" value={formData.kythuat_per_job} onChange={(e) => setFormData({...formData, kythuat_per_job: e.target.value})} placeholder="200000" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
-                          <input type="text" value={formData.kythuat_note} onChange={(e) => setFormData({...formData, kythuat_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                      </div>
-                      {/* Danh sách job hoàn thành */}
-                      {selectedEmployee && formData.month && (() => {
-                        const [year, monthNum] = formData.month.split('-');
-                        const startDate = `${year}-${monthNum}-01`;
-                        const endDate = `${year}-${monthNum}-31`;
-                        const completedJobs = jobsToUse.filter(j => {
-                          const techs = j.technicians || [];
-                          const isAssigned = techs.includes(selectedEmployee.id) || 
-                                             techs.includes(selectedEmployee.name) ||
-                                             j.assigned_to === selectedEmployee.id ||
-                                             j.technician === selectedEmployee.name ||
-                                             j.technician === selectedEmployee.id;
-                          const isDone = j.status === 'completed' || j.status === 'done' || j.status === 'Hoàn thành';
-                          const jobDate = j.completed_at || j.completedAt || j.updated_at || j.scheduledDate || j.createdAt;
-                          const inMonth = jobDate && jobDate >= startDate && jobDate <= endDate + 'T23:59:59';
-                          return isAssigned && isDone && inMonth;
-                        });
-                        if (completedJobs.length > 0) {
-                          return (
-                            <div className="mt-3 p-3 bg-white rounded-lg border border-cyan-200">
-                              <div className="text-xs font-medium text-cyan-800 mb-2">📋 Job hoàn thành trong tháng ({completedJobs.length}):</div>
-                              <div className="max-h-32 overflow-y-auto space-y-1">
-                                {completedJobs.map((j, idx) => (
-                                  <div key={j.id || idx} className="text-xs text-gray-600 flex justify-between">
-                                    <span>• {j.title || j.customerName || 'Job #' + (idx+1)} {j.type ? `(${j.type})` : ''}</span>
-                                    <span className="text-gray-400">{(j.completed_at || j.completedAt || j.scheduledDate) ? new Date(j.completed_at || j.completedAt || j.scheduledDate).toLocaleDateString('vi-VN') : ''}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        }
-                        return <div className="mt-2 text-xs text-gray-500">Chưa có job hoàn thành trong tháng này</div>;
-                      })()}
-                      {totals.kythuatTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-cyan-600">+{formatMoney(totals.kythuatTotal)}</strong></div>}
-                    </div>
-
-                    {/* Sale */}
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                      <h3 className="font-bold text-green-900 mb-3">🛒 Sale</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Doanh thu</label>
-                          <input type="number" value={formData.sale_revenue} onChange={(e) => setFormData({...formData, sale_revenue: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">% Hoa hồng</label>
-                          <input type="number" value={formData.sale_commission} onChange={(e) => setFormData({...formData, sale_commission: e.target.value})} placeholder="5" className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">Ghi chú</label>
-                          <input type="text" value={formData.sale_note} onChange={(e) => setFormData({...formData, sale_note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                      </div>
-                      {totals.saleTotal > 0 && <div className="mt-2 text-sm">Thưởng: <strong className="text-green-600">+{formatMoney(totals.saleTotal)}</strong></div>}
-                    </div>
-
-                    {/* Bonus/Deduction */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                      <h3 className="font-bold text-gray-900 mb-3">± Thưởng / Khấu trừ</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-1">🎁 Thưởng</label>
-                          <input type="number" value={formData.bonus} onChange={(e) => setFormData({...formData, bonus: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">➖ Khấu trừ</label>
-                          <input type="number" value={formData.deduction} onChange={(e) => setFormData({...formData, deduction: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-1">📝 Ghi chú</label>
-                          <input type="text" value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} className="w-full px-3 py-2 border rounded-lg" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Total */}
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-5 text-white">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xl">💵 TỔNG LƯƠNG</span>
-                        <span className="text-3xl font-bold">{formatMoney(totals.grandTotal)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-4 border-t bg-gray-50 flex justify-between">
-                {createStep === 2 && <button onClick={() => setCreateStep(1)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">← Quay lại</button>}
-                <div className="flex gap-3 ml-auto">
-                  <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Hủy</button>
-                  {createStep === 2 && (
-                    <button onClick={handleSaveSalary} disabled={saving} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">
-                      {saving ? 'Đang lưu...' : '💾 Lưu'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ========== DETAIL MODAL - INLINE ========== */}
-        {selectedSalary && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="p-5 border-b bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-bold">{selectedSalary.employee_name}</h2>
-                  <p className="text-white/80 text-sm">Tháng {selectedSalary.month}</p>
-                </div>
-                <button onClick={() => setSelectedSalary(null)} className="text-2xl hover:bg-white/20 w-10 h-10 rounded-lg">×</button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                <div className="flex justify-between items-center">
-                  <span>Trạng thái:</span>
-                  {getStatusBadge(selectedSalary.status)}
-                </div>
-
-                <div className="bg-blue-50 rounded-xl p-4">
-                  <div className="flex justify-between">
-                    <span>Lương cơ bản ({selectedSalary.work_days}/26 ngày)</span>
-                    <span className="font-bold">{formatMoney(selectedSalary.actual_basic || 0)}</span>
-                  </div>
-                </div>
-
-                {selectedSalary.livestream_total > 0 && (
-                  <div className="bg-purple-50 rounded-xl p-4">
-                    <div className="flex justify-between">
-                      <span>🎥 Livestream ({formatMoney(selectedSalary.livestream_revenue)} × {selectedSalary.livestream_commission}%)</span>
-                      <span className="font-bold text-purple-600">+{formatMoney(selectedSalary.livestream_total)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {selectedSalary.media_total > 0 && (
-                  <div className="bg-pink-50 rounded-xl p-4">
-                    <div className="flex justify-between">
-                      <span>🎬 Media ({selectedSalary.media_videos} video × {formatMoney(selectedSalary.media_per_video)})</span>
-                      <span className="font-bold text-pink-600">+{formatMoney(selectedSalary.media_total)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {selectedSalary.kho_total > 0 && (
-                  <div className="bg-orange-50 rounded-xl p-4">
-                    <div className="flex justify-between">
-                      <span>📦 Kho ({selectedSalary.kho_orders} đơn × {formatMoney(selectedSalary.kho_per_order)})</span>
-                      <span className="font-bold text-orange-600">+{formatMoney(selectedSalary.kho_total)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {selectedSalary.kythuat_total > 0 && (
-                  <div className="bg-cyan-50 rounded-xl p-4">
-                    <div className="flex justify-between">
-                      <span>🔧 Kỹ thuật ({selectedSalary.kythuat_jobs} job × {formatMoney(selectedSalary.kythuat_per_job)})</span>
-                      <span className="font-bold text-cyan-600">+{formatMoney(selectedSalary.kythuat_total)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {selectedSalary.sale_total > 0 && (
-                  <div className="bg-green-50 rounded-xl p-4">
-                    <div className="flex justify-between">
-                      <span>🛒 Sale ({formatMoney(selectedSalary.sale_revenue)} × {selectedSalary.sale_commission}%)</span>
-                      <span className="font-bold text-green-600">+{formatMoney(selectedSalary.sale_total)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {(selectedSalary.bonus > 0 || selectedSalary.deduction > 0) && (
-                  <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                    {selectedSalary.bonus > 0 && <div className="flex justify-between text-green-600"><span>🎁 Thưởng</span><span>+{formatMoney(selectedSalary.bonus)}</span></div>}
-                    {selectedSalary.deduction > 0 && <div className="flex justify-between text-red-600"><span>➖ Khấu trừ</span><span>-{formatMoney(selectedSalary.deduction)}</span></div>}
-                  </div>
-                )}
-
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-5 text-white">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xl">💵 TỔNG</span>
-                    <span className="text-3xl font-bold">{formatMoney(selectedSalary.total_salary)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 border-t bg-gray-50 flex justify-between">
-                <div>
-                  {selectedSalary.status === 'draft' && (
-                    <button onClick={() => handleDeleteSalary(selectedSalary.id)} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">🗑️ Xóa</button>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  {selectedSalary.status === 'draft' && (
-                    <button onClick={() => handleStatusChange(selectedSalary, 'approved')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">✅ Duyệt</button>
-                  )}
-                  {selectedSalary.status === 'approved' && (
-                    <button onClick={() => handleStatusChange(selectedSalary, 'paid')} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">💰 Đã trả</button>
-                  )}
-                  <button onClick={() => setSelectedSalary(null)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Đóng</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   // ============ END SALARY MANAGEMENT ============
 
