@@ -9067,6 +9067,7 @@ export default function SimpleMarketingSystem() {
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [filterType, setFilterType] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [filterCreator, setFilterCreator] = useState('all'); // *** NEW: Filter theo người tạo ***
     const [searchText, setSearchText] = useState('');
     const [formType, setFormType] = useState('thu');
     const [formAmount, setFormAmount] = useState('');
@@ -9084,11 +9085,18 @@ export default function SimpleMarketingSystem() {
     const financeLevel = getPermissionLevel('finance');
     const canViewAllReceipts = financeLevel >= 2; // Level 2+ xem tất cả
     
+    // *** NEW: Lấy danh sách người tạo unique ***
+    const creatorsList = canViewAllReceipts 
+      ? [...new Set(receiptsPayments.map(r => r.created_by).filter(Boolean))].sort()
+      : [];
+    
     const filteredReceipts = receiptsPayments.filter(r => {
       // Level 1: chỉ xem phiếu mình tạo
       if (!canViewAllReceipts && r.created_by !== currentUser.name) return false;
       if (filterType !== 'all' && r.type !== filterType) return false;
       if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      // *** NEW: Filter theo người tạo ***
+      if (filterCreator !== 'all' && r.created_by !== filterCreator) return false;
       if (searchText && !r.description?.toLowerCase().includes(searchText.toLowerCase()) && !r.receipt_number?.toLowerCase().includes(searchText.toLowerCase())) return false;
       return true;
     });
@@ -9332,6 +9340,18 @@ export default function SimpleMarketingSystem() {
                 <option value="rejected">Từ chối</option>
               </select>
             </div>
+            {/* *** NEW: Filter theo người tạo - chỉ hiện khi có quyền xem tất cả *** */}
+            {canViewAllReceipts && creatorsList.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium mb-1">👤 Người tạo</label>
+                <select value={filterCreator} onChange={(e) => setFilterCreator(e.target.value)} className="px-3 py-2 border rounded-lg">
+                  <option value="all">Tất cả ({creatorsList.length} người)</option>
+                  {creatorsList.map(creator => (
+                    <option key={creator} value={creator}>{creator}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-1 min-w-[200px]">
               <label className="block text-sm font-medium mb-1">Tìm kiếm</label>
               <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Tìm theo mô tả..." className="w-full px-3 py-2 border rounded-lg" />
