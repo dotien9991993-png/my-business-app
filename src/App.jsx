@@ -10182,6 +10182,10 @@ export default function SimpleMarketingSystem() {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({});
+    
+    // *** FIX: Cache tasks và jobs khi modal mở để tránh bị reset khi realtime update ***
+    const [cachedTasks, setCachedTasks] = useState([]);
+    const [cachedJobs, setCachedJobs] = useState([]);
 
     // Phân quyền: Chỉ Admin mới thấy tất cả và tạo bảng lương
     const isAdmin = currentUser?.role === 'Admin' || currentUser?.role === 'admin';
@@ -10315,8 +10319,15 @@ export default function SimpleMarketingSystem() {
 
     const handleOpenCreate = () => {
       resetForm();
+      // *** FIX: Cache tasks và jobs khi mở modal để tránh bị reset ***
+      setCachedTasks([...(tasks || [])]);
+      setCachedJobs([...(technicalJobs || [])]);
       setShowCreateModal(true);
     };
+
+    // *** Sử dụng cachedTasks/cachedJobs khi modal đang mở ***
+    const tasksToUse = showCreateModal ? cachedTasks : (tasks || []);
+    const jobsToUse = showCreateModal ? cachedJobs : (technicalJobs || []);
 
     const handleSelectEmployee = (user) => {
       setSelectedEmployee(user);
@@ -10330,7 +10341,7 @@ export default function SimpleMarketingSystem() {
       const empName = (user.name || '').toLowerCase().trim();
       const empId = user.id;
       
-      const mediaCount = (tasks || []).filter(t => {
+      const mediaCount = tasksToUse.filter(t => {
         const taskAssignee = (t.assignee || '').toLowerCase().trim();
         const isAssigned = taskAssignee === empName || 
                            t.assignee === empId || 
@@ -10343,7 +10354,7 @@ export default function SimpleMarketingSystem() {
       }).length;
 
       // Count Technical jobs
-      const kythuatCount = (technicalJobs || []).filter(j => {
+      const kythuatCount = jobsToUse.filter(j => {
         const techs = j.technicians || [];
         const isAssigned = techs.includes(user.id) || techs.includes(user.name) || 
                            j.assigned_to === user.id || j.technician === user.name || j.technician === user.id;
@@ -10632,7 +10643,7 @@ export default function SimpleMarketingSystem() {
                                 const empName = (selectedEmployee.name || '').toLowerCase().trim();
                                 const empId = selectedEmployee.id;
                                 
-                                const mediaCount = (tasks || []).filter(t => {
+                                const mediaCount = tasksToUse.filter(t => {
                                   const taskAssignee = (t.assignee || '').toLowerCase().trim();
                                   const isAssigned = taskAssignee === empName || 
                                                      t.assignee === empId || 
@@ -10644,7 +10655,7 @@ export default function SimpleMarketingSystem() {
                                   return isAssigned && isDone && inMonth;
                                 }).length;
                                 
-                                const kythuatCount = (technicalJobs || []).filter(j => {
+                                const kythuatCount = jobsToUse.filter(j => {
                                   const techs = j.technicians || [];
                                   const isAssigned = techs.includes(selectedEmployee.id) || techs.includes(selectedEmployee.name) || 
                                                      j.assigned_to === selectedEmployee.id || j.technician === selectedEmployee.name || j.technician === selectedEmployee.id;
@@ -10716,10 +10727,10 @@ export default function SimpleMarketingSystem() {
                             console.log('=== DEBUG MEDIA ===');
                             console.log('Selected Employee:', selectedEmployee.name, 'ID:', selectedEmployee.id);
                             console.log('Month range:', startDate, 'to', endDate);
-                            console.log('Total tasks:', (tasks || []).length);
+                            console.log('Total tasks:', tasksToUse.length);
                             
                             // Log ALL tasks with status 'Hoàn Thành'
-                            const allDoneTasks = (tasks || []).filter(t => 
+                            const allDoneTasks = tasksToUse.filter(t => 
                               t.status === 'Hoàn Thành' || t.status === 'Hoàn thành' || t.status === 'done' || t.status === 'completed'
                             );
                             console.log('All completed tasks:', allDoneTasks.length);
@@ -10733,7 +10744,7 @@ export default function SimpleMarketingSystem() {
                               });
                             });
                             
-                            const completedTasks = (tasks || []).filter(t => {
+                            const completedTasks = tasksToUse.filter(t => {
                               // Kiểm tra assignee - LINH HOẠT hơn (so sánh không phân biệt hoa thường)
                               const empName = (selectedEmployee.name || '').toLowerCase().trim();
                               const empId = selectedEmployee.id;
@@ -10800,7 +10811,7 @@ export default function SimpleMarketingSystem() {
                         const [year, monthNum] = formData.month.split('-');
                         const startDate = `${year}-${monthNum}-01`;
                         const endDate = `${year}-${monthNum}-31`;
-                        const completedTasks = (tasks || []).filter(t => {
+                        const completedTasks = tasksToUse.filter(t => {
                           // So sánh linh hoạt
                           const empName = (selectedEmployee.name || '').toLowerCase().trim();
                           const empId = selectedEmployee.id;
@@ -10868,7 +10879,7 @@ export default function SimpleMarketingSystem() {
                             const [year, monthNum] = month.split('-');
                             const startDate = `${year}-${monthNum}-01`;
                             const endDate = `${year}-${monthNum}-31`;
-                            const completedJobs = (technicalJobs || []).filter(j => {
+                            const completedJobs = jobsToUse.filter(j => {
                               // Kiểm tra technicians (array) hoặc assigned_to
                               const techs = j.technicians || [];
                               const isAssigned = techs.includes(selectedEmployee.id) || 
@@ -10914,7 +10925,7 @@ export default function SimpleMarketingSystem() {
                         const [year, monthNum] = formData.month.split('-');
                         const startDate = `${year}-${monthNum}-01`;
                         const endDate = `${year}-${monthNum}-31`;
-                        const completedJobs = (technicalJobs || []).filter(j => {
+                        const completedJobs = jobsToUse.filter(j => {
                           const techs = j.technicians || [];
                           const isAssigned = techs.includes(selectedEmployee.id) || 
                                              techs.includes(selectedEmployee.name) ||
