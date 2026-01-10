@@ -181,16 +181,6 @@ export default function SimpleMarketingSystem() {
   const [taskCustomStartDate, setTaskCustomStartDate] = useState('');
   const [taskCustomEndDate, setTaskCustomEndDate] = useState('');
 
-  // TechnicalJobsView filter state
-  const [jobFilterCreator, setJobFilterCreator] = useState('all');
-  const [jobFilterTechnician, setJobFilterTechnician] = useState('all');
-  const [jobFilterStatus, setJobFilterStatus] = useState('all');
-  const [jobFilterMonth, setJobFilterMonth] = useState(new Date().getMonth() + 1);
-  const [jobFilterYear, setJobFilterYear] = useState(new Date().getFullYear());
-  const [jobFilterDateMode, setJobFilterDateMode] = useState('all'); // all, month, custom
-  const [jobCustomStartDate, setJobCustomStartDate] = useState('');
-  const [jobCustomEndDate, setJobCustomEndDate] = useState('');
-
   // Load tenant info on mount
   useEffect(() => {
     const loadTenant = async () => {
@@ -2250,45 +2240,26 @@ export default function SimpleMarketingSystem() {
 
       // Confirm khi chuyển sang status cuối
       if (newStatus === 'Hoàn thành') {
-        // *** FIX: Load lại job mới nhất từ database để có dữ liệu chính xác ***
-        let latestJob = selectedJob;
-        try {
-          const { data: freshJob, error: fetchError } = await supabase
-            .from('technical_jobs')
-            .select('*')
-            .eq('id', selectedJob.id)
-            .single();
-          
-          if (fetchError) {
-            console.error('Error fetching latest job:', fetchError);
-          } else if (freshJob) {
-            latestJob = freshJob;
-            console.log('Loaded latest job data:', latestJob);
-          }
-        } catch (err) {
-          console.error('Error loading latest job:', err);
-        }
-
-        const hasPayment = latestJob.customerPayment > 0;
-        const hasExpenses = (latestJob.expenses || []).length > 0;
-        const totalExp = (latestJob.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+        const hasPayment = selectedJob.customerPayment > 0;
+        const hasExpenses = (selectedJob.expenses || []).length > 0;
+        const totalExp = (selectedJob.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
         
         // Xây dựng thông báo
         let confirmMsg = `✅ Xác nhận hoàn thành công việc?\n\n`;
         
         if (hasPayment) {
-          confirmMsg += `💰 Thu của khách: ${formatMoney(latestJob.customerPayment)}\n`;
+          confirmMsg += `💰 Thu của khách: ${formatMoney(selectedJob.customerPayment)}\n`;
         }
         if (hasExpenses) {
           confirmMsg += `💸 Chi phí: ${formatMoney(totalExp)}\n`;
         }
         if (hasPayment && hasExpenses) {
-          confirmMsg += `📊 Còn lại: ${formatMoney(latestJob.customerPayment - totalExp)}\n`;
+          confirmMsg += `📊 Còn lại: ${formatMoney(selectedJob.customerPayment - totalExp)}\n`;
         }
         
         if (hasPayment || hasExpenses) {
           confirmMsg += `\n📝 Bạn có muốn TẠO PHIẾU TỰ ĐỘNG không?\n`;
-          if (hasPayment) confirmMsg += `• Phiếu thu: ${formatMoney(latestJob.customerPayment)}\n`;
+          if (hasPayment) confirmMsg += `• Phiếu thu: ${formatMoney(selectedJob.customerPayment)}\n`;
           if (hasExpenses) confirmMsg += `• Phiếu chi: ${formatMoney(totalExp)}\n`;
           confirmMsg += `\n• Nhấn OK → Tạo phiếu tự động\n• Nhấn Cancel → Không tạo phiếu`;
           
@@ -2308,11 +2279,11 @@ export default function SimpleMarketingSystem() {
             // Tạo phiếu nếu user đồng ý
             if (createReceipts) {
               if (hasPayment) {
-                const successThu = await createReceiptFromJob(latestJob);
+                const successThu = await createReceiptFromJob(selectedJob);
                 resultMsg += successThu ? '✓ Đã tạo phiếu thu\n' : '⚠️ Lỗi tạo phiếu thu\n';
               }
               if (hasExpenses) {
-                const successChi = await createExpenseReceiptsFromJob(latestJob);
+                const successChi = await createExpenseReceiptsFromJob(selectedJob);
                 resultMsg += successChi ? '✓ Đã tạo phiếu chi\n' : '⚠️ Lỗi tạo phiếu chi\n';
               }
             }
@@ -4552,10 +4523,6 @@ export default function SimpleMarketingSystem() {
   };
 
   const TechnicalJobsView = () => {
-    // Lấy danh sách người tạo và kỹ thuật viên unique
-    const creators = [...new Set(technicalJobs.map(j => j.createdBy).filter(Boolean))];
-    const technicians = [...new Set(technicalJobs.flatMap(j => j.technicians || []))];
-    
     const visibleJobs = technicalJobs.filter(job => {
       // Admin và Manager thấy tất cả
       if (currentUser.role === 'Admin' || currentUser.role === 'admin' || currentUser.role === 'Manager') return true;
@@ -4573,34 +4540,6 @@ export default function SimpleMarketingSystem() {
       return false;
     });
 
-    // Áp dụng filter
-    const filteredJobs = visibleJobs.filter(job => {
-      // Filter theo người tạo
-      if (jobFilterCreator !== 'all' && job.createdBy !== jobFilterCreator) return false;
-      
-      // Filter theo kỹ thuật viên
-      if (jobFilterTechnician !== 'all') {
-        if (!job.technicians || !job.technicians.includes(jobFilterTechnician)) return false;
-      }
-      
-      // Filter theo trạng thái
-      if (jobFilterStatus !== 'all' && job.status !== jobFilterStatus) return false;
-      
-      // Filter theo ngày
-      if (jobFilterDateMode === 'month') {
-        const jobDate = new Date(job.scheduledDate);
-        if (jobDate.getMonth() + 1 !== jobFilterMonth || jobDate.getFullYear() !== jobFilterYear) return false;
-      } else if (jobFilterDateMode === 'custom' && jobCustomStartDate && jobCustomEndDate) {
-        const jobDate = new Date(job.scheduledDate);
-        const start = new Date(jobCustomStartDate);
-        const end = new Date(jobCustomEndDate);
-        end.setDate(end.getDate() + 1);
-        if (jobDate < start || jobDate >= end) return false;
-      }
-      
-      return true;
-    });
-
     const getStatusColor = (status) => {
       const colors = {
         'Chờ XN': 'bg-yellow-100 text-yellow-800',
@@ -4611,188 +4550,33 @@ export default function SimpleMarketingSystem() {
       return colors[status] || 'bg-gray-100';
     };
 
-    // Reset tất cả filter
-    const resetFilters = () => {
-      setJobFilterCreator('all');
-      setJobFilterTechnician('all');
-      setJobFilterStatus('all');
-      setJobFilterDateMode('all');
-    };
-
-    const hasActiveFilter = jobFilterCreator !== 'all' || jobFilterTechnician !== 'all' || 
-                           jobFilterStatus !== 'all' || jobFilterDateMode !== 'all';
-
     return (
-      <div className="p-4 md:p-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <h2 className="text-xl md:text-2xl font-bold">🔧 Công Việc Kỹ Thuật</h2>
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">🔧 Công Việc Kỹ Thuật</h2>
           <button
             onClick={() => setShowCreateJobModal(true)}
-            className="px-4 md:px-6 py-2 md:py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium"
+            className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium"
           >
             ➕ Tạo Công Việc
           </button>
         </div>
 
-        {/* Filter Section */}
-        <div className="bg-white p-4 rounded-xl shadow mb-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-gray-700">🔍 Bộ lọc</h3>
-            {hasActiveFilter && (
-              <button
-                onClick={resetFilters}
-                className="text-sm text-red-600 hover:text-red-700"
-              >
-                ✕ Xóa bộ lọc
-              </button>
-            )}
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Filter người tạo */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">📝 Người tạo</label>
-              <select
-                value={jobFilterCreator}
-                onChange={(e) => setJobFilterCreator(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                {creators.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Filter kỹ thuật viên */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">🔧 Kỹ thuật viên</label>
-              <select
-                value={jobFilterTechnician}
-                onChange={(e) => setJobFilterTechnician(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                {technicians.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Filter trạng thái */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">📊 Trạng thái</label>
-              <select
-                value={jobFilterStatus}
-                onChange={(e) => setJobFilterStatus(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                <option value="Chờ XN">Chờ XN</option>
-                <option value="Đang làm">Đang làm</option>
-                <option value="Hoàn thành">Hoàn thành</option>
-                <option value="Hủy">Hủy</option>
-              </select>
-            </div>
-
-            {/* Filter thời gian */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">📅 Thời gian</label>
-              <select
-                value={jobFilterDateMode}
-                onChange={(e) => setJobFilterDateMode(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                <option value="month">Theo tháng</option>
-                <option value="custom">Tùy chỉnh</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Filter theo tháng */}
-          {jobFilterDateMode === 'month' && (
-            <div className="flex gap-4 pt-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Tháng</label>
-                <select
-                  value={jobFilterMonth}
-                  onChange={(e) => setJobFilterMonth(parseInt(e.target.value))}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                >
-                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
-                    <option key={m} value={m}>Tháng {m}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Năm</label>
-                <select
-                  value={jobFilterYear}
-                  onChange={(e) => setJobFilterYear(parseInt(e.target.value))}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                >
-                  {[2024, 2025, 2026, 2027].map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Filter tùy chỉnh */}
-          {jobFilterDateMode === 'custom' && (
-            <div className="flex gap-4 pt-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Từ ngày</label>
-                <input
-                  type="date"
-                  value={jobCustomStartDate}
-                  onChange={(e) => setJobCustomStartDate(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Đến ngày</label>
-                <input
-                  type="date"
-                  value={jobCustomEndDate}
-                  onChange={(e) => setJobCustomEndDate(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Hiển thị số kết quả */}
-          <div className="text-sm text-gray-500 pt-2 border-t">
-            Hiển thị <span className="font-semibold text-orange-600">{filteredJobs.length}</span> / {visibleJobs.length} công việc
-          </div>
-        </div>
-
         <div className="grid gap-4">
-          {filteredJobs.length === 0 ? (
+          {visibleJobs.length === 0 ? (
             <div className="bg-white p-12 rounded-xl text-center text-gray-500">
               <div className="text-6xl mb-4">🔧</div>
-              <div className="text-xl">Không có công việc nào phù hợp</div>
-              {hasActiveFilter && (
-                <button
-                  onClick={resetFilters}
-                  className="mt-4 text-orange-600 hover:text-orange-700"
-                >
-                  Xóa bộ lọc để xem tất cả
-                </button>
-              )}
+              <div className="text-xl">Chưa có công việc nào</div>
             </div>
           ) : (
-            filteredJobs.map(job => (
+            visibleJobs.map(job => (
               <div
                 key={job.id}
                 onClick={() => {
                   setSelectedJob(job);
                   setShowJobModal(true);
                 }}
-                className="bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer border-l-4 border-orange-500"
+                className="bg-white p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer border-l-4 border-orange-500"
               >
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1">
