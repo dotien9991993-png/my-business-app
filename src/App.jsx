@@ -5741,7 +5741,10 @@ export default function SimpleMarketingSystem() {
           {/* Title & Customer */}
           <div 
             className="font-semibold text-gray-800 text-sm cursor-pointer hover:text-blue-600 mb-1"
-            onClick={() => setSelectedJob(job)}
+            onClick={() => {
+              setSelectedJob(job);
+              setShowJobModal(true);
+            }}
           >
             {job.title}
           </div>
@@ -5770,7 +5773,10 @@ export default function SimpleMarketingSystem() {
               🗺️ Chỉ đường
             </button>
             <button
-              onClick={() => setSelectedJob(job)}
+              onClick={() => {
+                setSelectedJob(job);
+                setShowJobModal(true);
+              }}
               className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium"
             >
               Chi tiết
@@ -6061,155 +6067,145 @@ export default function SimpleMarketingSystem() {
     const hasActiveFilter = jobFilterCreator !== 'all' || jobFilterTechnician !== 'all' || 
                            jobFilterStatus !== 'all' || jobFilterDateMode !== 'all';
 
+    const [showFilters, setShowFilters] = useState(false);
+    
     return (
-      <div className="p-4 md:p-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <h2 className="text-xl md:text-2xl font-bold">🔧 Công Việc Kỹ Thuật</h2>
+      <div className="p-3 md:p-6">
+        <div className="flex justify-between items-center gap-2 mb-3">
+          <h2 className="text-lg md:text-xl font-bold">🔧 Công Việc</h2>
           <button
             onClick={() => setShowCreateJobModal(true)}
-            className="px-4 md:px-6 py-2 md:py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium"
+            className="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium text-sm"
           >
-            ➕ Tạo Công Việc
+            ➕ Tạo mới
           </button>
         </div>
 
-        {/* Filter Section */}
-        <div className="bg-white p-4 rounded-xl shadow mb-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-gray-700">🔍 Bộ lọc</h3>
-            {hasActiveFilter && (
-              <button
-                onClick={resetFilters}
-                className="text-sm text-red-600 hover:text-red-700"
-              >
-                ✕ Xóa bộ lọc
-              </button>
-            )}
+        {/* Filter Section - Compact */}
+        <div className="bg-white rounded-lg shadow mb-3">
+          {/* Filter Header - Always visible */}
+          <div 
+            className="flex items-center justify-between p-2 cursor-pointer"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <div className="flex items-center gap-2 text-sm">
+              <span>🔍</span>
+              <span className="font-medium">Lọc</span>
+              <span className="text-gray-500">({filteredJobs.length}/{visibleJobs.length})</span>
+              {hasActiveFilter && (
+                <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded text-xs">Đang lọc</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {hasActiveFilter && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); resetFilters(); }}
+                  className="text-xs text-red-600 hover:text-red-700"
+                >
+                  ✕ Xóa
+                </button>
+              )}
+              <span className="text-gray-400">{showFilters ? '▲' : '▼'}</span>
+            </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Filter người tạo */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">📝 Người tạo</label>
-              <select
-                value={jobFilterCreator}
-                onChange={(e) => setJobFilterCreator(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                {creators.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Filter kỹ thuật viên */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">🔧 Kỹ thuật viên</label>
-              <select
-                value={jobFilterTechnician}
-                onChange={(e) => setJobFilterTechnician(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                {technicians.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Filter trạng thái */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">📊 Trạng thái</label>
-              <select
-                value={jobFilterStatus}
-                onChange={(e) => setJobFilterStatus(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                <option value="Chờ XN">Chờ XN</option>
-                <option value="Đang làm">Đang làm</option>
-                <option value="Hoàn thành">Hoàn thành</option>
-                <option value="Hủy">Hủy</option>
-              </select>
-            </div>
-
-            {/* Filter thời gian */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">📅 Thời gian</label>
-              <select
-                value={jobFilterDateMode}
-                onChange={(e) => setJobFilterDateMode(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="all">Tất cả</option>
-                <option value="month">Theo tháng</option>
-                <option value="custom">Tùy chỉnh</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Filter theo tháng */}
-          {jobFilterDateMode === 'month' && (
-            <div className="flex gap-4 pt-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Tháng</label>
+          {/* Filter Content - Collapsible */}
+          {showFilters && (
+            <div className="p-2 pt-0 border-t space-y-2">
+              {/* Row 1: 4 filters inline on desktop, 2x2 on mobile */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <select
-                  value={jobFilterMonth}
-                  onChange={(e) => setJobFilterMonth(parseInt(e.target.value))}
-                  className="px-3 py-2 border rounded-lg text-sm"
+                  value={jobFilterCreator}
+                  onChange={(e) => setJobFilterCreator(e.target.value)}
+                  className="px-2 py-1.5 border rounded text-xs"
                 >
-                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
-                    <option key={m} value={m}>Tháng {m}</option>
+                  <option value="all">👤 Người tạo</option>
+                  {creators.map(c => (
+                    <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Năm</label>
+
                 <select
-                  value={jobFilterYear}
-                  onChange={(e) => setJobFilterYear(parseInt(e.target.value))}
-                  className="px-3 py-2 border rounded-lg text-sm"
+                  value={jobFilterTechnician}
+                  onChange={(e) => setJobFilterTechnician(e.target.value)}
+                  className="px-2 py-1.5 border rounded text-xs"
                 >
-                  {[2024, 2025, 2026, 2027].map(y => (
-                    <option key={y} value={y}>{y}</option>
+                  <option value="all">🔧 KTV</option>
+                  {technicians.map(t => (
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
+
+                <select
+                  value={jobFilterStatus}
+                  onChange={(e) => setJobFilterStatus(e.target.value)}
+                  className="px-2 py-1.5 border rounded text-xs"
+                >
+                  <option value="all">📊 Trạng thái</option>
+                  <option value="Chờ XN">Chờ XN</option>
+                  <option value="Đang làm">Đang làm</option>
+                  <option value="Hoàn thành">Hoàn thành</option>
+                  <option value="Hủy">Hủy</option>
+                </select>
+
+                <select
+                  value={jobFilterDateMode}
+                  onChange={(e) => setJobFilterDateMode(e.target.value)}
+                  className="px-2 py-1.5 border rounded text-xs"
+                >
+                  <option value="all">📅 Thời gian</option>
+                  <option value="month">Theo tháng</option>
+                  <option value="custom">Tùy chỉnh</option>
+                </select>
               </div>
+
+              {/* Row 2: Date filters if needed */}
+              {jobFilterDateMode === 'month' && (
+                <div className="flex gap-2">
+                  <select
+                    value={jobFilterMonth}
+                    onChange={(e) => setJobFilterMonth(parseInt(e.target.value))}
+                    className="flex-1 px-2 py-1.5 border rounded text-xs"
+                  >
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                      <option key={m} value={m}>Tháng {m}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={jobFilterYear}
+                    onChange={(e) => setJobFilterYear(parseInt(e.target.value))}
+                    className="flex-1 px-2 py-1.5 border rounded text-xs"
+                  >
+                    {[2024, 2025, 2026, 2027].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {jobFilterDateMode === 'custom' && (
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={jobCustomStartDate}
+                    onChange={(e) => setJobCustomStartDate(e.target.value)}
+                    className="flex-1 px-2 py-1.5 border rounded text-xs"
+                    placeholder="Từ"
+                  />
+                  <input
+                    type="date"
+                    value={jobCustomEndDate}
+                    onChange={(e) => setJobCustomEndDate(e.target.value)}
+                    className="flex-1 px-2 py-1.5 border rounded text-xs"
+                    placeholder="Đến"
+                  />
+                </div>
+              )}
             </div>
           )}
-
-          {/* Filter tùy chỉnh */}
-          {jobFilterDateMode === 'custom' && (
-            <div className="flex gap-4 pt-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Từ ngày</label>
-                <input
-                  type="date"
-                  value={jobCustomStartDate}
-                  onChange={(e) => setJobCustomStartDate(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Đến ngày</label>
-                <input
-                  type="date"
-                  value={jobCustomEndDate}
-                  onChange={(e) => setJobCustomEndDate(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Hiển thị số kết quả */}
-          <div className="text-sm text-gray-500 pt-2 border-t">
-            Hiển thị <span className="font-semibold text-orange-600">{filteredJobs.length}</span> / {visibleJobs.length} công việc
-          </div>
         </div>
 
-        <div className="grid gap-4">
+        <div className="grid gap-3">
           {filteredJobs.length === 0 ? (
             <div className="bg-white p-12 rounded-xl text-center text-gray-500">
               <div className="text-6xl mb-4">🔧</div>
