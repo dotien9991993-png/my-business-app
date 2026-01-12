@@ -5708,124 +5708,72 @@ export default function SimpleMarketingSystem() {
       return styles[urgency] || styles.normal;
     };
 
-    // Job Card Component
+    // Job Card Component - Compact version
     const TodayJobCard = ({ job }) => {
       const style = getUrgencyStyles(job.urgency);
       const isOverdue = job.category === 'overdue';
-      const isUrgent = job.category === 'urgent';
 
       return (
-        <div className={`${style.card} rounded-xl p-4 transition-all duration-300 hover:scale-[1.01]`}>
-          {/* Header */}
-          <div className="flex items-start justify-between mb-3">
+        <div className={`${style.card} rounded-lg p-3 transition-all`}>
+          {/* Header row */}
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">{style.icon}</span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-lg">{job.scheduledTime || '09:00'}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.badge}`}>
-                    {job.type || 'Lắp đặt'}
-                  </span>
-                </div>
-                {job.countdown !== null && job.category !== 'completed' && (
-                  <div className={`text-sm font-medium ${style.text}`}>
-                    {isOverdue ? (
-                      <span className="flex items-center gap-1">
-                        <span className="animate-pulse">●</span>
-                        Quá hạn {formatCountdown(job.countdown)}
-                      </span>
-                    ) : (
-                      <span>Còn {formatCountdown(job.countdown)}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-1">
-              {(isOverdue || isUrgent) && !dismissedAlerts.includes(job.id) && (
-                <button
-                  onClick={() => dismissAlert(job.id)}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                  title="Tắt nhắc nhở"
-                >
-                  🔕
-                </button>
+              <span className="text-lg">{style.icon}</span>
+              <span className="font-bold">{job.scheduledTime || '09:00'}</span>
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${style.badge}`}>
+                {job.type || 'Lắp đặt'}
+              </span>
+              {job.countdown !== null && job.category !== 'completed' && (
+                <span className={`text-xs font-medium ${style.text}`}>
+                  {isOverdue ? `(-${formatCountdown(job.countdown)})` : `(${formatCountdown(job.countdown)})`}
+                </span>
               )}
             </div>
-          </div>
-
-          {/* Tiêu đề */}
-          <h3 
-            className="font-bold text-gray-800 mb-2 cursor-pointer hover:text-blue-600"
-            onClick={() => setSelectedJob(job)}
-          >
-            {job.title}
-          </h3>
-
-          {/* Thông tin */}
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 text-gray-700">
-              <span className="text-blue-500">👤</span>
-              <span className="font-medium">{job.customerName}</span>
-              <button
-                onClick={() => callCustomer(job.customerPhone)}
-                className="ml-auto flex items-center gap-1 px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-full transition-colors"
-              >
-                📞 {job.customerPhone}
-              </button>
-            </div>
-            
-            <div className="flex items-start gap-2 text-gray-600">
-              <span className="text-red-500 mt-0.5">📍</span>
-              <span className="flex-1">{job.address}</span>
-            </div>
-
-            <div className="flex items-center gap-2 text-purple-600">
-              <span>🔧</span>
-              <span className="font-medium">
-                {job.technicians && job.technicians.length > 0 
-                  ? job.technicians.join(', ') 
-                  : 'Chưa phân công'}
-              </span>
-            </div>
-
-            {job.customerPayment > 0 && (
-              <div className="flex items-center gap-2 bg-green-100 rounded-lg p-2 mt-2">
-                <span className="text-xl">💰</span>
-                <div>
-                  <div className="text-xs text-green-600">Thu khách</div>
-                  <div className="font-bold text-green-700">{formatMoney(job.customerPayment)}</div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Nút Google Maps - To và rõ ràng */}
-          <button
-            onClick={() => openNavigation(job)}
-            className="w-full mt-3 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 shadow-md"
-          >
-            <span className="text-xl">🗺️</span>
-            <span>Mở Google Maps - Chỉ đường</span>
-          </button>
-
-          {/* Footer */}
-          <div className="mt-3 pt-3 border-t flex items-center justify-between">
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
               job.status === 'Hoàn thành' ? 'bg-green-100 text-green-700' :
               job.status === 'Đang làm' ? 'bg-blue-100 text-blue-700' :
-              job.status === 'Chờ XN' ? 'bg-yellow-100 text-yellow-700' :
-              'bg-gray-100 text-gray-700'
+              'bg-yellow-100 text-yellow-700'
             }`}>
               {job.status || 'Chờ XN'}
             </span>
-            
+          </div>
+
+          {/* Title & Customer */}
+          <div 
+            className="font-semibold text-gray-800 text-sm cursor-pointer hover:text-blue-600 mb-1"
+            onClick={() => setSelectedJob(job)}
+          >
+            {job.title}
+          </div>
+          
+          <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
+            <span>👤 {job.customerName}</span>
+            <a href={`tel:${job.customerPhone}`} className="text-green-600 font-medium">📞 {job.customerPhone}</a>
+          </div>
+          
+          <div className="text-xs text-gray-500 mb-2 line-clamp-1">📍 {job.address}</div>
+
+          {/* KTV & Payment */}
+          <div className="flex items-center justify-between text-xs mb-2">
+            <span className="text-purple-600">🔧 {job.technicians?.join(', ') || 'Chưa phân công'}</span>
+            {job.customerPayment > 0 && (
+              <span className="font-bold text-green-600">💰 {formatMoney(job.customerPayment)}</span>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => openNavigation(job)}
+              className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1"
+            >
+              🗺️ Chỉ đường
+            </button>
             <button
               onClick={() => setSelectedJob(job)}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium"
             >
-              Xem chi tiết →
+              Chi tiết
             </button>
           </div>
         </div>
@@ -5852,95 +5800,85 @@ export default function SimpleMarketingSystem() {
 
     // Main render
     return (
-      <div className="p-4 md:p-6 space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-2xl p-6 text-white shadow-xl">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <div className="text-sm opacity-80 mb-1">
-                {currentTime.toLocaleDateString('vi-VN', { 
-                  weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
-                })}
-              </div>
-              <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-3">
-                <span>📅</span>
-                Lịch Công Việc Hôm Nay
-              </h2>
-              <div className="text-4xl font-mono font-bold mt-2">
+      <div className="p-3 md:p-6 space-y-3 md:space-y-4">
+        {/* Header - Thu gọn */}
+        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-xl p-3 md:p-4 text-white shadow-lg">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl md:text-3xl font-mono font-bold">
                 {currentTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+              <div className="hidden md:block">
+                <div className="text-sm opacity-80">
+                  {currentTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'short' })}
+                </div>
+                <div className="font-semibold">Lịch Hôm Nay</div>
               </div>
             </div>
             
             <button
               onClick={() => setAudioEnabled(!audioEnabled)}
-              className={`px-4 py-2 rounded-xl font-medium transition-all ${
-                audioEnabled 
-                  ? 'bg-white/20 hover:bg-white/30 text-white' 
-                  : 'bg-red-500/50 hover:bg-red-500/70 text-white'
+              className={`p-2 rounded-lg text-sm transition-all ${
+                audioEnabled ? 'bg-white/20' : 'bg-red-500/50'
               }`}
             >
-              {audioEnabled ? '🔔 Đang bật thông báo' : '🔕 Đã tắt thông báo'}
+              {audioEnabled ? '🔔' : '🔕'}
             </button>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
-          <div className="bg-white rounded-xl p-3 md:p-4 shadow-md border-l-4 border-indigo-500">
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">{stats.total}</div>
-            <div className="text-xs md:text-sm text-gray-600">Tổng công việc</div>
+        {/* Stats - Thu gọn thành 1 dòng */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex-shrink-0 bg-white rounded-lg px-3 py-2 shadow border-l-3 border-indigo-500 flex items-center gap-2">
+            <span className="text-lg md:text-xl font-bold text-indigo-600">{stats.total}</span>
+            <span className="text-xs text-gray-500">Tổng</span>
           </div>
           
           {stats.overdue > 0 && (
-            <div className="bg-red-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-red-500 animate-pulse">
-              <div className="text-2xl md:text-3xl font-bold text-red-600">{stats.overdue}</div>
-              <div className="text-xs md:text-sm text-red-600 font-medium">🚨 Quá hạn</div>
+            <div className="flex-shrink-0 bg-red-50 rounded-lg px-3 py-2 shadow border-l-3 border-red-500 flex items-center gap-2 animate-pulse">
+              <span className="text-lg md:text-xl font-bold text-red-600">{stats.overdue}</span>
+              <span className="text-xs text-red-600">🚨 Trễ</span>
             </div>
           )}
           
           {stats.urgent > 0 && (
-            <div className="bg-orange-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-orange-500">
-              <div className="text-2xl md:text-3xl font-bold text-orange-600">{stats.urgent}</div>
-              <div className="text-xs md:text-sm text-orange-600 font-medium">⚡ Sắp đến giờ</div>
+            <div className="flex-shrink-0 bg-orange-50 rounded-lg px-3 py-2 shadow border-l-3 border-orange-500 flex items-center gap-2">
+              <span className="text-lg md:text-xl font-bold text-orange-600">{stats.urgent}</span>
+              <span className="text-xs text-orange-600">⚡ Gấp</span>
             </div>
           )}
           
           {stats.soon > 0 && (
-            <div className="bg-amber-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-amber-500">
-              <div className="text-2xl md:text-3xl font-bold text-amber-600">{stats.soon}</div>
-              <div className="text-xs md:text-sm text-amber-600">⏰ Trong 2h</div>
+            <div className="flex-shrink-0 bg-amber-50 rounded-lg px-3 py-2 shadow border-l-3 border-amber-500 flex items-center gap-2">
+              <span className="text-lg md:text-xl font-bold text-amber-600">{stats.soon}</span>
+              <span className="text-xs text-amber-600">⏰ 2h</span>
             </div>
           )}
           
-          <div className="bg-blue-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-blue-500">
-            <div className="text-2xl md:text-3xl font-bold text-blue-600">{stats.upcoming}</div>
-            <div className="text-xs md:text-sm text-blue-600">📋 Còn lại</div>
+          <div className="flex-shrink-0 bg-blue-50 rounded-lg px-3 py-2 shadow border-l-3 border-blue-500 flex items-center gap-2">
+            <span className="text-lg md:text-xl font-bold text-blue-600">{stats.upcoming}</span>
+            <span className="text-xs text-blue-600">📋 Chờ</span>
           </div>
           
-          <div className="bg-green-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-green-500">
-            <div className="text-2xl md:text-3xl font-bold text-green-600">{stats.completed}</div>
-            <div className="text-xs md:text-sm text-green-600">✅ Hoàn thành</div>
+          <div className="flex-shrink-0 bg-green-50 rounded-lg px-3 py-2 shadow border-l-3 border-green-500 flex items-center gap-2">
+            <span className="text-lg md:text-xl font-bold text-green-600">{stats.completed}</span>
+            <span className="text-xs text-green-600">✅ Xong</span>
           </div>
         </div>
 
-        {/* Doanh thu */}
+        {/* Doanh thu - Thu gọn */}
         {stats.totalRevenue > 0 && (
-          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 text-white shadow-lg">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">💰</span>
-              <div>
-                <div className="text-sm opacity-80">Doanh thu dự kiến hôm nay</div>
-                <div className="text-2xl font-bold">{formatMoney(stats.totalRevenue)}</div>
-              </div>
-            </div>
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg px-3 py-2 text-white shadow flex items-center justify-between">
+            <span className="text-sm">💰 Doanh thu dự kiến:</span>
+            <span className="font-bold">{formatMoney(stats.totalRevenue)}</span>
           </div>
         )}
 
         {/* Công việc quá hạn */}
         {stats.overdue > 0 && (
-          <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4">
-            <h3 className="text-lg font-bold text-red-700 mb-4">🚨 CÔNG VIỆC QUÁ HẠN ({stats.overdue})</h3>
-            <div className="space-y-4">
+          <div className="bg-red-50 border border-red-300 rounded-xl p-3">
+            <h3 className="text-sm font-bold text-red-700 mb-2">🚨 QUÁ HẠN ({stats.overdue})</h3>
+            <div className="space-y-2">
               {categorizedJobs.filter(j => j.category === 'overdue').map(job => (
                 <TodayJobCard key={job.id} job={job} />
               ))}
@@ -5950,9 +5888,9 @@ export default function SimpleMarketingSystem() {
 
         {/* Công việc sắp đến giờ */}
         {stats.urgent > 0 && (
-          <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4">
-            <h3 className="text-lg font-bold text-orange-700 mb-4">⚡ SẮP ĐẾN GIỜ - Trong 30 phút ({stats.urgent})</h3>
-            <div className="space-y-4">
+          <div className="bg-orange-50 border border-orange-300 rounded-xl p-3">
+            <h3 className="text-sm font-bold text-orange-700 mb-2">⚡ SẮP ĐẾN ({stats.urgent})</h3>
+            <div className="space-y-2">
               {categorizedJobs.filter(j => j.category === 'urgent').map(job => (
                 <TodayJobCard key={job.id} job={job} />
               ))}
@@ -5963,8 +5901,8 @@ export default function SimpleMarketingSystem() {
         {/* Trong 2 giờ tới */}
         {stats.soon > 0 && (
           <div>
-            <h3 className="text-lg font-bold text-amber-700 mb-4">⏰ Trong 2 giờ tới ({stats.soon})</h3>
-            <div className="space-y-4">
+            <h3 className="text-sm font-bold text-amber-700 mb-2">⏰ Trong 2h ({stats.soon})</h3>
+            <div className="space-y-2">
               {categorizedJobs.filter(j => j.category === 'soon').map(job => (
                 <TodayJobCard key={job.id} job={job} />
               ))}
@@ -5975,8 +5913,8 @@ export default function SimpleMarketingSystem() {
         {/* Còn lại */}
         {stats.upcoming > 0 && (
           <div>
-            <h3 className="text-lg font-bold text-blue-700 mb-4">📋 Công việc còn lại ({stats.upcoming})</h3>
-            <div className="space-y-4">
+            <h3 className="text-sm font-bold text-blue-700 mb-2">📋 Còn lại ({stats.upcoming})</h3>
+            <div className="space-y-2">
               {categorizedJobs.filter(j => j.category === 'upcoming').map(job => (
                 <TodayJobCard key={job.id} job={job} />
               ))}
@@ -5986,9 +5924,9 @@ export default function SimpleMarketingSystem() {
 
         {/* Đã hoàn thành */}
         {stats.completed > 0 && (
-          <div className="opacity-75">
-            <h3 className="text-lg font-bold text-green-700 mb-4">✅ Đã hoàn thành ({stats.completed})</h3>
-            <div className="space-y-4">
+          <div className="opacity-60">
+            <h3 className="text-sm font-bold text-green-700 mb-2">✅ Xong ({stats.completed})</h3>
+            <div className="space-y-2">
               {categorizedJobs.filter(j => j.category === 'completed').map(job => (
                 <TodayJobCard key={job.id} job={job} />
               ))}
@@ -5997,16 +5935,16 @@ export default function SimpleMarketingSystem() {
         )}
 
         {/* Lộ trình */}
-        <div className="bg-white rounded-2xl p-4 shadow-lg">
-          <h3 className="text-lg font-bold text-gray-700 mb-4">🗺️ Lộ Trình Hôm Nay</h3>
-          <div className="grid md:grid-cols-2 gap-3">
+        <div className="bg-white rounded-xl p-3 shadow">
+          <h3 className="text-sm font-bold text-gray-700 mb-2">🗺️ Lộ Trình</h3>
+          <div className="space-y-2">
             {categorizedJobs.filter(j => j.category !== 'completed').map((job, index) => (
               <div 
                 key={job.id}
-                className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
+                className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
                 onClick={() => openNavigation(job)}
               >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm ${
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-white text-xs ${
                   job.urgency === 'critical' ? 'bg-red-500' :
                   job.urgency === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
                 }`}>
@@ -6041,9 +5979,9 @@ export default function SimpleMarketingSystem() {
                   alert('Các công việc đều có link Google Maps riêng. Vui lòng mở từng công việc.');
                 }
               }}
-              className="w-full mt-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+              className="w-full mt-2 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2"
             >
-              🗺️ Mở lộ trình trên Google Maps
+              🗺️ Mở lộ trình Google Maps
             </button>
           )}
         </div>
