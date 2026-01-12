@@ -10825,15 +10825,13 @@ export default function SimpleMarketingSystem() {
           <div className="flex">
             {[
               { id: 'dashboard', icon: '📊', label: 'Tổng', highlight: true },
-              { id: 'receipts', icon: '📥', label: 'Thu' },
-              { id: 'payments', icon: '📤', label: 'Chi' },
-              { id: 'report', icon: '📈', label: 'B.Cáo' }
+              { id: 'receipts', icon: '🧾', label: 'Thu/Chi' },
+              { id: 'debts', icon: '💳', label: 'Công nợ' },
+              { id: 'reports', icon: '📈', label: 'B.Cáo' }
             ].map(tab => {
               // Đếm phiếu chờ duyệt
               const pendingCount = tab.id === 'receipts' 
-                ? (receiptsPayments || []).filter(r => r.type === 'thu' && r.status === 'pending').length
-                : tab.id === 'payments'
-                ? (receiptsPayments || []).filter(r => r.type === 'chi' && r.status === 'pending').length
+                ? (receiptsPayments || []).filter(r => r.status === 'pending').length
                 : 0;
               const isActive = activeTab === tab.id;
               return (
