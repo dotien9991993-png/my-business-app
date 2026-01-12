@@ -5620,11 +5620,18 @@ export default function SimpleMarketingSystem() {
       return { overdue, urgent, soon, upcoming, completed, total, totalRevenue };
     }, [categorizedJobs]);
 
-    // Mở Google Maps điều hướng
+    // Mở Google Maps điều hướng - Hỗ trợ cả link Google Maps và địa chỉ thường
     const openNavigation = (job) => {
-      const address = encodeURIComponent(job.address || '');
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${address}`;
-      window.open(url, '_blank');
+      const address = job.address || '';
+      
+      // Kiểm tra nếu là link Google Maps
+      if (address.includes('google.com/maps') || address.includes('goo.gl/maps') || address.includes('maps.app.goo.gl')) {
+        window.open(address, '_blank');
+      } else {
+        // Nếu là địa chỉ thường, tìm kiếm trên Google Maps
+        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+        window.open(url, '_blank');
+      }
     };
 
     // Gọi điện
@@ -5993,11 +6000,19 @@ export default function SimpleMarketingSystem() {
           {categorizedJobs.filter(j => j.category !== 'completed').length > 1 && (
             <button
               onClick={() => {
-                const addresses = categorizedJobs
-                  .filter(j => j.category !== 'completed')
-                  .map(j => encodeURIComponent(j.address))
-                  .join('/');
-                window.open(`https://www.google.com/maps/dir/${addresses}`, '_blank');
+                const jobs = categorizedJobs.filter(j => j.category !== 'completed');
+                // Lọc các job có địa chỉ thường (không phải link)
+                const normalAddresses = jobs
+                  .filter(j => !j.address?.includes('google.com/maps') && !j.address?.includes('goo.gl') && !j.address?.includes('maps.app.goo.gl'))
+                  .map(j => encodeURIComponent(j.address));
+                
+                if (normalAddresses.length > 1) {
+                  window.open(`https://www.google.com/maps/dir/${normalAddresses.join('/')}`, '_blank');
+                } else if (normalAddresses.length === 1) {
+                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${normalAddresses[0]}`, '_blank');
+                } else {
+                  alert('Các công việc đều có link Google Maps riêng. Vui lòng mở từng công việc.');
+                }
               }}
               className="w-full mt-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2"
             >
