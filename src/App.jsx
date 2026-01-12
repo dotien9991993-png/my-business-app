@@ -3023,21 +3023,26 @@ export default function SimpleMarketingSystem() {
       u.departments?.includes('technical') || u.role === 'Admin' || u.role === 'admin'
     );
 
-    // Load draft khi mở modal
+    // Kiểm tra và load draft khi modal mở (chỉ 1 lần)
     useEffect(() => {
-      if (selectedJob) {
+      if (selectedJob && !isEditing) {
         const draft = loadJobEditDraft(selectedJob.id);
         if (draft) {
-          setIsEditing(true);
-          setEditTitle(draft.title || '');
-          setEditCustomerName(draft.customerName || '');
-          setEditCustomerPhone(draft.customerPhone || '');
-          setEditAddress(draft.address || '');
-          setEditEquipment(draft.equipment || '');
-          setEditScheduledDate(draft.scheduledDate || '');
-          setEditScheduledTime(draft.scheduledTime || '');
-          setEditPayment(draft.payment || '');
-          setEditTechnicians(draft.technicians || []);
+          // Có draft cũ - hỏi user có muốn tiếp tục không
+          if (window.confirm('Có bản nháp chưa lưu. Tiếp tục chỉnh sửa?')) {
+            setIsEditing(true);
+            setEditTitle(draft.title || selectedJob.title || '');
+            setEditCustomerName(draft.customerName || selectedJob.customerName || '');
+            setEditCustomerPhone(draft.customerPhone || selectedJob.customerPhone || '');
+            setEditAddress(draft.address || selectedJob.address || '');
+            setEditEquipment(draft.equipment || (selectedJob.equipment ? selectedJob.equipment.join('\n') : ''));
+            setEditScheduledDate(draft.scheduledDate || selectedJob.scheduledDate || '');
+            setEditScheduledTime(draft.scheduledTime || selectedJob.scheduledTime || '');
+            setEditPayment(draft.payment || selectedJob.customerPayment || '');
+            setEditTechnicians(draft.technicians || selectedJob.technicians || []);
+          } else {
+            clearJobEditDraft();
+          }
         }
       }
     }, [selectedJob?.id]);
@@ -3603,33 +3608,34 @@ export default function SimpleMarketingSystem() {
                 {/* Kỹ thuật viên */}
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <h3 className="font-bold text-purple-800 mb-2">🔧 Kỹ thuật viên</h3>
+                  {editTechnicians.length > 0 && (
+                    <div className="mb-2 text-sm text-purple-700 bg-purple-100 px-2 py-1 rounded">
+                      ✓ Đã chọn: {editTechnicians.join(', ')}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
-                    {technicianUsers.map(user => {
-                      const isSelected = editTechnicians.includes(user.name);
-                      return (
-                        <button
-                          key={user.id}
-                          type="button"
-                          onClick={() => {
-                            if (isSelected) {
-                              setEditTechnicians(editTechnicians.filter(t => t !== user.name));
-                            } else {
-                              setEditTechnicians([...editTechnicians, user.name]);
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                            isSelected 
-                              ? 'bg-purple-600 text-white' 
-                              : 'bg-white border border-purple-300 text-purple-700 hover:bg-purple-100'
-                          }`}
-                        >
-                          {isSelected ? '✓ ' : ''}{user.name}
-                        </button>
-                      );
-                    })}
+                    {technicianUsers.map(user => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => {
+                          const newList = editTechnicians.includes(user.name)
+                            ? editTechnicians.filter(t => t !== user.name)
+                            : [...editTechnicians, user.name];
+                          setEditTechnicians(newList);
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                          editTechnicians.includes(user.name)
+                            ? 'bg-purple-600 text-white' 
+                            : 'bg-white border border-purple-300 text-purple-700 hover:bg-purple-100'
+                        }`}
+                      >
+                        {editTechnicians.includes(user.name) ? '✓ ' : ''}{user.name}
+                      </button>
+                    ))}
                   </div>
                   {editTechnicians.length === 0 && (
-                    <p className="text-sm text-purple-600 mt-2">⚠️ Chưa chọn kỹ thuật viên</p>
+                    <p className="text-sm text-orange-600 mt-2">⚠️ Chưa chọn kỹ thuật viên - bấm vào tên để chọn</p>
                   )}
                 </div>
 
