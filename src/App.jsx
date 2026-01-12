@@ -4744,15 +4744,15 @@ export default function SimpleMarketingSystem() {
     const myTasks = tasks.filter(t => t.assignee === currentUser.name);
     
     return (
-      <div className="p-6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold">📝 Công việc của tôi</h2>
-          <p className="text-gray-600">
+      <div className="p-4 md:p-6 pb-20 md:pb-6">
+        <div className="mb-4 md:mb-6">
+          <h2 className="text-xl md:text-2xl font-bold">📝 Công việc của tôi</h2>
+          <p className="text-gray-600 text-sm">
             {myTasks.length} task • {myTasks.filter(t => t.status === 'Hoàn Thành').length} hoàn thành
           </p>
         </div>
 
-        <div className="grid gap-4">
+        <div className="grid gap-3 md:gap-4">
           {myTasks.map(task => (
             <div
               key={task.id}
@@ -4760,21 +4760,21 @@ export default function SimpleMarketingSystem() {
                 setSelectedTask(task);
                 setShowModal(true);
               }}
-              className={`bg-white p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer border-l-4 ${
+              className={`bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer border-l-4 ${
                 task.isOverdue ? 'border-red-500' : 'border-blue-500'
               }`}
             >
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-2 md:mb-3">
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold mb-2">{task.title}</h3>
+                  <h3 className="text-lg md:text-xl font-bold mb-2">{task.title}</h3>
                   <div className="flex gap-2 flex-wrap">
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(task.status)}`}>
+                    <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-medium ${getStatusColor(task.status)}`}>
                       {task.status}
                     </span>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getTeamColor(task.team)}`}>
+                    <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-medium ${getTeamColor(task.team)}`}>
                       {task.team}
                     </span>
-                    <span className="px-3 py-1 bg-gray-100 rounded-full text-sm">
+                    <span className="px-2 md:px-3 py-1 bg-gray-100 rounded-full text-xs md:text-sm">
                       📅 {task.dueDate}
                     </span>
                   </div>
@@ -4801,7 +4801,7 @@ export default function SimpleMarketingSystem() {
   };
 
   const DashboardView = () => (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+    <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4 md:space-y-6">
       <div>
         <h2 className="text-lg md:text-2xl font-bold mb-1">Xin chào, {currentUser.name}! 👋</h2>
         <p className="text-sm text-gray-600">{currentUser.role} • {currentUser.team} Team</p>
@@ -5032,25 +5032,25 @@ export default function SimpleMarketingSystem() {
     };
 
     return (
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">📋 Quản Lý Video</h2>
+      <div className="p-4 md:p-6 pb-20 md:pb-6">
+        <div className="flex justify-between items-center mb-4 md:mb-6">
+          <h2 className="text-xl md:text-2xl font-bold">📋 Quản Lý Video</h2>
           <button
             onClick={() => setShowCreateTaskModal(true)}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+            className="px-4 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm md:text-base"
           >
-            ➕ Tạo Video Mới
+            ➕ Tạo Mới
           </button>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow mb-6">
-          <div className="flex gap-4 flex-wrap">
+        <div className="bg-white p-3 md:p-4 rounded-xl shadow mb-4 md:mb-6">
+          <div className="flex gap-2 md:gap-4 flex-wrap">
             <div>
-              <label className="text-sm font-medium mb-2 block">Team</label>
+              <label className="text-xs md:text-sm font-medium mb-1 md:mb-2 block">Team</label>
               <select
                 value={filterTeam}
                 onChange={(e) => setFilterTeam(e.target.value)}
-                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-2 md:px-4 py-1.5 md:py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
                 <option value="all">Tất cả</option>
                 <option value="Content">Content</option>
@@ -5271,25 +5271,25 @@ export default function SimpleMarketingSystem() {
     const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
 
     return (
-      <div className="p-6">
-        <h2 className="text-2xl font-bold mb-6">📅 Lịch Video</h2>
+      <div className="p-4 md:p-6 pb-20 md:pb-6">
+        <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">📅 Lịch Video</h2>
         
-        <div className="bg-white p-6 rounded-xl shadow">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold">{monthNames[today.getMonth()]} {today.getFullYear()}</h3>
+        <div className="bg-white p-4 md:p-6 rounded-xl shadow">
+          <div className="flex justify-between items-center mb-4 md:mb-6">
+            <h3 className="text-lg md:text-xl font-bold">{monthNames[today.getMonth()]} {today.getFullYear()}</h3>
             <div className="flex gap-2">
-              <button className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">◀ Trước</button>
-              <button className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Sau ▶</button>
+              <button className="px-3 md:px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm">◀</button>
+              <button className="px-3 md:px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm">▶</button>
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 mb-2">
+          <div className="grid grid-cols-7 gap-1 md:gap-2 mb-2">
             {daysOfWeek.map(day => (
-              <div key={day} className="text-center font-bold py-2">{day}</div>
+              <div key={day} className="text-center font-bold py-1 md:py-2 text-xs md:text-sm">{day}</div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1 md:gap-2">
             {Array.from({ length: 35 }, (_, i) => {
               const day = i - 2;
               const date = new Date(today.getFullYear(), today.getMonth(), day);
@@ -5452,12 +5452,12 @@ export default function SimpleMarketingSystem() {
     }, [filteredTasks, visibleTasks, dateRange, customStartDate, customEndDate]);
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4 md:space-y-6">
         {/* Header với Date Range Filter */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold">📈 Báo Cáo & Phân Tích</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 className="text-xl md:text-2xl font-bold">📈 Báo Cáo & Phân Tích</h2>
+            <p className="text-xs md:text-sm text-gray-600 mt-1">
               Dữ liệu từ {filteredTasks.length} tasks trong khoảng thời gian đã chọn
             </p>
           </div>
@@ -5466,7 +5466,7 @@ export default function SimpleMarketingSystem() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setDateRange('today')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg font-medium transition-all text-sm ${
                 dateRange === 'today'
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -10748,6 +10748,60 @@ export default function SimpleMarketingSystem() {
                     {tab.id === 'today' && todayCount > 0 && (
                       <span className="absolute -top-1 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
                         {todayCount}
+                      </span>
+                    )}
+                  </span>
+                  <span className={`text-[9px] mt-0.5 font-medium ${isActive && tab.highlight ? 'text-orange-600' : ''}`}>
+                    {tab.label}
+                  </span>
+                  {isActive && (
+                    <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-b-full ${
+                      tab.highlight ? 'bg-orange-500' : 'bg-green-500'
+                    }`} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Tab Bar - Module Media */}
+      {activeModule === 'media' && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
+          <div className="flex">
+            {[
+              { id: 'mytasks', icon: '📝', label: 'Của Tôi', highlight: true },
+              { id: 'dashboard', icon: '📊', label: 'Tổng' },
+              { id: 'tasks', icon: '🎬', label: 'Video' },
+              { id: 'calendar', icon: '📅', label: 'Lịch' },
+              { id: 'report', icon: '📈', label: 'B.Cáo' }
+            ].map(tab => {
+              // Đếm task của tôi chưa hoàn thành
+              const myTasksCount = tab.id === 'mytasks' 
+                ? tasks.filter(t => 
+                    t.assignee === currentUser.name && 
+                    t.status !== 'done' && 
+                    t.status !== 'completed' && 
+                    t.status !== 'Hoàn thành'
+                  ).length 
+                : 0;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => navigateTo('media', tab.id)}
+                  className={`flex-1 py-2 flex flex-col items-center relative ${
+                    isActive 
+                      ? tab.highlight ? 'text-orange-600 bg-orange-50' : 'text-green-600 bg-green-50'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  <span className="text-lg relative">
+                    {tab.icon}
+                    {tab.id === 'mytasks' && myTasksCount > 0 && (
+                      <span className="absolute -top-1 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                        {myTasksCount > 9 ? '9+' : myTasksCount}
                       </span>
                     )}
                   </span>
