@@ -1165,30 +1165,25 @@ export default function SimpleMarketingSystem() {
   const [jobCustomStartDate, setJobCustomStartDate] = useState('');
   const [jobCustomEndDate, setJobCustomEndDate] = useState('');
 
-  // Job Edit State - Persist khi chuyển app
-  const [jobEditMode, setJobEditMode] = useState(false);
-  const [jobEditData, setJobEditData] = useState(() => {
+  // Job Edit Draft - Chỉ lưu/load từ localStorage, không dùng state
+  const saveJobEditDraft = (data) => {
+    try {
+      localStorage.setItem('jobEditDraft', JSON.stringify(data));
+    } catch (e) { console.error('Error saving draft:', e); }
+  };
+  
+  const loadJobEditDraft = (jobId) => {
     try {
       const saved = localStorage.getItem('jobEditDraft');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
-
-  // Auto-save job edit data to localStorage với debounce
-  useEffect(() => {
-    if (!jobEditData || !jobEditMode) return;
-    
-    const timer = setTimeout(() => {
-      localStorage.setItem('jobEditDraft', JSON.stringify(jobEditData));
-    }, 500); // Chỉ lưu sau 500ms không có thay đổi
-    
-    return () => clearTimeout(timer);
-  }, [jobEditData, jobEditMode]);
-
-  // Clear draft when done editing
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.jobId === jobId) return data;
+      }
+    } catch (e) { console.error('Error loading draft:', e); }
+    return null;
+  };
+  
   const clearJobEditDraft = () => {
-    setJobEditMode(false);
-    setJobEditData(null);
     localStorage.removeItem('jobEditDraft');
   };
 
@@ -3003,6 +2998,17 @@ export default function SimpleMarketingSystem() {
     const [showReassignModal, setShowReassignModal] = useState(false);
     const [newTechnicians, setNewTechnicians] = useState([]);
     
+    // Edit state - local trong modal
+    const [isEditing, setIsEditing] = useState(false);
+    const [editTitle, setEditTitle] = useState('');
+    const [editCustomerName, setEditCustomerName] = useState('');
+    const [editCustomerPhone, setEditCustomerPhone] = useState('');
+    const [editAddress, setEditAddress] = useState('');
+    const [editEquipment, setEditEquipment] = useState('');
+    const [editScheduledDate, setEditScheduledDate] = useState('');
+    const [editScheduledTime, setEditScheduledTime] = useState('');
+    const [editPayment, setEditPayment] = useState('');
+    
     // Chi phí công việc
     const [showAddExpense, setShowAddExpense] = useState(false);
     const [expenseDesc, setExpenseDesc] = useState('');
@@ -3011,11 +3017,46 @@ export default function SimpleMarketingSystem() {
     
     const expenseCategories = ['Tiền xe', 'Chi phí ăn uống', 'Chi phí khác'];
 
-    if (!selectedJob) return null;
+    // Load draft khi mở modal
+    useEffect(() => {
+      if (selectedJob) {
+        const draft = loadJobEditDraft(selectedJob.id);
+        if (draft) {
+          setIsEditing(true);
+          setEditTitle(draft.title || '');
+          setEditCustomerName(draft.customerName || '');
+          setEditCustomerPhone(draft.customerPhone || '');
+          setEditAddress(draft.address || '');
+          setEditEquipment(draft.equipment || '');
+          setEditScheduledDate(draft.scheduledDate || '');
+          setEditScheduledTime(draft.scheduledTime || '');
+          setEditPayment(draft.payment || '');
+        }
+      }
+    }, [selectedJob?.id]);
 
-    // Kiểm tra có draft đang sửa cho job này không
-    const isEditing = jobEditMode && jobEditData?.jobId === selectedJob.id;
-    const editData = isEditing ? jobEditData : null;
+    // Auto-save draft khi đang edit (debounced)
+    useEffect(() => {
+      if (!isEditing || !selectedJob) return;
+      
+      const timer = setTimeout(() => {
+        saveJobEditDraft({
+          jobId: selectedJob.id,
+          title: editTitle,
+          customerName: editCustomerName,
+          customerPhone: editCustomerPhone,
+          address: editAddress,
+          equipment: editEquipment,
+          scheduledDate: editScheduledDate,
+          scheduledTime: editScheduledTime,
+          payment: editPayment
+        });
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }, [isEditing, editTitle, editCustomerName, editCustomerPhone, editAddress, editEquipment, editScheduledDate, editScheduledTime, editPayment]);
+
+    if (!selectedJob) return null;
     
     // Chi phí từ job
     const jobExpenses = selectedJob.expenses || [];
@@ -3102,60 +3143,58 @@ export default function SimpleMarketingSystem() {
     };
 
     const openEditMode = () => {
-      setJobEditData({
-        jobId: selectedJob.id,
-        title: selectedJob.title || '',
-        customerName: selectedJob.customerName || '',
-        customerPhone: selectedJob.customerPhone || '',
-        address: selectedJob.address || '',
-        equipment: selectedJob.equipment ? selectedJob.equipment.join('\n') : '',
-        scheduledDate: selectedJob.scheduledDate || '',
-        scheduledTime: selectedJob.scheduledTime || '',
-        payment: selectedJob.customerPayment || ''
-      });
-      setJobEditMode(true);
+      setEditTitle(selectedJob.title || '');
+      setEditCustomerName(selectedJob.customerName || '');
+      setEditCustomerPhone(selectedJob.customerPhone || '');
+      setEditAddress(selectedJob.address || '');
+      setEditEquipment(selectedJob.equipment ? selectedJob.equipment.join('\n') : '');
+      setEditScheduledDate(selectedJob.scheduledDate || '');
+      setEditScheduledTime(selectedJob.scheduledTime || '');
+      setEditPayment(selectedJob.customerPayment || '');
+      setIsEditing(true);
     };
 
-    // Update edit field helper
-    const updateEditField = (field, value) => {
-      setJobEditData(prev => ({ ...prev, [field]: value }));
+    const cancelEdit = () => {
+      setIsEditing(false);
+      clearJobEditDraft();
     };
 
     const saveEditJob = async () => {
-      if (!editData?.title || !editData?.customerName) {
+      if (!editTitle || !editCustomerName) {
         alert('⚠️ Vui lòng nhập tiêu đề và tên khách hàng!');
         return;
       }
       try {
-        const equipmentArray = editData.equipment.split('\n').filter(e => e.trim());
+        const equipmentArray = editEquipment.split('\n').filter(e => e.trim());
         const { error } = await supabase
           .from('technical_jobs')
           .update({
-            title: editData.title,
-            customer_name: editData.customerName,
-            customer_phone: editData.customerPhone,
-            address: editData.address,
+            title: editTitle,
+            customer_name: editCustomerName,
+            customer_phone: editCustomerPhone,
+            address: editAddress,
             equipment: equipmentArray,
-            scheduled_date: editData.scheduledDate,
-            scheduled_time: editData.scheduledTime,
-            customer_payment: parseFloat(editData.payment) || 0
+            scheduled_date: editScheduledDate,
+            scheduled_time: editScheduledTime,
+            customer_payment: parseFloat(editPayment) || 0
           })
           .eq('id', selectedJob.id);
 
         if (error) throw error;
         alert('✅ Cập nhật thành công!');
-        clearJobEditDraft(); // Xóa draft sau khi lưu
+        setIsEditing(false);
+        clearJobEditDraft();
         await loadTechnicalJobs();
         setSelectedJob({
           ...selectedJob,
-          title: editData.title,
-          customerName: editData.customerName,
-          customerPhone: editData.customerPhone,
-          address: editData.address,
+          title: editTitle,
+          customerName: editCustomerName,
+          customerPhone: editCustomerPhone,
+          address: editAddress,
           equipment: equipmentArray,
-          scheduledDate: editData.scheduledDate,
-          scheduledTime: editData.scheduledTime,
-          customerPayment: parseFloat(editData.payment) || 0
+          scheduledDate: editScheduledDate,
+          scheduledTime: editScheduledTime,
+          customerPayment: parseFloat(editPayment) || 0
         });
       } catch (error) {
         console.error('Error updating job:', error);
@@ -3449,12 +3488,12 @@ export default function SimpleMarketingSystem() {
 
           <div className="p-4 md:p-6 space-y-4 md:space-y-6 overflow-y-auto flex-1">
             {/* Form chỉnh sửa */}
-            {isEditing && editData ? (
+            {isEditing ? (
               <div className="space-y-4">
                 {/* Nút Lưu ở đầu form - dễ thấy trên mobile */}
                 <div className="flex gap-2 sticky top-0 bg-white py-2 z-10 border-b pb-3">
                   <button
-                    onClick={clearJobEditDraft}
+                    onClick={cancelEdit}
                     className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
                   >
                     ❌ Hủy sửa
@@ -3475,8 +3514,8 @@ export default function SimpleMarketingSystem() {
                   <label className="block text-sm font-medium mb-1">Tiêu đề *</label>
                   <input
                     type="text"
-                    value={editData.title}
-                    onChange={(e) => updateEditField('title', e.target.value)}
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg"
                     placeholder="Tiêu đề công việc"
                   />
@@ -3489,8 +3528,8 @@ export default function SimpleMarketingSystem() {
                       <label className="block text-sm font-medium mb-1">Tên khách *</label>
                       <input
                         type="text"
-                        value={editData.customerName}
-                        onChange={(e) => updateEditField('customerName', e.target.value)}
+                        value={editCustomerName}
+                        onChange={(e) => setEditCustomerName(e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg"
                       />
                     </div>
@@ -3498,8 +3537,8 @@ export default function SimpleMarketingSystem() {
                       <label className="block text-sm font-medium mb-1">Số điện thoại</label>
                       <input
                         type="text"
-                        value={editData.customerPhone}
-                        onChange={(e) => updateEditField('customerPhone', e.target.value)}
+                        value={editCustomerPhone}
+                        onChange={(e) => setEditCustomerPhone(e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg"
                       />
                     </div>
@@ -3508,8 +3547,8 @@ export default function SimpleMarketingSystem() {
                     <label className="block text-sm font-medium mb-1">Địa chỉ</label>
                     <input
                       type="text"
-                      value={editData.address}
-                      onChange={(e) => updateEditField('address', e.target.value)}
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
                       className="w-full px-3 py-2 border rounded-lg"
                     />
                   </div>
@@ -3518,8 +3557,8 @@ export default function SimpleMarketingSystem() {
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <label className="block text-sm font-medium mb-1">🎤 Thiết bị (mỗi dòng 1 thiết bị)</label>
                   <textarea
-                    value={editData.equipment}
-                    onChange={(e) => updateEditField('equipment', e.target.value)}
+                    value={editEquipment}
+                    onChange={(e) => setEditEquipment(e.target.value)}
                     rows={3}
                     className="w-full px-3 py-2 border rounded-lg"
                     placeholder="Micro Shure SM58&#10;Loa JBL 12&#10;Amply 1000W"
@@ -3533,8 +3572,8 @@ export default function SimpleMarketingSystem() {
                       <label className="block text-sm font-medium mb-1">Ngày</label>
                       <input
                         type="date"
-                        value={editData.scheduledDate}
-                        onChange={(e) => updateEditField('scheduledDate', e.target.value)}
+                        value={editScheduledDate}
+                        onChange={(e) => setEditScheduledDate(e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg"
                       />
                     </div>
@@ -3542,8 +3581,8 @@ export default function SimpleMarketingSystem() {
                       <label className="block text-sm font-medium mb-1">Giờ</label>
                       <input
                         type="time"
-                        value={editData.scheduledTime}
-                        onChange={(e) => updateEditField('scheduledTime', e.target.value)}
+                        value={editScheduledTime}
+                        onChange={(e) => setEditScheduledTime(e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg"
                       />
                     </div>
@@ -3554,8 +3593,8 @@ export default function SimpleMarketingSystem() {
                   <label className="block text-sm font-medium mb-1">💰 Thu của khách (VNĐ)</label>
                   <input
                     type="number"
-                    value={editData.payment}
-                    onChange={(e) => updateEditField('payment', e.target.value)}
+                    value={editPayment}
+                    onChange={(e) => setEditPayment(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg"
                     placeholder="0"
                   />
@@ -3803,7 +3842,7 @@ export default function SimpleMarketingSystem() {
               <div className="flex gap-2 md:gap-3">
                 <button
                   onClick={() => {
-                    clearJobEditDraft();
+                    if (isEditing) cancelEdit();
                     setShowJobModal(false);
                   }}
                   className="px-4 md:px-6 py-2 md:py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium text-sm md:text-base"
