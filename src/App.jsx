@@ -5620,15 +5620,21 @@ export default function SimpleMarketingSystem() {
       return { overdue, urgent, soon, upcoming, completed, total, totalRevenue };
     }, [categorizedJobs]);
 
-    // Mở Google Maps điều hướng - Hỗ trợ cả link Google Maps và địa chỉ thường
+    // Mở Google Maps điều hướng - Hỗ trợ link Google Maps, tọa độ GPS và địa chỉ thường
     const openNavigation = (job) => {
       const address = job.address || '';
       
       // Kiểm tra nếu là link Google Maps
       if (address.includes('google.com/maps') || address.includes('goo.gl/maps') || address.includes('maps.app.goo.gl')) {
         window.open(address, '_blank');
-      } else {
-        // Nếu là địa chỉ thường, tìm kiếm trên Google Maps
+      } 
+      // Kiểm tra nếu là tọa độ GPS (vd: 21.0285,105.8542 hoặc 21.0285, 105.8542)
+      else if (/^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/.test(address.trim())) {
+        const coords = address.replace(/\s/g, '');
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords}`, '_blank');
+      }
+      // Nếu là địa chỉ thường, tìm kiếm trên Google Maps
+      else {
         const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
         window.open(url, '_blank');
       }
@@ -5727,13 +5733,6 @@ export default function SimpleMarketingSystem() {
                   🔕
                 </button>
               )}
-              <button
-                onClick={() => openNavigation(job)}
-                className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-                title="Chỉ đường"
-              >
-                🗺️
-              </button>
             </div>
           </div>
 
@@ -5782,6 +5781,15 @@ export default function SimpleMarketingSystem() {
               </div>
             )}
           </div>
+
+          {/* Nút Google Maps - To và rõ ràng */}
+          <button
+            onClick={() => openNavigation(job)}
+            className="w-full mt-3 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 shadow-md"
+          >
+            <span className="text-xl">🗺️</span>
+            <span>Mở Google Maps - Chỉ đường</span>
+          </button>
 
           {/* Footer */}
           <div className="mt-3 pt-3 border-t flex items-center justify-between">
@@ -9933,7 +9941,7 @@ export default function SimpleMarketingSystem() {
                 { id: 'products', l: '📱 Sản Phẩm' },
                 { id: 'report', l: '📈 Báo Cáo' }
               ] : activeModule === 'technical' ? [
-                { id: 'today', l: '📅 Hôm Nay' },
+                { id: 'today', l: '📅 Hôm Nay', highlight: true },
                 { id: 'jobs', l: '📋 Công Việc' },
                 { id: 'wages', l: '💰 Tính Công' },
                 { id: 'summary', l: '📊 Tổng Quan' }
@@ -9944,22 +9952,32 @@ export default function SimpleMarketingSystem() {
                 { id: 'attendance', l: '⏰ Chấm Công', tabKey: 'attendance' },
                 { id: 'salaries', l: '💰 Lương', tabKey: 'salaries' },
                 { id: 'reports', l: '📈 Báo Cáo', tabKey: 'reports' }
-              ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => (
+              ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => {
+                const todayJobsCount = t.id === 'today' ? technicalJobs.filter(j => j.scheduledDate === getTodayVN() && j.status !== 'Hủy' && j.status !== 'Hoàn thành').length : 0;
+                return (
                 <button
                   key={t.id}
                   onClick={() => {
                     navigateTo(activeModule, t.id);
                     setShowMobileSidebar(false);
                   }}
-                  className={`w-full px-3 py-2.5 rounded-lg mb-1 text-left font-medium text-sm ${
+                  className={`w-full px-3 py-2.5 rounded-lg mb-1 text-left font-medium text-sm flex items-center justify-between ${
                     activeTab === t.id
-                      ? 'bg-blue-600 text-white'
-                      : 'hover:bg-gray-100'
+                      ? t.highlight ? 'bg-orange-500 text-white' : 'bg-blue-600 text-white'
+                      : t.highlight ? 'bg-orange-50 text-orange-700 hover:bg-orange-100' : 'hover:bg-gray-100'
                   }`}
                 >
-                  {t.l}
+                  <span>{t.l}</span>
+                  {t.id === 'today' && todayJobsCount > 0 && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                      activeTab === t.id ? 'bg-white text-orange-600' : 'bg-orange-500 text-white'
+                    }`}>
+                      {todayJobsCount}
+                    </span>
+                  )}
                 </button>
-              ))}
+              );
+              })}
             </div>
 
             {/* Admin Buttons */}
@@ -10270,45 +10288,50 @@ export default function SimpleMarketingSystem() {
       {showJobModal && <JobDetailModal />}
       {showPermissionsModal && <PermissionsModal />}
 
-      {/* Floating Button - Lịch Hôm Nay (Mobile) */}
-      {(() => {
-        const today = getTodayVN();
-        const todayJobsCount = technicalJobs.filter(j => 
-          j.scheduledDate === today && j.status !== 'Hủy' && j.status !== 'Hoàn thành'
-        ).length;
-        const hasOverdue = technicalJobs.some(j => {
-          if (j.scheduledDate !== today || j.status === 'Hủy' || j.status === 'Hoàn thành') return false;
-          const now = getVietnamDate();
-          const [h, m] = (j.scheduledTime || '09:00').split(':').map(Number);
-          return (now.getHours() * 60 + now.getMinutes()) > (h * 60 + m);
-        });
-        
-        // Chỉ hiện khi có quyền technical và không đang ở tab today
-        const showButton = (currentUser?.role === 'Admin' || currentUser?.role === 'admin' || 
-          currentUser?.role === 'Manager' || currentUser?.permissions?.technical > 0) &&
-          !(activeModule === 'technical' && activeTab === 'today');
-        
-        if (!showButton) return null;
-        
-        return (
-          <button
-            onClick={() => navigateTo('technical', 'today')}
-            className={`md:hidden fixed bottom-20 right-4 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 ${
-              hasOverdue ? 'bg-red-500 animate-pulse' : todayJobsCount > 0 ? 'bg-orange-500' : 'bg-gray-400'
-            } text-white`}
-            title={`${todayJobsCount} công việc hôm nay`}
-          >
-            📅
-            {todayJobsCount > 0 && (
-              <span className={`absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                hasOverdue ? 'bg-yellow-400 text-red-800' : 'bg-red-600 text-white'
-              }`}>
-                {todayJobsCount}
-              </span>
-            )}
-          </button>
-        );
-      })()}
+      {/* Mobile Bottom Tab Bar - Chỉ hiện khi ở module Technical */}
+      {activeModule === 'technical' && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
+          <div className="flex">
+            {[
+              { id: 'today', icon: '📅', label: 'Hôm Nay', highlight: true },
+              { id: 'jobs', icon: '📋', label: 'Công Việc' },
+              { id: 'wages', icon: '💰', label: 'Tiền Công' },
+              { id: 'summary', icon: '📊', label: 'Tổng Hợp' }
+            ].map(tab => {
+              const todayCount = tab.id === 'today' ? technicalJobs.filter(j => j.scheduledDate === getTodayVN() && j.status !== 'Hủy' && j.status !== 'Hoàn thành').length : 0;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => navigateTo('technical', tab.id)}
+                  className={`flex-1 py-2 flex flex-col items-center relative ${
+                    isActive 
+                      ? tab.highlight ? 'text-orange-600 bg-orange-50' : 'text-green-600 bg-green-50'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  <span className="text-xl relative">
+                    {tab.icon}
+                    {tab.id === 'today' && todayCount > 0 && (
+                      <span className="absolute -top-1 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                        {todayCount}
+                      </span>
+                    )}
+                  </span>
+                  <span className={`text-[10px] mt-0.5 font-medium ${isActive && tab.highlight ? 'text-orange-600' : ''}`}>
+                    {tab.label}
+                  </span>
+                  {isActive && (
+                    <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 rounded-b-full ${
+                      tab.highlight ? 'bg-orange-500' : 'bg-green-500'
+                    }`} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Floating Attendance Button - Chỉ hiện trên Desktop */}
       {(() => {
