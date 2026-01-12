@@ -3393,13 +3393,13 @@ export default function SimpleMarketingSystem() {
     };
 
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="p-6 border-b bg-gradient-to-r from-orange-500 to-red-600 text-white sticky top-0">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 pb-20 md:pb-4">
+        <div className="bg-white rounded-xl max-w-3xl w-full max-h-[85vh] md:max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="p-4 md:p-6 border-b bg-gradient-to-r from-orange-500 to-red-600 text-white flex-shrink-0">
             <div className="flex justify-between items-start">
               <div className="flex-1">
-                <h2 className="text-2xl font-bold mb-2">{selectedJob.title}</h2>
-                <div className="flex gap-2">
+                <h2 className="text-xl md:text-2xl font-bold mb-2">{selectedJob.title}</h2>
+                <div className="flex gap-2 flex-wrap">
                   <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(selectedJob.status)}`}>
                     {selectedJob.status}
                   </span>
@@ -3410,19 +3410,35 @@ export default function SimpleMarketingSystem() {
               </div>
               <button 
                 onClick={() => setShowJobModal(false)} 
-                className="text-2xl hover:bg-white/20 w-8 h-8 rounded"
+                className="text-2xl hover:bg-white/20 w-10 h-10 rounded flex items-center justify-center"
               >
                 ×
               </button>
             </div>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-4 md:p-6 space-y-4 md:space-y-6 overflow-y-auto flex-1">
             {/* Form chỉnh sửa */}
             {isEditing ? (
               <div className="space-y-4">
+                {/* Nút Lưu ở đầu form - dễ thấy trên mobile */}
+                <div className="flex gap-2 sticky top-0 bg-white py-2 z-10 border-b pb-3">
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+                  >
+                    ❌ Hủy sửa
+                  </button>
+                  <button
+                    onClick={saveEditJob}
+                    className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-lg"
+                  >
+                    💾 LƯU
+                  </button>
+                </div>
+                
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
-                  ✏️ Đang chỉnh sửa - Nhấn "Lưu" để lưu thay đổi
+                  ✏️ Đang chỉnh sửa - Nhấn "LƯU" để lưu thay đổi
                 </div>
                 
                 <div>
@@ -3736,55 +3752,58 @@ export default function SimpleMarketingSystem() {
             )}
           </div>
 
-          <div className="p-6 border-t bg-gray-50 flex gap-3 justify-between">
-            <div className="flex gap-3">
-              {/* Nút Xóa - chỉ hiện khi chưa hoàn thành/hủy và là admin hoặc người tạo */}
-              {canDelete && (
+          {/* Footer - Sticky ở dưới cho mobile */}
+          <div className="p-4 md:p-6 border-t bg-gray-50 flex-shrink-0 sticky bottom-0">
+            <div className="flex gap-2 md:gap-3 justify-between">
+              <div className="flex gap-2">
+                {/* Nút Xóa - chỉ hiện khi chưa hoàn thành/hủy và là admin hoặc người tạo */}
+                {canDelete && !isEditing && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('⚠️ Xóa công việc này?\n\nHành động không thể hoàn tác!')) {
+                        deleteTechnicalJob(selectedJob.id);
+                      }
+                    }}
+                    className="px-3 md:px-4 py-2 md:py-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-medium text-sm md:text-base"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2 md:gap-3">
                 <button
                   onClick={() => {
-                    if (window.confirm('⚠️ Xóa công việc này?\n\nHành động không thể hoàn tác!')) {
-                      deleteTechnicalJob(selectedJob.id);
-                    }
+                    setIsEditing(false);
+                    setShowJobModal(false);
                   }}
-                  className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-medium"
+                  className="px-4 md:px-6 py-2 md:py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium text-sm md:text-base"
                 >
-                  🗑️ Xóa
+                  Đóng
                 </button>
-              )}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setIsEditing(false);
-                  setShowJobModal(false);
-                }}
-                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
-              >
-                Đóng
-              </button>
-              {/* Nút Sửa - chỉ hiện khi chưa hoàn thành/hủy và là admin hoặc người tạo */}
-              {canEdit && !isEditing && (
-                <button
-                  onClick={openEditMode}
-                  className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium"
-                >
-                  ✏️ Sửa
-                </button>
-              )}
-              {isEditing && (
-                <button
-                  onClick={saveEditJob}
-                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
-                >
-                  💾 Lưu
-                </button>
-              )}
+                {/* Nút Sửa - chỉ hiện khi chưa hoàn thành/hủy và là admin hoặc người tạo */}
+                {canEdit && !isEditing && (
+                  <button
+                    onClick={openEditMode}
+                    className="px-4 md:px-6 py-2 md:py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium text-sm md:text-base"
+                  >
+                    ✏️ Sửa
+                  </button>
+                )}
+                {isEditing && (
+                  <button
+                    onClick={saveEditJob}
+                    className="px-6 md:px-8 py-2 md:py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-base md:text-lg"
+                  >
+                    💾 LƯU
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Thông báo khóa */}
           {isLocked && (
-            <div className="px-6 pb-4">
+            <div className="px-4 md:px-6 pb-4">
               <div className="bg-gray-100 border border-gray-300 rounded-lg p-3 text-center text-sm text-gray-600">
                 🔒 Công việc đã {selectedJob.status === 'Hoàn thành' ? 'hoàn thành' : 'hủy'} - Không thể sửa hoặc xóa
               </div>
