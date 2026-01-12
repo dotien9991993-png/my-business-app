@@ -3008,6 +3008,7 @@ export default function SimpleMarketingSystem() {
     const [editScheduledDate, setEditScheduledDate] = useState('');
     const [editScheduledTime, setEditScheduledTime] = useState('');
     const [editPayment, setEditPayment] = useState('');
+    const [editTechnicians, setEditTechnicians] = useState([]);
     
     // Chi phí công việc
     const [showAddExpense, setShowAddExpense] = useState(false);
@@ -3016,6 +3017,11 @@ export default function SimpleMarketingSystem() {
     const [expenseCategory, setExpenseCategory] = useState('Tiền xe');
     
     const expenseCategories = ['Tiền xe', 'Chi phí ăn uống', 'Chi phí khác'];
+    
+    // Lấy danh sách KTV từ users
+    const technicianUsers = allUsers.filter(u => 
+      u.departments?.includes('technical') || u.role === 'Admin' || u.role === 'admin'
+    );
 
     // Load draft khi mở modal
     useEffect(() => {
@@ -3031,6 +3037,7 @@ export default function SimpleMarketingSystem() {
           setEditScheduledDate(draft.scheduledDate || '');
           setEditScheduledTime(draft.scheduledTime || '');
           setEditPayment(draft.payment || '');
+          setEditTechnicians(draft.technicians || []);
         }
       }
     }, [selectedJob?.id]);
@@ -3049,12 +3056,13 @@ export default function SimpleMarketingSystem() {
           equipment: editEquipment,
           scheduledDate: editScheduledDate,
           scheduledTime: editScheduledTime,
-          payment: editPayment
+          payment: editPayment,
+          technicians: editTechnicians
         });
       }, 1000);
       
       return () => clearTimeout(timer);
-    }, [isEditing, editTitle, editCustomerName, editCustomerPhone, editAddress, editEquipment, editScheduledDate, editScheduledTime, editPayment]);
+    }, [isEditing, editTitle, editCustomerName, editCustomerPhone, editAddress, editEquipment, editScheduledDate, editScheduledTime, editPayment, editTechnicians]);
 
     if (!selectedJob) return null;
     
@@ -3151,6 +3159,7 @@ export default function SimpleMarketingSystem() {
       setEditScheduledDate(selectedJob.scheduledDate || '');
       setEditScheduledTime(selectedJob.scheduledTime || '');
       setEditPayment(selectedJob.customerPayment || '');
+      setEditTechnicians(selectedJob.technicians || []);
       setIsEditing(true);
     };
 
@@ -3176,7 +3185,8 @@ export default function SimpleMarketingSystem() {
             equipment: equipmentArray,
             scheduled_date: editScheduledDate,
             scheduled_time: editScheduledTime,
-            customer_payment: parseFloat(editPayment) || 0
+            customer_payment: parseFloat(editPayment) || 0,
+            technicians: editTechnicians
           })
           .eq('id', selectedJob.id);
 
@@ -3194,7 +3204,8 @@ export default function SimpleMarketingSystem() {
           equipment: equipmentArray,
           scheduledDate: editScheduledDate,
           scheduledTime: editScheduledTime,
-          customerPayment: parseFloat(editPayment) || 0
+          customerPayment: parseFloat(editPayment) || 0,
+          technicians: editTechnicians
         });
       } catch (error) {
         console.error('Error updating job:', error);
@@ -3587,6 +3598,39 @@ export default function SimpleMarketingSystem() {
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* Kỹ thuật viên */}
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h3 className="font-bold text-purple-800 mb-2">🔧 Kỹ thuật viên</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {technicianUsers.map(user => {
+                      const isSelected = editTechnicians.includes(user.name);
+                      return (
+                        <button
+                          key={user.id}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setEditTechnicians(editTechnicians.filter(t => t !== user.name));
+                            } else {
+                              setEditTechnicians([...editTechnicians, user.name]);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                            isSelected 
+                              ? 'bg-purple-600 text-white' 
+                              : 'bg-white border border-purple-300 text-purple-700 hover:bg-purple-100'
+                          }`}
+                        >
+                          {isSelected ? '✓ ' : ''}{user.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {editTechnicians.length === 0 && (
+                    <p className="text-sm text-purple-600 mt-2">⚠️ Chưa chọn kỹ thuật viên</p>
+                  )}
                 </div>
 
                 <div className="bg-green-50 p-4 rounded-lg">
