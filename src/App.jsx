@@ -10722,7 +10722,7 @@ export default function SimpleMarketingSystem() {
 
       {/* Mobile Bottom Tab Bar - Chỉ hiện khi ở module Technical */}
       {activeModule === 'technical' && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-green-800 border-t border-green-700 shadow-lg z-50">
           <div className="flex">
             {[
               { id: 'today', icon: '📅', label: 'Hôm Nay', highlight: true },
@@ -10739,8 +10739,8 @@ export default function SimpleMarketingSystem() {
                   onClick={() => navigateTo('technical', tab.id)}
                   className={`flex-1 py-2 flex flex-col items-center relative ${
                     isActive 
-                      ? tab.highlight ? 'text-orange-600 bg-orange-50' : 'text-green-600 bg-green-50'
-                      : 'text-gray-500'
+                      ? tab.highlight ? 'text-orange-400 bg-green-900' : 'text-white bg-green-900'
+                      : 'text-green-300'
                   }`}
                 >
                   <span className="text-lg relative">
@@ -10751,12 +10751,12 @@ export default function SimpleMarketingSystem() {
                       </span>
                     )}
                   </span>
-                  <span className={`text-[9px] mt-0.5 font-medium ${isActive && tab.highlight ? 'text-orange-600' : ''}`}>
+                  <span className={`text-[9px] mt-0.5 font-medium ${isActive && tab.highlight ? 'text-orange-400' : ''}`}>
                     {tab.label}
                   </span>
                   {isActive && (
                     <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-b-full ${
-                      tab.highlight ? 'bg-orange-500' : 'bg-green-500'
+                      tab.highlight ? 'bg-orange-400' : 'bg-white'
                     }`} />
                   )}
                 </button>
@@ -10768,7 +10768,7 @@ export default function SimpleMarketingSystem() {
 
       {/* Mobile Bottom Tab Bar - Module Media */}
       {activeModule === 'media' && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-green-800 border-t border-green-700 shadow-lg z-50">
           <div className="flex">
             {[
               { id: 'mytasks', icon: '📝', label: 'Của Tôi', highlight: true },
@@ -10777,7 +10777,6 @@ export default function SimpleMarketingSystem() {
               { id: 'calendar', icon: '📅', label: 'Lịch' },
               { id: 'report', icon: '📈', label: 'B.Cáo' }
             ].map(tab => {
-              // Đếm task của tôi chưa hoàn thành
               const myTasksCount = tab.id === 'mytasks' 
                 ? tasks.filter(t => 
                     t.assignee === currentUser.name && 
@@ -10793,8 +10792,8 @@ export default function SimpleMarketingSystem() {
                   onClick={() => navigateTo('media', tab.id)}
                   className={`flex-1 py-2 flex flex-col items-center relative ${
                     isActive 
-                      ? tab.highlight ? 'text-orange-600 bg-orange-50' : 'text-green-600 bg-green-50'
-                      : 'text-gray-500'
+                      ? tab.highlight ? 'text-orange-400 bg-green-900' : 'text-white bg-green-900'
+                      : 'text-green-300'
                   }`}
                 >
                   <span className="text-lg relative">
@@ -10805,12 +10804,62 @@ export default function SimpleMarketingSystem() {
                       </span>
                     )}
                   </span>
-                  <span className={`text-[9px] mt-0.5 font-medium ${isActive && tab.highlight ? 'text-orange-600' : ''}`}>
+                  <span className={`text-[9px] mt-0.5 font-medium ${isActive && tab.highlight ? 'text-orange-400' : ''}`}>
                     {tab.label}
                   </span>
                   {isActive && (
                     <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-b-full ${
-                      tab.highlight ? 'bg-orange-500' : 'bg-green-500'
+                      tab.highlight ? 'bg-orange-400' : 'bg-white'
+                    }`} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Tab Bar - Module Finance */}
+      {activeModule === 'finance' && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-green-800 border-t border-green-700 shadow-lg z-50">
+          <div className="flex">
+            {[
+              { id: 'dashboard', icon: '📊', label: 'Tổng', highlight: true },
+              { id: 'receipts', icon: '📥', label: 'Thu' },
+              { id: 'payments', icon: '📤', label: 'Chi' },
+              { id: 'report', icon: '📈', label: 'B.Cáo' }
+            ].map(tab => {
+              // Đếm phiếu chờ duyệt
+              const pendingCount = tab.id === 'receipts' 
+                ? receipts.filter(r => r.type === 'thu' && r.status === 'pending').length
+                : tab.id === 'payments'
+                ? receipts.filter(r => r.type === 'chi' && r.status === 'pending').length
+                : 0;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => navigateTo('finance', tab.id)}
+                  className={`flex-1 py-2 flex flex-col items-center relative ${
+                    isActive 
+                      ? tab.highlight ? 'text-orange-400 bg-green-900' : 'text-white bg-green-900'
+                      : 'text-green-300'
+                  }`}
+                >
+                  <span className="text-lg relative">
+                    {tab.icon}
+                    {pendingCount > 0 && (
+                      <span className="absolute -top-1 -right-2 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+                        {pendingCount > 9 ? '9+' : pendingCount}
+                      </span>
+                    )}
+                  </span>
+                  <span className={`text-[9px] mt-0.5 font-medium ${isActive && tab.highlight ? 'text-orange-400' : ''}`}>
+                    {tab.label}
+                  </span>
+                  {isActive && (
+                    <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-b-full ${
+                      tab.highlight ? 'bg-orange-400' : 'bg-white'
                     }`} />
                   )}
                 </button>
@@ -11067,18 +11116,18 @@ export default function SimpleMarketingSystem() {
     const netCashFlow = totalReceipts - totalPayments;
 
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4 md:space-y-6">
         <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">💰 Tổng Quan Tài Chính</h2>
+          <h2 className="text-xl md:text-2xl font-bold">💰 Tổng Quan Tài Chính</h2>
           {!canViewAll && (
-            <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+            <span className="text-xs md:text-sm text-gray-500 bg-gray-100 px-2 md:px-3 py-1 rounded-full">
               📋 Dữ liệu của bạn
             </span>
           )}
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-green-50 p-6 rounded-xl border border-green-200">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+          <div className="bg-green-50 p-4 md:p-6 rounded-xl border border-green-200">
             <div className="text-sm text-green-600 font-medium mb-1">Tổng Thu</div>
             <div className="text-2xl font-bold text-green-700">
               {formatMoney(totalReceipts)}
@@ -11358,41 +11407,41 @@ export default function SimpleMarketingSystem() {
     const totalChi = filteredReceipts.filter(r => r.type === 'chi' && r.status === 'approved').reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
 
     return (
-      <div className="p-6 space-y-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <h2 className="text-2xl font-bold">🧾 Phiếu Thu/Chi</h2>
+      <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
+          <h2 className="text-xl md:text-2xl font-bold">🧾 Phiếu Thu/Chi</h2>
           {canCreateFinance() && (
             <div className="flex gap-2">
-              <button onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
-                ➕ Tạo Phiếu Thu
+              <button onClick={() => { setFormType('thu'); resetForm(); setShowCreateModal(true); }} className="px-3 md:px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm">
+                ➕ Thu
               </button>
-              <button onClick={() => { setFormType('chi'); resetForm(); setShowCreateModal(true); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
-                ➕ Tạo Phiếu Chi
+              <button onClick={() => { setFormType('chi'); resetForm(); setShowCreateModal(true); }} className="px-3 md:px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm">
+                ➕ Chi
               </button>
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-            <div className="text-sm text-green-600 font-medium">Tổng Thu</div>
-            <div className="text-2xl font-bold text-green-700">+{formatMoney(totalThu)}</div>
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 md:p-4">
+            <div className="text-xs md:text-sm text-green-600 font-medium">Tổng Thu</div>
+            <div className="text-lg md:text-2xl font-bold text-green-700">+{formatMoney(totalThu)}</div>
           </div>
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="text-sm text-red-600 font-medium">Tổng Chi</div>
-            <div className="text-2xl font-bold text-red-700">-{formatMoney(totalChi)}</div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 md:p-4">
+            <div className="text-xs md:text-sm text-red-600 font-medium">Tổng Chi</div>
+            <div className="text-lg md:text-2xl font-bold text-red-700">-{formatMoney(totalChi)}</div>
           </div>
-          <div className={(totalThu - totalChi >= 0) ? "bg-blue-50 border border-blue-200 rounded-xl p-4" : "bg-orange-50 border border-orange-200 rounded-xl p-4"}>
-            <div className={(totalThu - totalChi >= 0) ? "text-sm text-blue-600 font-medium" : "text-sm text-orange-600 font-medium"}>Chênh lệch</div>
-            <div className={(totalThu - totalChi >= 0) ? "text-2xl font-bold text-blue-700" : "text-2xl font-bold text-orange-700"}>{formatMoney(totalThu - totalChi)}</div>
+          <div className={(totalThu - totalChi >= 0) ? "bg-blue-50 border border-blue-200 rounded-xl p-3 md:p-4" : "bg-orange-50 border border-orange-200 rounded-xl p-3 md:p-4"}>
+            <div className={(totalThu - totalChi >= 0) ? "text-xs md:text-sm text-blue-600 font-medium" : "text-xs md:text-sm text-orange-600 font-medium"}>Chênh lệch</div>
+            <div className={(totalThu - totalChi >= 0) ? "text-lg md:text-2xl font-bold text-blue-700" : "text-lg md:text-2xl font-bold text-orange-700"}>{formatMoney(totalThu - totalChi)}</div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border p-4">
-          <div className="flex flex-wrap gap-4">
+        <div className="bg-white rounded-xl border p-3 md:p-4">
+          <div className="flex flex-wrap gap-2 md:gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Loại</label>
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="px-3 py-2 border rounded-lg">
+              <label className="block text-xs md:text-sm font-medium mb-1">Loại</label>
+              <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-sm">
                 <option value="all">Tất cả</option>
                 <option value="thu">Phiếu Thu</option>
                 <option value="chi">Phiếu Chi</option>
