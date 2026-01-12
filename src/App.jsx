@@ -6238,38 +6238,56 @@ export default function SimpleMarketingSystem() {
               </div>
             ) : (
               <div className="space-y-2">
-                {getJobsForDate(selectedDate).map(job => (
-                  <div 
-                    key={job.id}
-                    onClick={() => {
-                      setSelectedJob(job);
-                      setShowJobModal(true);
-                    }}
-                    className={`p-3 rounded-lg border-l-4 cursor-pointer transition-all hover:shadow ${
-                      job.status === 'Hoàn thành' ? 'bg-green-50 border-green-500' :
-                      job.status === 'Đang làm' ? 'bg-blue-50 border-blue-500' :
-                      'bg-amber-50 border-amber-500'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-gray-800">{job.scheduledTime || '—'}</span>
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        job.status === 'Hoàn thành' ? 'bg-green-100 text-green-700' :
-                        job.status === 'Đang làm' ? 'bg-blue-100 text-blue-700' :
-                        'bg-amber-100 text-amber-700'
-                      }`}>
-                        {job.status || 'Chờ XN'}
-                      </span>
+                {getJobsForDate(selectedDate).map(job => {
+                  // Kiểm tra quyền xem chi tiết: admin, người tạo, hoặc KTV được phân công
+                  const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'admin';
+                  const isCreator = job.createdBy === currentUser.name;
+                  const isTechnician = job.technicians?.includes(currentUser.name);
+                  const canViewDetail = isAdmin || isCreator || isTechnician;
+                  
+                  return (
+                    <div 
+                      key={job.id}
+                      onClick={() => {
+                        if (canViewDetail) {
+                          setSelectedJob(job);
+                          setShowJobModal(true);
+                        }
+                      }}
+                      className={`p-3 rounded-lg border-l-4 transition-all ${
+                        job.status === 'Hoàn thành' ? 'bg-green-50 border-green-500' :
+                        job.status === 'Đang làm' ? 'bg-blue-50 border-blue-500' :
+                        'bg-amber-50 border-amber-500'
+                      } ${canViewDetail ? 'cursor-pointer hover:shadow' : 'cursor-default opacity-80'}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-gray-800">{job.scheduledTime || '—'}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          job.status === 'Hoàn thành' ? 'bg-green-100 text-green-700' :
+                          job.status === 'Đang làm' ? 'bg-blue-100 text-blue-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {job.status || 'Chờ XN'}
+                        </span>
+                      </div>
+                      <div className="font-medium text-gray-700 text-sm">{job.title}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        🔧 {job.technicians?.join(', ') || 'Chưa phân công'}
+                      </div>
+                      {/* Chỉ hiện thông tin chi tiết nếu có quyền */}
+                      {canViewDetail ? (
+                        <>
+                          <div className="text-xs text-gray-500">👤 {job.customerName}</div>
+                          {job.customerPayment > 0 && (
+                            <div className="text-xs font-medium text-green-600 mt-1">💰 {formatMoney(job.customerPayment)}</div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-xs text-gray-400 mt-1 italic">🔒 Xem chi tiết: liên hệ người tạo/KTV</div>
+                      )}
                     </div>
-                    <div className="font-medium text-gray-700 text-sm">{job.title}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      👤 {job.customerName} • 🔧 {job.technicians?.join(', ') || 'Chưa phân công'}
-                    </div>
-                    {job.customerPayment > 0 && (
-                      <div className="text-xs font-medium text-green-600 mt-1">💰 {formatMoney(job.customerPayment)}</div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             
@@ -6295,29 +6313,45 @@ export default function SimpleMarketingSystem() {
               .filter(j => j.scheduledDate >= todayStr && j.status !== 'Hủy' && j.status !== 'Hoàn thành')
               .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || (a.scheduledTime || '').localeCompare(b.scheduledTime || ''))
               .slice(0, 5)
-              .map(job => (
-                <div 
-                  key={job.id}
-                  onClick={() => {
-                    setSelectedJob(job);
-                    setShowJobModal(true);
-                  }}
-                  className="flex items-center gap-3 py-2 border-b last:border-0 cursor-pointer hover:bg-gray-50 rounded"
-                >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold ${
-                    job.scheduledDate === todayStr ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {new Date(job.scheduledDate).getDate()}/{new Date(job.scheduledDate).getMonth() + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-800 text-sm truncate">{job.title}</div>
-                    <div className="text-xs text-gray-500">
-                      {job.scheduledTime} • {job.customerName}
+              .map(job => {
+                // Kiểm tra quyền xem chi tiết
+                const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'admin';
+                const isCreator = job.createdBy === currentUser.name;
+                const isTechnician = job.technicians?.includes(currentUser.name);
+                const canViewDetail = isAdmin || isCreator || isTechnician;
+                
+                return (
+                  <div 
+                    key={job.id}
+                    onClick={() => {
+                      if (canViewDetail) {
+                        setSelectedJob(job);
+                        setShowJobModal(true);
+                      }
+                    }}
+                    className={`flex items-center gap-3 py-2 border-b last:border-0 rounded ${
+                      canViewDetail ? 'cursor-pointer hover:bg-gray-50' : 'cursor-default'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold ${
+                      job.scheduledDate === todayStr ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {new Date(job.scheduledDate).getDate()}/{new Date(job.scheduledDate).getMonth() + 1}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-800 text-sm truncate">{job.title}</div>
+                      <div className="text-xs text-gray-500">
+                        {job.scheduledTime} • {canViewDetail ? job.customerName : '🔒'}
+                      </div>
+                    </div>
+                    {canViewDetail ? (
+                      <span className="text-gray-400">→</span>
+                    ) : (
+                      <span className="text-gray-300 text-xs">🔒</span>
+                    )}
                   </div>
-                  <span className="text-gray-400">→</span>
-                </div>
-              ))
+                );
+              })
             }
             {technicalJobs.filter(j => j.scheduledDate >= todayStr && j.status !== 'Hủy' && j.status !== 'Hoàn thành').length === 0 && (
               <div className="text-center py-4 text-gray-500">
