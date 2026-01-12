@@ -5525,6 +5525,491 @@ export default function SimpleMarketingSystem() {
     );
   };
 
+  // ============================================================
+  // COMPONENT: TodayJobsDashboard - Nhắc nhở công việc + Bản đồ
+  // ============================================================
+  const TodayJobsDashboard = () => {
+    const [currentTime, setCurrentTime] = useState(getVietnamDate());
+    const [audioEnabled, setAudioEnabled] = useState(true);
+    const [dismissedAlerts, setDismissedAlerts] = useState([]);
+
+    // Update time mỗi phút
+    useEffect(() => {
+      const timer = setInterval(() => {
+        setCurrentTime(getVietnamDate());
+      }, 60000);
+      return () => clearInterval(timer);
+    }, []);
+
+    // Lọc công việc hôm nay
+    const todayJobs = useMemo(() => {
+      const today = getTodayVN();
+      return technicalJobs
+        .filter(job => {
+          if (job.scheduledDate !== today) return false;
+          if (job.status === 'Hủy') return false;
+          if (currentUser.role !== 'Admin' && currentUser.role !== 'admin' && currentUser.role !== 'Manager') {
+            if (job.createdBy !== currentUser.name && 
+                (!job.technicians || !job.technicians.includes(currentUser.name))) {
+              return false;
+            }
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          const timeA = a.scheduledTime || '00:00';
+          const timeB = b.scheduledTime || '00:00';
+          return timeA.localeCompare(timeB);
+        });
+    }, [technicalJobs, currentUser]);
+
+    // Phân loại công việc theo độ ưu tiên
+    const categorizedJobs = useMemo(() => {
+      const now = currentTime;
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+      return todayJobs.map(job => {
+        const [jobHour, jobMinute] = (job.scheduledTime || '09:00').split(':').map(Number);
+        const jobTotalMinutes = jobHour * 60 + jobMinute;
+        const diffMinutes = jobTotalMinutes - currentTotalMinutes;
+
+        let category = 'upcoming';
+        let urgency = 'normal';
+        let countdown = null;
+
+        if (job.status === 'Hoàn thành') {
+          category = 'completed';
+          urgency = 'done';
+        } else if (diffMinutes < -60) {
+          category = 'overdue';
+          urgency = 'critical';
+          countdown = Math.abs(diffMinutes);
+        } else if (diffMinutes < 0) {
+          category = 'overdue';
+          urgency = 'warning';
+          countdown = Math.abs(diffMinutes);
+        } else if (diffMinutes <= 30) {
+          category = 'urgent';
+          urgency = 'critical';
+          countdown = diffMinutes;
+        } else if (diffMinutes <= 120) {
+          category = 'soon';
+          urgency = 'warning';
+          countdown = diffMinutes;
+        } else {
+          category = 'upcoming';
+          urgency = 'normal';
+          countdown = diffMinutes;
+        }
+
+        return { ...job, category, urgency, countdown, diffMinutes };
+      });
+    }, [todayJobs, currentTime]);
+
+    // Thống kê
+    const stats = useMemo(() => {
+      const overdue = categorizedJobs.filter(j => j.category === 'overdue').length;
+      const urgent = categorizedJobs.filter(j => j.category === 'urgent').length;
+      const soon = categorizedJobs.filter(j => j.category === 'soon').length;
+      const upcoming = categorizedJobs.filter(j => j.category === 'upcoming').length;
+      const completed = categorizedJobs.filter(j => j.category === 'completed').length;
+      const total = categorizedJobs.length;
+      const totalRevenue = categorizedJobs.reduce((sum, j) => sum + (j.customerPayment || 0), 0);
+      return { overdue, urgent, soon, upcoming, completed, total, totalRevenue };
+    }, [categorizedJobs]);
+
+    // Mở Google Maps điều hướng
+    const openNavigation = (job) => {
+      const address = encodeURIComponent(job.address || '');
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${address}`;
+      window.open(url, '_blank');
+    };
+
+    // Gọi điện
+    const callCustomer = (phone) => {
+      window.open(`tel:${phone}`, '_self');
+    };
+
+    // Tắt thông báo cho 1 job
+    const dismissAlert = (jobId) => {
+      setDismissedAlerts(prev => [...prev, jobId]);
+    };
+
+    // Format countdown
+    const formatCountdown = (minutes) => {
+      if (minutes < 60) return `${minutes} phút`;
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      return mins > 0 ? `${hours}h ${mins}p` : `${hours} giờ`;
+    };
+
+    // Styles theo mức độ ưu tiên
+    const getUrgencyStyles = (urgency) => {
+      const styles = {
+        critical: {
+          card: 'bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 shadow-lg shadow-red-100',
+          badge: 'bg-red-500 text-white animate-pulse',
+          text: 'text-red-700',
+          icon: '🚨'
+        },
+        warning: {
+          card: 'bg-gradient-to-r from-amber-50 to-yellow-50 border-l-4 border-amber-500 shadow-md shadow-amber-100',
+          badge: 'bg-amber-500 text-white',
+          text: 'text-amber-700',
+          icon: '⚠️'
+        },
+        normal: {
+          card: 'bg-white border-l-4 border-blue-400 shadow hover:shadow-md',
+          badge: 'bg-blue-100 text-blue-700',
+          text: 'text-blue-700',
+          icon: '📋'
+        },
+        done: {
+          card: 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 opacity-75',
+          badge: 'bg-green-500 text-white',
+          text: 'text-green-700',
+          icon: '✅'
+        }
+      };
+      return styles[urgency] || styles.normal;
+    };
+
+    // Job Card Component
+    const TodayJobCard = ({ job }) => {
+      const style = getUrgencyStyles(job.urgency);
+      const isOverdue = job.category === 'overdue';
+      const isUrgent = job.category === 'urgent';
+
+      return (
+        <div className={`${style.card} rounded-xl p-4 transition-all duration-300 hover:scale-[1.01]`}>
+          {/* Header */}
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{style.icon}</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-lg">{job.scheduledTime || '09:00'}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${style.badge}`}>
+                    {job.type || 'Lắp đặt'}
+                  </span>
+                </div>
+                {job.countdown !== null && job.category !== 'completed' && (
+                  <div className={`text-sm font-medium ${style.text}`}>
+                    {isOverdue ? (
+                      <span className="flex items-center gap-1">
+                        <span className="animate-pulse">●</span>
+                        Quá hạn {formatCountdown(job.countdown)}
+                      </span>
+                    ) : (
+                      <span>Còn {formatCountdown(job.countdown)}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-1">
+              {(isOverdue || isUrgent) && !dismissedAlerts.includes(job.id) && (
+                <button
+                  onClick={() => dismissAlert(job.id)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                  title="Tắt nhắc nhở"
+                >
+                  🔕
+                </button>
+              )}
+              <button
+                onClick={() => openNavigation(job)}
+                className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                title="Chỉ đường"
+              >
+                🗺️
+              </button>
+            </div>
+          </div>
+
+          {/* Tiêu đề */}
+          <h3 
+            className="font-bold text-gray-800 mb-2 cursor-pointer hover:text-blue-600"
+            onClick={() => setSelectedJob(job)}
+          >
+            {job.title}
+          </h3>
+
+          {/* Thông tin */}
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center gap-2 text-gray-700">
+              <span className="text-blue-500">👤</span>
+              <span className="font-medium">{job.customerName}</span>
+              <button
+                onClick={() => callCustomer(job.customerPhone)}
+                className="ml-auto flex items-center gap-1 px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-full transition-colors"
+              >
+                📞 {job.customerPhone}
+              </button>
+            </div>
+            
+            <div className="flex items-start gap-2 text-gray-600">
+              <span className="text-red-500 mt-0.5">📍</span>
+              <span className="flex-1">{job.address}</span>
+            </div>
+
+            <div className="flex items-center gap-2 text-purple-600">
+              <span>🔧</span>
+              <span className="font-medium">
+                {job.technicians && job.technicians.length > 0 
+                  ? job.technicians.join(', ') 
+                  : 'Chưa phân công'}
+              </span>
+            </div>
+
+            {job.customerPayment > 0 && (
+              <div className="flex items-center gap-2 bg-green-100 rounded-lg p-2 mt-2">
+                <span className="text-xl">💰</span>
+                <div>
+                  <div className="text-xs text-green-600">Thu khách</div>
+                  <div className="font-bold text-green-700">{formatMoney(job.customerPayment)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="mt-3 pt-3 border-t flex items-center justify-between">
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              job.status === 'Hoàn thành' ? 'bg-green-100 text-green-700' :
+              job.status === 'Đang làm' ? 'bg-blue-100 text-blue-700' :
+              job.status === 'Chờ XN' ? 'bg-yellow-100 text-yellow-700' :
+              'bg-gray-100 text-gray-700'
+            }`}>
+              {job.status || 'Chờ XN'}
+            </span>
+            
+            <button
+              onClick={() => setSelectedJob(job)}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Xem chi tiết →
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    // Empty state
+    if (todayJobs.length === 0) {
+      return (
+        <div className="p-4 md:p-6">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-8 text-center">
+            <div className="text-6xl mb-4">🎉</div>
+            <h3 className="text-xl font-bold text-gray-700 mb-2">Hôm nay không có lịch!</h3>
+            <p className="text-gray-500">Không có công việc kỹ thuật nào được lên lịch cho hôm nay.</p>
+            <div className="mt-4 text-sm text-gray-400">
+              {currentTime.toLocaleDateString('vi-VN', { 
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Main render
+    return (
+      <div className="p-4 md:p-6 space-y-6">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-2xl p-6 text-white shadow-xl">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div className="text-sm opacity-80 mb-1">
+                {currentTime.toLocaleDateString('vi-VN', { 
+                  weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
+                })}
+              </div>
+              <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-3">
+                <span>📅</span>
+                Lịch Công Việc Hôm Nay
+              </h2>
+              <div className="text-4xl font-mono font-bold mt-2">
+                {currentTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setAudioEnabled(!audioEnabled)}
+              className={`px-4 py-2 rounded-xl font-medium transition-all ${
+                audioEnabled 
+                  ? 'bg-white/20 hover:bg-white/30 text-white' 
+                  : 'bg-red-500/50 hover:bg-red-500/70 text-white'
+              }`}
+            >
+              {audioEnabled ? '🔔 Đang bật thông báo' : '🔕 Đã tắt thông báo'}
+            </button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+          <div className="bg-white rounded-xl p-3 md:p-4 shadow-md border-l-4 border-indigo-500">
+            <div className="text-2xl md:text-3xl font-bold text-indigo-600">{stats.total}</div>
+            <div className="text-xs md:text-sm text-gray-600">Tổng công việc</div>
+          </div>
+          
+          {stats.overdue > 0 && (
+            <div className="bg-red-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-red-500 animate-pulse">
+              <div className="text-2xl md:text-3xl font-bold text-red-600">{stats.overdue}</div>
+              <div className="text-xs md:text-sm text-red-600 font-medium">🚨 Quá hạn</div>
+            </div>
+          )}
+          
+          {stats.urgent > 0 && (
+            <div className="bg-orange-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-orange-500">
+              <div className="text-2xl md:text-3xl font-bold text-orange-600">{stats.urgent}</div>
+              <div className="text-xs md:text-sm text-orange-600 font-medium">⚡ Sắp đến giờ</div>
+            </div>
+          )}
+          
+          {stats.soon > 0 && (
+            <div className="bg-amber-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-amber-500">
+              <div className="text-2xl md:text-3xl font-bold text-amber-600">{stats.soon}</div>
+              <div className="text-xs md:text-sm text-amber-600">⏰ Trong 2h</div>
+            </div>
+          )}
+          
+          <div className="bg-blue-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-blue-500">
+            <div className="text-2xl md:text-3xl font-bold text-blue-600">{stats.upcoming}</div>
+            <div className="text-xs md:text-sm text-blue-600">📋 Còn lại</div>
+          </div>
+          
+          <div className="bg-green-50 rounded-xl p-3 md:p-4 shadow-md border-l-4 border-green-500">
+            <div className="text-2xl md:text-3xl font-bold text-green-600">{stats.completed}</div>
+            <div className="text-xs md:text-sm text-green-600">✅ Hoàn thành</div>
+          </div>
+        </div>
+
+        {/* Doanh thu */}
+        {stats.totalRevenue > 0 && (
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 text-white shadow-lg">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">💰</span>
+              <div>
+                <div className="text-sm opacity-80">Doanh thu dự kiến hôm nay</div>
+                <div className="text-2xl font-bold">{formatMoney(stats.totalRevenue)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Công việc quá hạn */}
+        {stats.overdue > 0 && (
+          <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4">
+            <h3 className="text-lg font-bold text-red-700 mb-4">🚨 CÔNG VIỆC QUÁ HẠN ({stats.overdue})</h3>
+            <div className="space-y-4">
+              {categorizedJobs.filter(j => j.category === 'overdue').map(job => (
+                <TodayJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Công việc sắp đến giờ */}
+        {stats.urgent > 0 && (
+          <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4">
+            <h3 className="text-lg font-bold text-orange-700 mb-4">⚡ SẮP ĐẾN GIỜ - Trong 30 phút ({stats.urgent})</h3>
+            <div className="space-y-4">
+              {categorizedJobs.filter(j => j.category === 'urgent').map(job => (
+                <TodayJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Trong 2 giờ tới */}
+        {stats.soon > 0 && (
+          <div>
+            <h3 className="text-lg font-bold text-amber-700 mb-4">⏰ Trong 2 giờ tới ({stats.soon})</h3>
+            <div className="space-y-4">
+              {categorizedJobs.filter(j => j.category === 'soon').map(job => (
+                <TodayJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Còn lại */}
+        {stats.upcoming > 0 && (
+          <div>
+            <h3 className="text-lg font-bold text-blue-700 mb-4">📋 Công việc còn lại ({stats.upcoming})</h3>
+            <div className="space-y-4">
+              {categorizedJobs.filter(j => j.category === 'upcoming').map(job => (
+                <TodayJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Đã hoàn thành */}
+        {stats.completed > 0 && (
+          <div className="opacity-75">
+            <h3 className="text-lg font-bold text-green-700 mb-4">✅ Đã hoàn thành ({stats.completed})</h3>
+            <div className="space-y-4">
+              {categorizedJobs.filter(j => j.category === 'completed').map(job => (
+                <TodayJobCard key={job.id} job={job} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Lộ trình */}
+        <div className="bg-white rounded-2xl p-4 shadow-lg">
+          <h3 className="text-lg font-bold text-gray-700 mb-4">🗺️ Lộ Trình Hôm Nay</h3>
+          <div className="grid md:grid-cols-2 gap-3">
+            {categorizedJobs.filter(j => j.category !== 'completed').map((job, index) => (
+              <div 
+                key={job.id}
+                className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
+                onClick={() => openNavigation(job)}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm ${
+                  job.urgency === 'critical' ? 'bg-red-500' :
+                  job.urgency === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+                }`}>
+                  {index + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-800 truncate text-sm">{job.title}</div>
+                  <div className="text-xs text-gray-500 truncate">{job.address}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-gray-700 text-sm">{job.scheduledTime}</div>
+                  <div className="text-blue-600 text-xs">Chỉ đường →</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {categorizedJobs.filter(j => j.category !== 'completed').length > 1 && (
+            <button
+              onClick={() => {
+                const addresses = categorizedJobs
+                  .filter(j => j.category !== 'completed')
+                  .map(j => encodeURIComponent(j.address))
+                  .join('/');
+                window.open(`https://www.google.com/maps/dir/${addresses}`, '_blank');
+              }}
+              className="w-full mt-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+            >
+              🗺️ Mở lộ trình trên Google Maps
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+  // ============ END TodayJobsDashboard ============
+
   const TechnicalJobsView = () => {
     // Lấy danh sách người tạo và kỹ thuật viên unique
     const creators = [...new Set(technicalJobs.map(j => j.createdBy).filter(Boolean))];
@@ -9433,6 +9918,7 @@ export default function SimpleMarketingSystem() {
                 { id: 'products', l: '📱 Sản Phẩm' },
                 { id: 'report', l: '📈 Báo Cáo' }
               ] : activeModule === 'technical' ? [
+                { id: 'today', l: '📅 Hôm Nay' },
                 { id: 'jobs', l: '📋 Công Việc' },
                 { id: 'wages', l: '💰 Tính Công' },
                 { id: 'summary', l: '📊 Tổng Quan' }
@@ -9533,7 +10019,7 @@ export default function SimpleMarketingSystem() {
           )}
           {(currentUser.role === 'Admin' || currentUser.role === 'admin' || (currentUser.permissions && currentUser.permissions.technical > 0)) && (
             <button
-              onClick={() => navigateTo('technical', 'jobs')}
+              onClick={() => navigateTo('technical', 'today')}
               className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
                 activeModule === 'technical'
                   ? 'bg-white text-green-700'
@@ -9578,6 +10064,7 @@ export default function SimpleMarketingSystem() {
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
+            { id: 'today', l: '📅 Hôm Nay' },
             { id: 'jobs', l: '📋 Công Việc' },
             { id: 'wages', l: '💰 Tiền Công' },
             { id: 'summary', l: '📊 Tổng Hợp' }
@@ -9619,6 +10106,7 @@ export default function SimpleMarketingSystem() {
             { id: 'products', l: '📱 Sản Phẩm' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
+            { id: 'today', l: '📅 Hôm Nay' },
             { id: 'jobs', l: '📋 Công Việc' },
             { id: 'wages', l: '💰 Tiền Công' },
             { id: 'summary', l: '📊 Tổng Hợp' }
@@ -9723,6 +10211,7 @@ export default function SimpleMarketingSystem() {
         )}
         {activeModule === 'technical' && canAccessModule('technical') && (
           <>
+            {activeTab === 'today' && <TodayJobsDashboard />}
             {activeTab === 'jobs' && <TechnicalJobsView />}
             {activeTab === 'wages' && <TechnicianWagesView />}
             {activeTab === 'summary' && <TechnicalSummaryView />}
@@ -9765,6 +10254,46 @@ export default function SimpleMarketingSystem() {
       {showCreateJobModal && <CreateJobModal />}
       {showJobModal && <JobDetailModal />}
       {showPermissionsModal && <PermissionsModal />}
+
+      {/* Floating Button - Lịch Hôm Nay (Mobile) */}
+      {(() => {
+        const today = getTodayVN();
+        const todayJobsCount = technicalJobs.filter(j => 
+          j.scheduledDate === today && j.status !== 'Hủy' && j.status !== 'Hoàn thành'
+        ).length;
+        const hasOverdue = technicalJobs.some(j => {
+          if (j.scheduledDate !== today || j.status === 'Hủy' || j.status === 'Hoàn thành') return false;
+          const now = getVietnamDate();
+          const [h, m] = (j.scheduledTime || '09:00').split(':').map(Number);
+          return (now.getHours() * 60 + now.getMinutes()) > (h * 60 + m);
+        });
+        
+        // Chỉ hiện khi có quyền technical và không đang ở tab today
+        const showButton = (currentUser?.role === 'Admin' || currentUser?.role === 'admin' || 
+          currentUser?.role === 'Manager' || currentUser?.permissions?.technical > 0) &&
+          !(activeModule === 'technical' && activeTab === 'today');
+        
+        if (!showButton) return null;
+        
+        return (
+          <button
+            onClick={() => navigateTo('technical', 'today')}
+            className={`md:hidden fixed bottom-20 right-4 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 ${
+              hasOverdue ? 'bg-red-500 animate-pulse' : todayJobsCount > 0 ? 'bg-orange-500' : 'bg-gray-400'
+            } text-white`}
+            title={`${todayJobsCount} công việc hôm nay`}
+          >
+            📅
+            {todayJobsCount > 0 && (
+              <span className={`absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                hasOverdue ? 'bg-yellow-400 text-red-800' : 'bg-red-600 text-white'
+              }`}>
+                {todayJobsCount}
+              </span>
+            )}
+          </button>
+        );
+      })()}
 
       {/* Floating Attendance Button - Chỉ hiện trên Desktop */}
       {(() => {
