@@ -3226,6 +3226,13 @@ export default function SimpleMarketingSystem() {
         const dateStr = today.toISOString().slice(0,10).replace(/-/g, '');
         const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
         const receiptNumber = `PT-${dateStr}-${randomNum}`;
+        
+        // Handle cả snake_case và camelCase
+        const paymentAmount = job.customerPayment || job.customer_payment || 0;
+        const custName = job.customerName || job.customer_name || '';
+        const custPhone = job.customerPhone || job.customer_phone || '';
+        const custAddress = job.address || '';
+        const techNames = job.technicians?.join(', ') || 'N/A';
 
         const { error } = await supabase
           .from('receipts_payments')
@@ -3233,12 +3240,12 @@ export default function SimpleMarketingSystem() {
             tenant_id: tenant.id,
             receipt_number: receiptNumber,
             type: 'thu',
-            amount: job.customerPayment,
+            amount: paymentAmount,
             description: `Thu tiền lắp đặt: ${job.title}`,
             category: 'Lắp đặt tại nhà khách',
             status: 'pending',
             receipt_date: getTodayVN(),
-            note: `Khách hàng: ${job.customerName}\nSĐT: ${job.customerPhone}\nĐịa chỉ: ${job.address}\nKỹ thuật viên: ${job.technicians?.join(', ') || 'N/A'}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
+            note: `Khách hàng: ${custName}\nSĐT: ${custPhone}\nĐịa chỉ: ${custAddress}\nKỹ thuật viên: ${techNames}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
             created_by: currentUser.name,
             created_at: getNowISOVN()
           }]);
@@ -3265,6 +3272,10 @@ export default function SimpleMarketingSystem() {
         const today = new Date();
         const dateStr = today.toISOString().slice(0,10).replace(/-/g, '');
         
+        // Handle cả snake_case và camelCase
+        const custName = job.customerName || job.customer_name || '';
+        const techNames = job.technicians?.join(', ') || 'N/A';
+        
         // Tạo 1 phiếu chi tổng hợp
         const totalExpense = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
         const expenseDetails = expenses.map(e => `- ${e.category}${e.description ? ': ' + e.description : ''}: ${formatMoney(e.amount)}`).join('\n');
@@ -3282,7 +3293,7 @@ export default function SimpleMarketingSystem() {
             category: 'Vận chuyển',
             status: 'pending',
             receipt_date: getTodayVN(),
-            note: `Chi tiết chi phí:\n${expenseDetails}\n\nKhách hàng: ${job.customerName}\nKỹ thuật viên: ${job.technicians?.join(', ') || 'N/A'}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
+            note: `Chi tiết chi phí:\n${expenseDetails}\n\nKhách hàng: ${custName}\nKỹ thuật viên: ${techNames}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
             created_by: currentUser.name,
             created_at: getNowISOVN()
           }]);
@@ -3321,33 +3332,42 @@ export default function SimpleMarketingSystem() {
           if (fetchError) {
             console.error('Error fetching latest job:', fetchError);
           } else if (freshJob) {
-            latestJob = freshJob;
+            // Map snake_case sang camelCase
+            latestJob = {
+              ...freshJob,
+              customerPayment: freshJob.customer_payment || freshJob.customerPayment || 0,
+              customerName: freshJob.customer_name || freshJob.customerName || '',
+              customerPhone: freshJob.customer_phone || freshJob.customerPhone || '',
+              technicians: freshJob.technicians || [],
+              expenses: freshJob.expenses || []
+            };
             console.log('Loaded latest job data:', latestJob);
           }
         } catch (err) {
           console.error('Error loading latest job:', err);
         }
 
-        const hasPayment = latestJob.customerPayment > 0;
+        const hasPayment = (latestJob.customerPayment || latestJob.customer_payment || 0) > 0;
         const hasExpenses = (latestJob.expenses || []).length > 0;
         const totalExp = (latestJob.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+        const paymentAmount = latestJob.customerPayment || latestJob.customer_payment || 0;
         
         // Xây dựng thông báo
         let confirmMsg = `✅ Xác nhận hoàn thành công việc?\n\n`;
         
         if (hasPayment) {
-          confirmMsg += `💰 Thu của khách: ${formatMoney(latestJob.customerPayment)}\n`;
+          confirmMsg += `💰 Thu của khách: ${formatMoney(paymentAmount)}\n`;
         }
         if (hasExpenses) {
           confirmMsg += `💸 Chi phí: ${formatMoney(totalExp)}\n`;
         }
         if (hasPayment && hasExpenses) {
-          confirmMsg += `📊 Còn lại: ${formatMoney(latestJob.customerPayment - totalExp)}\n`;
+          confirmMsg += `📊 Còn lại: ${formatMoney(paymentAmount - totalExp)}\n`;
         }
         
         if (hasPayment || hasExpenses) {
           confirmMsg += `\n📝 Bạn có muốn TẠO PHIẾU TỰ ĐỘNG không?\n`;
-          if (hasPayment) confirmMsg += `• Phiếu thu: ${formatMoney(latestJob.customerPayment)}\n`;
+          if (hasPayment) confirmMsg += `• Phiếu thu: ${formatMoney(paymentAmount)}\n`;
           if (hasExpenses) confirmMsg += `• Phiếu chi: ${formatMoney(totalExp)}\n`;
           confirmMsg += `\n• Nhấn OK → Tạo phiếu tự động\n• Nhấn Cancel → Không tạo phiếu`;
           
