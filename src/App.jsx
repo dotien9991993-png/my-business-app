@@ -6351,6 +6351,26 @@ export default function SimpleMarketingSystem() {
                     </div>
                   </div>
 
+                  {/* Nút Google Maps */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const address = job.address || '';
+                      if (address.includes('google.com/maps') || address.includes('goo.gl/maps') || address.includes('maps.app.goo.gl')) {
+                        window.open(address, '_blank');
+                      } else if (/^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/.test(address.trim())) {
+                        const coords = address.replace(/\s/g, '');
+                        window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords}`, '_blank');
+                      } else {
+                        window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, '_blank');
+                      }
+                    }}
+                    className="w-full mt-3 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-lg font-medium transition-all flex items-center justify-center gap-2 shadow-md"
+                  >
+                    <span className="text-lg">🗺️</span>
+                    <span>Mở Google Maps</span>
+                  </button>
+
                   {/* Footer - Người tạo */}
                   {job.createdBy && (
                     <div className="mt-3 pt-2 border-t text-xs text-gray-500 flex items-center gap-1">
