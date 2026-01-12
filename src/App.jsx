@@ -5033,24 +5033,118 @@ export default function SimpleMarketingSystem() {
 
     return (
       <div className="p-4 md:p-6 pb-20 md:pb-6">
-        <div className="flex justify-between items-center mb-4 md:mb-6">
-          <h2 className="text-xl md:text-2xl font-bold">📋 Quản Lý Video</h2>
+        <div className="flex justify-between items-center mb-3 md:mb-6">
+          <h2 className="text-lg md:text-2xl font-bold">📋 Quản Lý Video</h2>
           <button
             onClick={() => setShowCreateTaskModal(true)}
-            className="px-4 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm md:text-base"
+            className="px-3 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm md:text-base"
           >
             ➕ Tạo Mới
           </button>
         </div>
 
-        <div className="bg-white p-3 md:p-4 rounded-xl shadow mb-4 md:mb-6">
-          <div className="flex gap-2 md:gap-4 flex-wrap">
+        {/* Mobile Filter - Compact */}
+        <div className="md:hidden bg-white rounded-xl shadow mb-3 overflow-hidden">
+          {/* Quick Stats Bar */}
+          <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
+            <span className="text-xs text-gray-600">
+              <span className="font-bold text-blue-600">{filteredTasks.length}</span>/{visibleTasks.length} video
+            </span>
+            <div className="flex gap-1">
+              {filterTeam !== 'all' && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full">{filterTeam}</span>}
+              {filterStatus !== 'all' && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full">{filterStatus}</span>}
+              {dateFilter !== 'all' && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] rounded-full">{dateFilter === 'today' ? 'Hôm nay' : dateFilter === 'week' ? 'Tuần' : dateFilter === 'month' ? 'Tháng' : dateFilter === 'overdue' ? 'Quá hạn' : 'Tùy chỉnh'}</span>}
+            </div>
+          </div>
+          
+          {/* Filter Row 1: Dropdowns */}
+          <div className="p-2 grid grid-cols-4 gap-1.5">
+            <select
+              value={filterTeam}
+              onChange={(e) => setFilterTeam(e.target.value)}
+              className="px-2 py-1.5 border rounded-lg text-xs bg-white"
+            >
+              <option value="all">Team</option>
+              <option value="Content">Content</option>
+              <option value="Edit Video">Edit</option>
+              <option value="Livestream">Live</option>
+              <option value="Kho">Kho</option>
+            </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-2 py-1.5 border rounded-lg text-xs bg-white"
+            >
+              <option value="all">T.Thái</option>
+              <option value="Nháp">Nháp</option>
+              <option value="Chưa Quay">Chưa Quay</option>
+              <option value="Đã Quay">Đã Quay</option>
+              <option value="Đang Edit">Đang Edit</option>
+              <option value="Hoàn Thành">Xong</option>
+            </select>
+            <select
+              value={filterAssignee}
+              onChange={(e) => setFilterAssignee(e.target.value)}
+              className="px-2 py-1.5 border rounded-lg text-xs bg-white"
+            >
+              <option value="all">NV</option>
+              {Array.from(new Set(visibleTasks.map(t => t.assignee))).sort().map(assignee => (
+                <option key={assignee} value={assignee}>{assignee.split(' ').pop()}</option>
+              ))}
+            </select>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="px-2 py-1.5 border rounded-lg text-xs bg-white"
+            >
+              <option value="all">Loại</option>
+              {videoCategories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name.replace('Video ', '').substring(0, 8)}</option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Filter Row 2: Date chips */}
+          <div className="px-2 pb-2 flex gap-1 overflow-x-auto">
+            {[
+              { id: 'all', label: 'Tất cả' },
+              { id: 'today', label: 'Hôm nay' },
+              { id: 'week', label: 'Tuần' },
+              { id: 'month', label: 'Tháng' },
+              { id: 'overdue', label: '⚠️ Trễ', color: 'red' },
+            ].map(d => (
+              <button
+                key={d.id}
+                onClick={() => handleDateFilterChange(d.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  dateFilter === d.id
+                    ? d.color === 'red' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+            {(filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || dateFilter !== 'all') && (
+              <button
+                onClick={clearFilters}
+                className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700"
+              >
+                ✕ Xóa
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Filter - Full */}
+        <div className="hidden md:block bg-white p-4 rounded-xl shadow mb-6">
+          <div className="flex gap-4 flex-wrap">
             <div>
-              <label className="text-xs md:text-sm font-medium mb-1 md:mb-2 block">Team</label>
+              <label className="text-sm font-medium mb-2 block">Team</label>
               <select
                 value={filterTeam}
                 onChange={(e) => setFilterTeam(e.target.value)}
-                className="px-2 md:px-4 py-1.5 md:py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">Tất cả</option>
                 <option value="Content">Content</option>
@@ -5208,7 +5302,7 @@ export default function SimpleMarketingSystem() {
           </div>
         </div>
 
-        <div className="grid gap-4">
+        <div className="grid gap-3 md:gap-4">
           {filteredTasks.map(task => (
             <div
               key={task.id}
@@ -5216,16 +5310,16 @@ export default function SimpleMarketingSystem() {
                 setSelectedTask(task);
                 setShowModal(true);
               }}
-              className="bg-white p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer"
+              className="bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer"
             >
               <div className="flex justify-between items-start">
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold mb-2">{task.title}</h3>
-                  <div className="flex gap-2 mb-3 flex-wrap">
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(task.status)}`}>
+                  <h3 className="text-base md:text-xl font-bold mb-2">{task.title}</h3>
+                  <div className="flex gap-1.5 md:gap-2 mb-2 md:mb-3 flex-wrap">
+                    <span className={`px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs md:text-sm font-medium ${getStatusColor(task.status)}`}>
                       {task.status}
                     </span>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getTeamColor(task.team)}`}>
+                    <span className={`px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs md:text-sm font-medium ${getTeamColor(task.team)}`}>
                       {task.team}
                     </span>
                     {task.category && (
