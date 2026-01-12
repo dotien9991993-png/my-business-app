@@ -10831,9 +10831,9 @@ export default function SimpleMarketingSystem() {
             ].map(tab => {
               // Đếm phiếu chờ duyệt
               const pendingCount = tab.id === 'receipts' 
-                ? receipts.filter(r => r.type === 'thu' && r.status === 'pending').length
+                ? (receiptsPayments || []).filter(r => r.type === 'thu' && r.status === 'pending').length
                 : tab.id === 'payments'
-                ? receipts.filter(r => r.type === 'chi' && r.status === 'pending').length
+                ? (receiptsPayments || []).filter(r => r.type === 'chi' && r.status === 'pending').length
                 : 0;
               const isActive = activeTab === tab.id;
               return (
