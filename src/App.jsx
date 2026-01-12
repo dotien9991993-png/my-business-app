@@ -3608,34 +3608,50 @@ export default function SimpleMarketingSystem() {
                 {/* Kỹ thuật viên */}
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <h3 className="font-bold text-purple-800 mb-2">🔧 Kỹ thuật viên</h3>
+                  
+                  {/* Hiển thị KTV đã chọn - có thể bỏ chọn */}
                   {editTechnicians.length > 0 && (
-                    <div className="mb-2 text-sm text-purple-700 bg-purple-100 px-2 py-1 rounded">
-                      ✓ Đã chọn: {editTechnicians.join(', ')}
+                    <div className="mb-3">
+                      <p className="text-xs text-purple-600 mb-1">Đã chọn (bấm để bỏ):</p>
+                      <div className="flex flex-wrap gap-2">
+                        {editTechnicians.map(name => (
+                          <button
+                            key={name}
+                            type="button"
+                            onClick={() => setEditTechnicians(editTechnicians.filter(t => t !== name))}
+                            className="px-3 py-1.5 rounded-full text-sm font-medium bg-purple-600 text-white hover:bg-purple-700"
+                          >
+                            ✓ {name} ✕
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
-                  <div className="flex flex-wrap gap-2">
-                    {technicianUsers.map(user => (
-                      <button
-                        key={user.id}
-                        type="button"
-                        onClick={() => {
-                          const newList = editTechnicians.includes(user.name)
-                            ? editTechnicians.filter(t => t !== user.name)
-                            : [...editTechnicians, user.name];
-                          setEditTechnicians(newList);
-                        }}
-                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                          editTechnicians.includes(user.name)
-                            ? 'bg-purple-600 text-white' 
-                            : 'bg-white border border-purple-300 text-purple-700 hover:bg-purple-100'
-                        }`}
-                      >
-                        {editTechnicians.includes(user.name) ? '✓ ' : ''}{user.name}
-                      </button>
-                    ))}
+                  
+                  {/* Danh sách KTV có thể thêm */}
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">Thêm kỹ thuật viên:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {technicianUsers
+                        .filter(user => !editTechnicians.includes(user.name))
+                        .map(user => (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => setEditTechnicians([...editTechnicians, user.name])}
+                            className="px-3 py-1.5 rounded-full text-sm font-medium bg-white border border-purple-300 text-purple-700 hover:bg-purple-100"
+                          >
+                            + {user.name}
+                          </button>
+                        ))}
+                      {technicianUsers.filter(user => !editTechnicians.includes(user.name)).length === 0 && (
+                        <span className="text-sm text-gray-500 italic">Đã chọn hết</span>
+                      )}
+                    </div>
                   </div>
+                  
                   {editTechnicians.length === 0 && (
-                    <p className="text-sm text-orange-600 mt-2">⚠️ Chưa chọn kỹ thuật viên - bấm vào tên để chọn</p>
+                    <p className="text-sm text-orange-600 mt-2">⚠️ Chưa chọn kỹ thuật viên</p>
                   )}
                 </div>
 
