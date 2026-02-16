@@ -472,7 +472,7 @@ export default function ChatWindow({
       onRoomUpdated?.();
     } catch (err) {
       console.error('Error sending images:', err);
-      alert('Lỗi gửi ảnh!');
+      alert('Lỗi gửi ảnh: ' + (err.message || 'Không xác định'));
       setUploadProgress(null);
     } finally {
       sendingRef.current = false;

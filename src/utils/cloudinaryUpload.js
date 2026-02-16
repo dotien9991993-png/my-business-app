@@ -6,18 +6,28 @@ const compressImage = (file, maxWidth = 1920, quality = 0.7) => {
   return new Promise((resolve) => {
     if (file.size < 500 * 1024) { resolve(file); return; }
     const reader = new FileReader();
+    reader.onerror = () => { console.warn('FileReader error, using original file'); resolve(file); };
     reader.onload = (e) => {
       const img = new Image();
+      img.onerror = () => { console.warn('Image decode error, using original file'); resolve(file); };
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let w = img.width, h = img.height;
-        if (w > maxWidth) { h = (h * maxWidth) / w; w = maxWidth; }
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        canvas.toBlob(
-          (blob) => resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' })),
-          'image/jpeg', quality
-        );
+        try {
+          const canvas = document.createElement('canvas');
+          let w = img.width, h = img.height;
+          if (w > maxWidth) { h = (h * maxWidth) / w; w = maxWidth; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) { console.warn('canvas.toBlob returned null, using original file'); resolve(file); return; }
+              resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+            },
+            'image/jpeg', quality
+          );
+        } catch (err) {
+          console.warn('Compress error, using original file:', err);
+          resolve(file);
+        }
       };
       img.src = e.target.result;
     };
@@ -27,23 +37,33 @@ const compressImage = (file, maxWidth = 1920, quality = 0.7) => {
 
 // Upload 1 ảnh lên Cloudinary
 export const uploadImage = async (file, folder = 'chat') => {
+  console.log('[Cloudinary] Uploading:', file.name, 'size:', file.size, 'type:', file.type);
+  console.log('[Cloudinary] Config - cloud:', CLOUD_NAME, 'preset:', UPLOAD_PRESET);
+
   const compressed = await compressImage(file);
+  console.log('[Cloudinary] After compress:', compressed.name, 'size:', compressed.size);
 
   const formData = new FormData();
   formData.append('file', compressed);
   formData.append('upload_preset', UPLOAD_PRESET);
   formData.append('folder', `hoangnam/${folder}`);
 
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    { method: 'POST', body: formData }
-  );
+  const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
+  console.log('[Cloudinary] POST:', url);
 
-  if (!response.ok) {
-    throw new Error('Upload ảnh thất bại');
+  const response = await fetch(url, { method: 'POST', body: formData });
+  const data = await response.json();
+  console.log('[Cloudinary] Response status:', response.status, 'data:', data);
+
+  if (data.error) {
+    const errMsg = data.error.message || JSON.stringify(data.error);
+    console.error('[Cloudinary] API error:', errMsg);
+    throw new Error(errMsg);
   }
 
-  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(`Upload thất bại (HTTP ${response.status})`);
+  }
 
   return {
     url: data.secure_url,
