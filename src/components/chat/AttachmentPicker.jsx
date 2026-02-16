@@ -255,7 +255,7 @@ function ItemPreview({ type, item }) {
 }
 
 // Main component: attachment type menu
-export default function AttachmentPicker({ onSelect, onFileClick, onClose }) {
+export default function AttachmentPicker({ onSelect, onFileClick, onImageClick, onClose }) {
   const [activeType, setActiveType] = useState(null);
 
   const handleSelect = (attachment) => {
@@ -288,10 +288,16 @@ export default function AttachmentPicker({ onSelect, onFileClick, onClose }) {
         ))}
         <div className="border-t mt-1 pt-1">
           <button
+            onClick={() => { onImageClick?.(); onClose(); }}
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
+          >
+            🖼️ Chọn ảnh
+          </button>
+          <button
             onClick={() => { onFileClick(); onClose(); }}
             className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
           >
-            📄 File / Ảnh
+            📄 File (PDF, Excel, Word)
           </button>
         </div>
       </div>

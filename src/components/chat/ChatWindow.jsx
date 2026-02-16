@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
+import { uploadImage, uploadImages } from '../../utils/cloudinaryUpload';
 import ChatMessage from './ChatMessage';
 import AttachmentPicker from './AttachmentPicker';
 import MessageContextMenu from './MessageContextMenu';
@@ -67,6 +68,10 @@ export default function ChatWindow({
   // Pin states
   const [pinnedMessages, setPinnedMessages] = useState([]);
 
+  // Image upload states
+  const [pendingImages, setPendingImages] = useState([]); // [{ file, preview, originalSize }]
+  const [uploadProgress, setUploadProgress] = useState(null); // "1/3"
+
   // Context menu states
   const [contextMenu, setContextMenu] = useState(null); // { message, x, y }
 
@@ -74,6 +79,7 @@ export default function ChatWindow({
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
   const initialLoadRef = useRef(true);
   const sendingRef = useRef(false);
 
@@ -299,7 +305,7 @@ export default function ChatWindow({
     }
   };
 
-  // Upload file
+  // Upload non-image file (keep Supabase storage)
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -314,6 +320,12 @@ export default function ChatWindow({
       return;
     }
 
+    // If image, add to pending images instead
+    if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      addPendingImages([file]);
+      return;
+    }
+
     setUploading(true);
     try {
       const ext = file.name.split('.').pop();
@@ -325,16 +337,146 @@ export default function ChatWindow({
 
       if (uploadErr) throw uploadErr;
 
-      const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
       await sendMessage(
         null,
-        isImage ? 'image' : 'file',
+        'file',
         { url: filePath, name: file.name, size: file.size }
       );
     } catch (err) {
       console.error('Error uploading file:', err);
       alert('Lỗi upload file!');
     } finally {
+      setUploading(false);
+    }
+  };
+
+  // Handle image selection (multiple)
+  const handleImageSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    e.target.value = '';
+    addPendingImages(files);
+  };
+
+  const addPendingImages = (files) => {
+    const imageFiles = files.filter(f => ALLOWED_IMAGE_TYPES.includes(f.type));
+    if (imageFiles.length === 0) return;
+
+    const maxTotal = 10;
+    const remaining = maxTotal - pendingImages.length;
+    if (remaining <= 0) { alert('Tối đa 10 ảnh!'); return; }
+
+    const toAdd = imageFiles.slice(0, remaining).map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+      originalSize: file.size
+    }));
+    setPendingImages(prev => [...prev, ...toAdd]);
+    inputRef.current?.focus();
+  };
+
+  const removePendingImage = (index) => {
+    setPendingImages(prev => {
+      const removed = prev[index];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  // Send images via Cloudinary
+  const sendImagesMessage = async () => {
+    if (pendingImages.length === 0) return;
+    if (sendingRef.current) return;
+
+    sendingRef.current = true;
+    setSending(true);
+    setUploading(true);
+
+    const imagesToSend = [...pendingImages];
+    const caption = newMessage.trim();
+    setNewMessage('');
+    setPendingImages([]);
+
+    try {
+      if (imagesToSend.length === 1) {
+        // Single image: backward compatible format
+        setUploadProgress('1/1');
+        const result = await uploadImage(imagesToSend[0].file, 'chat');
+        setUploadProgress(null);
+
+        const msgData = {
+          room_id: room.id,
+          sender_id: currentUser.id,
+          sender_name: currentUser.name,
+          sender_avatar: currentUser.avatar_url || null,
+          content: caption || null,
+          message_type: 'image',
+          file_url: result.url,
+          file_name: imagesToSend[0].file.name,
+          file_size: result.file_size,
+          reply_to: replyTo?.id || null,
+          attachments: pendingAttachments.length > 0 ? pendingAttachments : []
+        };
+
+        const { error } = await supabase.from('chat_messages').insert([msgData]);
+        if (error) throw error;
+
+        await supabase.from('chat_rooms').update({
+          last_message: caption || '🖼️ Ảnh',
+          last_message_at: new Date().toISOString(),
+          last_message_by: currentUser.name
+        }).eq('id', room.id);
+      } else {
+        // Multiple images: use attachments array
+        const imageAttachments = [];
+        for (let i = 0; i < imagesToSend.length; i++) {
+          setUploadProgress(`${i + 1}/${imagesToSend.length}`);
+          const result = await uploadImage(imagesToSend[i].file, 'chat');
+          imageAttachments.push({
+            type: 'image',
+            url: result.url,
+            width: result.width,
+            height: result.height
+          });
+        }
+        setUploadProgress(null);
+
+        const allAttachments = [...imageAttachments, ...pendingAttachments];
+
+        const msgData = {
+          room_id: room.id,
+          sender_id: currentUser.id,
+          sender_name: currentUser.name,
+          sender_avatar: currentUser.avatar_url || null,
+          content: caption || null,
+          message_type: 'text',
+          reply_to: replyTo?.id || null,
+          attachments: allAttachments
+        };
+
+        const { error } = await supabase.from('chat_messages').insert([msgData]);
+        if (error) throw error;
+
+        await supabase.from('chat_rooms').update({
+          last_message: caption || `🖼️ ${imagesToSend.length} ảnh`,
+          last_message_at: new Date().toISOString(),
+          last_message_by: currentUser.name
+        }).eq('id', room.id);
+      }
+
+      setReplyTo(null);
+      setPendingAttachments([]);
+      // Cleanup preview URLs
+      imagesToSend.forEach(img => { if (img.preview) URL.revokeObjectURL(img.preview); });
+      inputRef.current?.focus();
+      onRoomUpdated?.();
+    } catch (err) {
+      console.error('Error sending images:', err);
+      alert('Lỗi gửi ảnh!');
+      setUploadProgress(null);
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
       setUploading(false);
     }
   };
@@ -464,7 +606,7 @@ export default function ChatWindow({
     messageGroups.push({ type: 'message', data: msg });
   });
 
-  const canSend = newMessage.trim() || pendingAttachments.length > 0;
+  const canSend = newMessage.trim() || pendingAttachments.length > 0 || pendingImages.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -643,6 +785,35 @@ export default function ChatWindow({
         </div>
       )}
 
+      {/* Pending images preview */}
+      {pendingImages.length > 0 && (
+        <div className="px-3 py-2 bg-gray-50 border-t">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {pendingImages.map((img, i) => (
+              <div key={i} className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border">
+                <img src={img.preview} alt="" className="w-full h-full object-cover" />
+                <button
+                  onClick={() => removePendingImage(i)}
+                  className="absolute top-0 right-0 bg-black/60 text-white w-5 h-5 flex items-center justify-center text-xs rounded-bl-lg"
+                >
+                  &times;
+                </button>
+                {img.originalSize > 500 * 1024 && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-[8px] text-white text-center py-0.5">
+                    {(img.originalSize / (1024 * 1024)).toFixed(1)}MB
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {uploadProgress && (
+            <div className="text-xs text-green-600 mt-1 font-medium">
+              Đang tải ảnh {uploadProgress}...
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Input */}
       <div className="flex items-end gap-1.5 px-2 py-2 border-t bg-gray-50">
         <input
@@ -650,6 +821,14 @@ export default function ChatWindow({
           type="file"
           accept={ALLOWED_FILE_TYPES.join(',')}
           onChange={handleFileUpload}
+          className="hidden"
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleImageSelect}
           className="hidden"
         />
         <div className="relative">
@@ -669,10 +848,19 @@ export default function ChatWindow({
             <AttachmentPicker
               onSelect={handleAttachmentSelect}
               onFileClick={() => fileInputRef.current?.click()}
+              onImageClick={() => imageInputRef.current?.click()}
               onClose={() => setShowAttachmentPicker(false)}
             />
           )}
         </div>
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          disabled={uploading}
+          className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 flex-shrink-0"
+          title="Gửi ảnh"
+        >
+          🖼️
+        </button>
         <textarea
           ref={inputRef}
           value={newMessage}
@@ -684,7 +872,7 @@ export default function ChatWindow({
           style={{ minHeight: '36px' }}
         />
         <button
-          onClick={() => sendMessage(newMessage)}
+          onClick={() => pendingImages.length > 0 ? sendImagesMessage() : sendMessage(newMessage)}
           disabled={sending || (!canSend && !uploading)}
           className="p-2 text-green-600 hover:text-green-800 disabled:text-gray-300 flex-shrink-0"
           title="Gửi"

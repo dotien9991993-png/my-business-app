@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { EMPLOYEE_STATUSES, EMPLOYMENT_TYPES, GENDERS } from '../../constants/hrmConstants';
 import { getNowISOVN, getTodayVN } from '../../utils/dateUtils';
 import { logActivity } from '../../lib/activityLog';
+import { uploadImage, getThumbnailUrl } from '../../utils/cloudinaryUpload';
 
 const formatMoney = (amount) => {
   const num = parseFloat(amount) || 0;
@@ -47,6 +48,7 @@ const INITIAL_FORM = {
   emergency_contact: '',
   emergency_phone: '',
   note: '',
+  avatar_url: '',
 };
 
 export default function HrmEmployeesView({
@@ -78,6 +80,8 @@ export default function HrmEmployeesView({
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef(null);
 
   // --- Detail modal state ---
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -301,6 +305,7 @@ export default function HrmEmployeesView({
       emergency_contact: emp.emergency_contact || '',
       emergency_phone: emp.emergency_phone || '',
       note: emp.note || '',
+      avatar_url: emp.avatar_url || '',
     });
     setEditingEmployee(emp);
     setShowFormModal(true);
@@ -337,6 +342,7 @@ export default function HrmEmployeesView({
         emergency_contact: form.emergency_contact.trim() || null,
         emergency_phone: form.emergency_phone.trim() || null,
         note: form.note.trim() || null,
+        avatar_url: form.avatar_url || null,
         tenant_id: tenant.id,
       };
 
@@ -451,6 +457,22 @@ export default function HrmEmployeesView({
       .filter(k => String(k.employee_id) === String(selectedEmployee.id))
       .sort((a, b) => (b.period || '').localeCompare(a.period || ''));
   }, [selectedEmployee, kpiEvaluations]);
+
+  // ========== Avatar upload ==========
+  const handleAvatarUpload = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const result = await uploadImage(file, 'avatars');
+      setForm(prev => ({ ...prev, avatar_url: result.url }));
+    } catch (err) {
+      setToast({ type: 'error', msg: 'Lỗi upload ảnh: ' + err.message });
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  }, []);
 
   // ========== Cập nhật field form ==========
   const setField = useCallback((field, value) => {
@@ -732,6 +754,26 @@ export default function HrmEmployeesView({
 
             {/* Body */}
             <div className="px-6 py-4 space-y-5 max-h-[70vh] overflow-y-auto">
+              {/* --- Avatar --- */}
+              <div className="flex items-center gap-4">
+                <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+                {form.avatar_url ? (
+                  <img src={getThumbnailUrl(form.avatar_url)} alt="" className="w-16 h-16 rounded-full object-cover border-2 border-green-200" />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-2xl font-bold border-2 border-green-200">
+                    {(form.full_name || '?')[0]?.toUpperCase()}
+                  </div>
+                )}
+                <div className="flex flex-col gap-1">
+                  <button type="button" onClick={() => avatarInputRef.current?.click()} className="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-sm font-medium" disabled={uploadingAvatar}>
+                    {uploadingAvatar ? 'Đang tải...' : form.avatar_url ? 'Đổi ảnh' : 'Thêm ảnh đại diện'}
+                  </button>
+                  {form.avatar_url && (
+                    <button type="button" onClick={() => setField('avatar_url', '')} className="px-3 py-1.5 text-red-500 hover:text-red-700 text-xs">Xóa ảnh</button>
+                  )}
+                </div>
+              </div>
+
               {/* --- Thông tin cá nhân --- */}
               <div>
                 <h3 className="text-sm font-semibold text-green-700 mb-3 flex items-center gap-2">

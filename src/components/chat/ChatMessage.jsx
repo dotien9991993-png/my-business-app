@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
+import { getChatImageUrl, getFullImageUrl, isCloudinaryUrl } from '../../utils/cloudinaryUpload';
 import AttachmentCard from './AttachmentCard';
 
 // Format file size
@@ -26,7 +27,7 @@ const ImagePreview = ({ url, onClose }) => (
 );
 
 export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMessage, onContextMenu, onNavigate }) {
-  const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const longPressTimer = useRef(null);
   const touchMoved = useRef(false);
 
@@ -84,13 +85,27 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
   const isImage = message.message_type === 'image';
   const isFile = message.message_type === 'file';
   const attachments = message.attachments || [];
+  const imageAttachments = attachments.filter(a => a.type === 'image');
+  const nonImageAttachments = attachments.filter(a => a.type !== 'image');
 
-  // Get public URL for files
+  // Get public URL for files (backward compatible: Supabase path → public URL)
   const getFileUrl = (path) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
     const { data } = supabase.storage.from('chat-files').getPublicUrl(path);
     return data?.publicUrl || path;
+  };
+
+  // Get display URL for image (Cloudinary optimized or Supabase fallback)
+  const getDisplayImageUrl = (url) => {
+    const resolvedUrl = getFileUrl(url);
+    return isCloudinaryUrl(resolvedUrl) ? getChatImageUrl(resolvedUrl) : resolvedUrl;
+  };
+
+  // Get full-size URL for lightbox
+  const getPreviewImageUrl = (url) => {
+    const resolvedUrl = getFileUrl(url);
+    return isCloudinaryUrl(resolvedUrl) ? getFullImageUrl(resolvedUrl) : resolvedUrl;
   };
 
   return (
@@ -134,16 +149,44 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
               ? 'bg-[#1B5E20] text-white rounded-br-md'
               : 'bg-gray-100 text-gray-900 rounded-bl-md'
           }`}>
-            {/* Image */}
+            {/* Single image (message_type === 'image') */}
             {isImage && message.file_url && (
               <div className="mb-1 -mx-1 -mt-0.5">
                 <img
-                  src={getFileUrl(message.file_url)}
+                  src={getDisplayImageUrl(message.file_url)}
                   alt={message.file_name || 'Ảnh'}
                   className="rounded-xl max-w-full max-h-60 cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => setShowPreview(true)}
+                  onClick={() => setPreviewUrl(getPreviewImageUrl(message.file_url))}
                   loading="lazy"
                 />
+              </div>
+            )}
+
+            {/* Multiple images from attachments */}
+            {imageAttachments.length > 0 && (
+              <div className={`mb-1 -mx-1 -mt-0.5 grid gap-1 ${
+                imageAttachments.length === 1 ? 'grid-cols-1' :
+                imageAttachments.length === 2 ? 'grid-cols-2' :
+                'grid-cols-2'
+              }`}>
+                {imageAttachments.slice(0, 4).map((att, i) => (
+                  <div key={i} className={`relative ${
+                    imageAttachments.length === 3 && i === 0 ? 'col-span-2' : ''
+                  }`}>
+                    <img
+                      src={isCloudinaryUrl(att.url) ? getChatImageUrl(att.url) : att.url}
+                      alt=""
+                      className="rounded-lg w-full h-32 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setPreviewUrl(isCloudinaryUrl(att.url) ? getFullImageUrl(att.url) : att.url)}
+                      loading="lazy"
+                    />
+                    {i === 3 && imageAttachments.length > 4 && (
+                      <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                        <span className="text-white text-lg font-bold">+{imageAttachments.length - 4}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
 
@@ -177,8 +220,8 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
               </p>
             )}
 
-            {/* Attachment cards */}
-            {attachments.length > 0 && attachments.map((att, i) => (
+            {/* Non-image attachment cards */}
+            {nonImageAttachments.length > 0 && nonImageAttachments.map((att, i) => (
               <AttachmentCard key={i} attachment={att} isOwn={isOwn} onNavigate={onNavigate} />
             ))}
 
@@ -193,8 +236,8 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
         </div>
       </div>
 
-      {showPreview && (
-        <ImagePreview url={getFileUrl(message.file_url)} onClose={() => setShowPreview(false)} />
+      {previewUrl && (
+        <ImagePreview url={previewUrl} onClose={() => setPreviewUrl(null)} />
       )}
     </>
   );

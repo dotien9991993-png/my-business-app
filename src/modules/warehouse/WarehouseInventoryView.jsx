@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
 import { getNowISOVN, getTodayVN, formatDateTimeVN } from '../../utils/dateUtils';
 import { warehouseCategories, warehouseUnits } from '../../constants/warehouseConstants';
 import { logActivity } from '../../lib/activityLog';
+import { uploadImage, getThumbnailUrl } from '../../utils/cloudinaryUpload';
 
 export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, hasPermission, canEdit, getPermissionLevel }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
@@ -73,6 +74,9 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   const [formIsCombo, setFormIsCombo] = useState(false);
   const [formComboItems, setFormComboItems] = useState([]);
   const [comboChildSearch, setComboChildSearch] = useState('');
+  const [formImageUrl, setFormImageUrl] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef(null);
 
   // Adjust stock states
   const [adjustType, setAdjustType] = useState('add');
@@ -88,6 +92,22 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     setFormMinStock('5'); setFormMaxStock(''); setFormLocation('');
     setFormDescription(''); setFormBrand(''); setFormWarranty(''); setFormHasSerial(false);
     setFormIsCombo(false); setFormComboItems([]); setComboChildSearch('');
+    setFormImageUrl('');
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const result = await uploadImage(file, 'products');
+      setFormImageUrl(result.url);
+    } catch (err) {
+      alert('Lỗi upload ảnh: ' + err.message);
+    } finally {
+      setUploadingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
   };
 
   // Tính tồn kho combo = MIN(tồn SP con / qty trong combo)
@@ -186,6 +206,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
         brand: formBrand, warranty_months: formWarranty ? parseInt(formWarranty) : null,
         has_serial: formIsCombo ? false : formHasSerial,
         is_combo: formIsCombo,
+        image_url: formImageUrl || null,
         created_by: currentUser.name
       }]).select().single();
       if (error) throw error;
@@ -217,6 +238,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
         brand: formBrand, warranty_months: formWarranty ? parseInt(formWarranty) : null,
         has_serial: formIsCombo ? false : formHasSerial,
         is_combo: formIsCombo,
+        image_url: formImageUrl || null,
         updated_at: getNowISOVN()
       }).eq('id', selectedProduct.id);
       if (error) throw error;
@@ -311,6 +333,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     setFormWarranty(product.warranty_months?.toString() || '');
     setFormHasSerial(product.has_serial || false);
     setFormIsCombo(product.is_combo || false);
+    setFormImageUrl(product.image_url || '');
     // Load combo children
     const existingChildren = (comboItems || []).filter(ci => ci.combo_product_id === product.id);
     setFormComboItems(existingChildren.map(ci => {
@@ -588,6 +611,25 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
               <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
             </div>
             <div className="p-6 space-y-4">
+              {/* Ảnh sản phẩm */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-medium text-gray-700 mb-3">📷 Ảnh sản phẩm</h3>
+                <input type="file" ref={imageInputRef} accept="image/*" onChange={handleImageUpload} className="hidden" />
+                {formImageUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img src={getThumbnailUrl(formImageUrl)} alt="" className="w-20 h-20 object-cover rounded-lg border" />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => imageInputRef.current?.click()} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-sm" disabled={uploadingImage}>Đổi ảnh</button>
+                      <button type="button" onClick={() => setFormImageUrl('')} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm">Xóa</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-amber-400 hover:text-amber-600 transition-colors text-sm" disabled={uploadingImage}>
+                    {uploadingImage ? 'Đang tải ảnh...' : '📷 Thêm ảnh sản phẩm'}
+                  </button>
+                )}
+              </div>
+
               <div className="bg-gray-50 rounded-lg p-4 space-y-4">
                 <h3 className="font-medium text-gray-700">📝 Thông tin cơ bản</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -751,6 +793,29 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                 <div className="text-amber-100">{selectedProduct.unit} {selectedProduct.is_combo ? 'combo khả dụng (tính từ SP con)' : 'trong kho (tổng)'}</div>
                 {!selectedProduct.is_combo && (
                   <button onClick={() => { setShowDetailModal(false); openAdjust(selectedProduct); }} className="mt-3 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium">Điều chỉnh số lượng</button>
+                )}
+              </div>
+
+              {/* Ảnh sản phẩm (detail) */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-medium text-gray-700 mb-3">📷 Ảnh sản phẩm</h3>
+                <input type="file" ref={imageInputRef} accept="image/*" onChange={handleImageUpload} className="hidden" />
+                {formImageUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img src={getThumbnailUrl(formImageUrl)} alt="" className="w-20 h-20 object-cover rounded-lg border" />
+                    {hasPermission('warehouse', 2) && (
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => imageInputRef.current?.click()} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-sm" disabled={uploadingImage}>Đổi ảnh</button>
+                        <button type="button" onClick={() => setFormImageUrl('')} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm">Xóa</button>
+                      </div>
+                    )}
+                  </div>
+                ) : hasPermission('warehouse', 2) ? (
+                  <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-amber-400 hover:text-amber-600 transition-colors text-sm" disabled={uploadingImage}>
+                    {uploadingImage ? 'Đang tải ảnh...' : '📷 Thêm ảnh sản phẩm'}
+                  </button>
+                ) : (
+                  <div className="text-sm text-gray-400">Chưa có ảnh</div>
                 )}
               </div>
 
