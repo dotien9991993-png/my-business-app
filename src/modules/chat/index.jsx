@@ -7,7 +7,7 @@ import NewChatModal from '../../components/chat/NewChatModal';
 import ChatGroupModal from '../../components/chat/ChatGroupModal';
 
 export default function ChatModule() {
-  const { currentUser, tenant, allUsers } = useApp();
+  const { currentUser, tenant, allUsers, navigateTo } = useApp();
 
   const [activeRoom, setActiveRoom] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -342,6 +342,7 @@ export default function ChatModule() {
               allUsers={allUsers}
               onBack={handleBackToList}
               onRoomUpdated={loadRooms}
+              onNavigate={navigateTo}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">

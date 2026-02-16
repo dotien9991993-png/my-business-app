@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import ChatMessage from './ChatMessage';
+import AttachmentPicker from './AttachmentPicker';
+import MessageContextMenu from './MessageContextMenu';
 
 const PAGE_SIZE = 50;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -13,6 +15,11 @@ const ALLOWED_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/msword'
 ];
+
+const TYPE_ICONS = {
+  order: '📦', task: '🎬', product: '📦', customer: '👥',
+  technical_job: '🔧', warranty: '🛡️'
+};
 
 // Date separator
 const formatDateSeparator = (dateStr) => {
@@ -30,10 +37,9 @@ const formatDateSeparator = (dateStr) => {
   return vnDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
-// Group messages by date
 const getMessageDate = (dateStr) => {
   const d = new Date(dateStr);
-  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }); // YYYY-MM-DD
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 };
 
 export default function ChatWindow({
@@ -41,7 +47,8 @@ export default function ChatWindow({
   currentUser,
   allUsers,
   onBack,
-  onRoomUpdated
+  onRoomUpdated,
+  onNavigate
 }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -52,6 +59,16 @@ export default function ChatWindow({
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+
+  // Attachment states
+  const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+
+  // Pin states
+  const [pinnedMessages, setPinnedMessages] = useState([]);
+
+  // Context menu states
+  const [contextMenu, setContextMenu] = useState(null); // { message, x, y }
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -101,16 +118,34 @@ export default function ChatWindow({
     }
   }, [room.id]);
 
+  // Load pinned messages
+  const loadPinnedMessages = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('room_id', room.id)
+        .eq('is_pinned', true)
+        .order('pinned_at', { ascending: false })
+        .limit(5);
+
+      if (!error) setPinnedMessages(data || []);
+    } catch (_e) { /* ignore */ }
+  }, [room.id]);
+
   // Initial load
   useEffect(() => {
     initialLoadRef.current = true;
     setLoading(true);
     setMessages([]);
     setHasMore(true);
+    setPendingAttachments([]);
+    setReplyTo(null);
     loadMessages().finally(() => setLoading(false));
-  }, [loadMessages]);
+    loadPinnedMessages();
+  }, [loadMessages, loadPinnedMessages]);
 
-  // Scroll to bottom on initial load and new messages
+  // Scroll to bottom on initial load
   useEffect(() => {
     if (initialLoadRef.current && messages.length > 0 && !loading) {
       messagesEndRef.current?.scrollIntoView();
@@ -131,7 +166,6 @@ export default function ChatWindow({
       } catch (_e) { /* ignore */ }
     };
     markRead();
-    // Mark read on visibility change too
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') markRead();
     };
@@ -144,39 +178,45 @@ export default function ChatWindow({
     const channel = supabase
       .channel(`chat-${room.id}`)
       .on('postgres_changes', {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
         table: 'chat_messages',
         filter: `room_id=eq.${room.id}`
       }, (payload) => {
-        const newMsg = payload.new;
-        setMessages(prev => {
-          // Avoid duplicates
-          if (prev.some(m => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
-        });
-        // Auto-scroll if near bottom
-        const container = messagesContainerRef.current;
-        if (container) {
-          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-          if (isNearBottom || newMsg.sender_id === currentUser?.id) {
-            setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+        if (payload.eventType === 'INSERT') {
+          const newMsg = payload.new;
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          const container = messagesContainerRef.current;
+          if (container) {
+            const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+            if (isNearBottom || newMsg.sender_id === currentUser?.id) {
+              setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+            }
           }
-        }
-        // Mark as read
-        if (newMsg.sender_id !== currentUser?.id) {
-          supabase
-            .from('chat_room_members')
-            .update({ last_read_at: new Date().toISOString() })
-            .eq('room_id', room.id)
-            .eq('user_id', currentUser?.id)
-            .then();
+          if (newMsg.sender_id !== currentUser?.id) {
+            supabase
+              .from('chat_room_members')
+              .update({ last_read_at: new Date().toISOString() })
+              .eq('room_id', room.id)
+              .eq('user_id', currentUser?.id)
+              .then();
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new;
+          setMessages(prev => prev.map(m => m.id === updated.id ? updated : m));
+          // Refresh pinned if pin state changed
+          if (updated.is_pinned !== payload.old?.is_pinned) {
+            loadPinnedMessages();
+          }
         }
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [room.id, currentUser?.id]);
+  }, [room.id, currentUser?.id, loadPinnedMessages]);
 
   // Load more (scroll up)
   const handleLoadMore = async () => {
@@ -186,7 +226,6 @@ export default function ChatWindow({
     const prevHeight = container?.scrollHeight || 0;
     await loadMessages(messages[0].created_at);
     setLoadingMore(false);
-    // Maintain scroll position
     if (container) {
       requestAnimationFrame(() => {
         container.scrollTop = container.scrollHeight - prevHeight;
@@ -197,7 +236,7 @@ export default function ChatWindow({
   // Send message (with double-submit guard)
   const sendMessage = useCallback(async (content, messageType = 'text', fileData = null) => {
     if (sendingRef.current) return;
-    if (!content?.trim() && !fileData) return;
+    if (!content?.trim() && !fileData && pendingAttachments.length === 0) return;
 
     sendingRef.current = true;
     setSending(true);
@@ -209,7 +248,8 @@ export default function ChatWindow({
       sender_avatar: currentUser.avatar_url || null,
       content: content?.trim() || null,
       message_type: messageType,
-      reply_to: replyTo?.id || null
+      reply_to: replyTo?.id || null,
+      attachments: pendingAttachments.length > 0 ? pendingAttachments : []
     };
 
     if (fileData) {
@@ -218,19 +258,23 @@ export default function ChatWindow({
       msgData.file_size = fileData.size;
     }
 
-    // Clear input immediately to prevent double-send
+    // Clear input immediately
     setNewMessage('');
     setReplyTo(null);
+    setPendingAttachments([]);
 
     try {
       const { error } = await supabase.from('chat_messages').insert([msgData]);
       if (error) throw error;
 
-      // Update room's last message
+      const lastMsgPreview = content?.trim()
+        || (fileData ? `📎 ${fileData.name}` : '')
+        || (pendingAttachments.length > 0 ? `${TYPE_ICONS[pendingAttachments[0].type] || '📎'} ${pendingAttachments[0].title}` : '');
+
       await supabase
         .from('chat_rooms')
         .update({
-          last_message: content?.trim() || (fileData ? `📎 ${fileData.name}` : ''),
+          last_message: lastMsgPreview,
           last_message_at: new Date().toISOString(),
           last_message_by: currentUser.name
         })
@@ -245,7 +289,7 @@ export default function ChatWindow({
       sendingRef.current = false;
       setSending(false);
     }
-  }, [room.id, currentUser, replyTo, onRoomUpdated]);
+  }, [room.id, currentUser, replyTo, pendingAttachments, onRoomUpdated]);
 
   // Handle Enter key
   const handleKeyDown = (e) => {
@@ -295,6 +339,75 @@ export default function ChatWindow({
     }
   };
 
+  // Attachment picker handlers
+  const handleAttachmentSelect = (attachment) => {
+    setPendingAttachments(prev => [...prev, attachment]);
+    setShowAttachmentPicker(false);
+    inputRef.current?.focus();
+  };
+
+  const removePendingAttachment = (index) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Context menu handlers
+  const handleContextMenu = useCallback((message, x, y) => {
+    setContextMenu({ message, x, y });
+  }, []);
+
+  const handlePin = async (message) => {
+    try {
+      const newPinned = !message.is_pinned;
+      await supabase
+        .from('chat_messages')
+        .update({
+          is_pinned: newPinned,
+          pinned_by: newPinned ? currentUser.name : null,
+          pinned_at: newPinned ? new Date().toISOString() : null
+        })
+        .eq('id', message.id);
+
+      setMessages(prev => prev.map(m =>
+        m.id === message.id ? { ...m, is_pinned: newPinned, pinned_by: newPinned ? currentUser.name : null } : m
+      ));
+      loadPinnedMessages();
+    } catch (err) {
+      console.error('Error pinning message:', err);
+    }
+  };
+
+  const handleCopy = (message) => {
+    if (message.content) {
+      navigator.clipboard.writeText(message.content).catch(() => {});
+    }
+  };
+
+  const handleDelete = async (message) => {
+    if (!confirm('Xóa tin nhắn này?')) return;
+    try {
+      await supabase
+        .from('chat_messages')
+        .update({ is_deleted: true })
+        .eq('id', message.id);
+
+      setMessages(prev => prev.map(m =>
+        m.id === message.id ? { ...m, is_deleted: true } : m
+      ));
+    } catch (err) {
+      console.error('Error deleting message:', err);
+    }
+  };
+
+  // Scroll to pinned message
+  const scrollToMessage = (msgId) => {
+    const el = messagesContainerRef.current?.querySelector(`[data-msg-id="${msgId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('bg-yellow-100/50');
+      setTimeout(() => el.classList.remove('bg-yellow-100/50'), 2000);
+    }
+  };
+
   // Leave room
   const handleLeaveRoom = async () => {
     if (!confirm('Bạn có chắc muốn rời khỏi nhóm này?')) return;
@@ -305,7 +418,6 @@ export default function ChatWindow({
         .eq('room_id', room.id)
         .eq('user_id', currentUser.id);
 
-      // System message
       await supabase.from('chat_messages').insert([{
         room_id: room.id,
         sender_id: currentUser.id,
@@ -321,7 +433,6 @@ export default function ChatWindow({
     }
   };
 
-  // Delete room (for direct chats)
   const handleDeleteChat = async () => {
     if (!confirm('Xóa cuộc trò chuyện này?')) return;
     try {
@@ -353,11 +464,12 @@ export default function ChatWindow({
     messageGroups.push({ type: 'message', data: msg });
   });
 
+  const canSend = newMessage.trim() || pendingAttachments.length > 0;
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b bg-[#1B5E20] text-white">
-        {/* Back button - mobile only */}
         <button onClick={onBack} className="md:hidden text-white/80 hover:text-white p-1">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -380,7 +492,6 @@ export default function ChatWindow({
             </div>
           )}
         </div>
-        {/* Menu */}
         <div className="relative">
           <button onClick={() => setShowMenu(!showMenu)} className="text-white/80 hover:text-white p-1">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -424,6 +535,27 @@ export default function ChatWindow({
         </div>
       </div>
 
+      {/* Pinned message bar */}
+      {pinnedMessages.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border-b cursor-pointer hover:bg-yellow-100 transition-colors"
+          onClick={() => scrollToMessage(pinnedMessages[0].id)}
+        >
+          <span className="text-sm">📌</span>
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-medium text-gray-700">{pinnedMessages[0].sender_name}: </span>
+            <span className="text-xs text-gray-500 truncate">
+              {pinnedMessages[0].content || (pinnedMessages[0].attachments?.length > 0 ? `${TYPE_ICONS[pinnedMessages[0].attachments[0]?.type] || '📎'} ${pinnedMessages[0].attachments[0]?.title}` : '📎 File')}
+            </span>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); handlePin(pinnedMessages[0]); }}
+            className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0"
+          >
+            Bỏ ghim
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
       <div
         ref={messagesContainerRef}
@@ -463,14 +595,17 @@ export default function ChatWindow({
               }
               const msg = item.data;
               return (
-                <ChatMessage
-                  key={msg.id}
-                  message={msg}
-                  isOwn={msg.sender_id === currentUser?.id}
-                  isGroup={isGroup}
-                  onReply={setReplyTo}
-                  replyMessage={msg.reply_to ? replyMessages[msg.reply_to] : null}
-                />
+                <div key={msg.id} data-msg-id={msg.id} className="transition-colors duration-500">
+                  <ChatMessage
+                    message={msg}
+                    isOwn={msg.sender_id === currentUser?.id}
+                    isGroup={isGroup}
+                    onReply={setReplyTo}
+                    replyMessage={msg.reply_to ? replyMessages[msg.reply_to] : null}
+                    onContextMenu={handleContextMenu}
+                    onNavigate={onNavigate}
+                  />
+                </div>
               );
             })}
             <div ref={messagesEndRef} />
@@ -490,6 +625,24 @@ export default function ChatWindow({
         </div>
       )}
 
+      {/* Pending attachments preview */}
+      {pendingAttachments.length > 0 && (
+        <div className="px-3 py-2 bg-gray-50 border-t flex flex-wrap gap-2">
+          {pendingAttachments.map((att, i) => (
+            <div key={i} className="flex items-center gap-1.5 bg-white border rounded-lg px-2.5 py-1.5 text-xs">
+              <span>{TYPE_ICONS[att.type] || '📎'}</span>
+              <span className="font-medium text-gray-700 max-w-[120px] truncate">{att.title}</span>
+              <button
+                onClick={() => removePendingAttachment(i)}
+                className="text-gray-400 hover:text-red-500 ml-0.5"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input */}
       <div className="flex items-end gap-1.5 px-2 py-2 border-t bg-gray-50">
         <input
@@ -499,18 +652,27 @@ export default function ChatWindow({
           onChange={handleFileUpload}
           className="hidden"
         />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 flex-shrink-0"
-          title="Đính kèm file"
-        >
-          {uploading ? (
-            <span className="animate-spin inline-block">⏳</span>
-          ) : (
-            '📎'
+        <div className="relative">
+          <button
+            onClick={() => setShowAttachmentPicker(!showAttachmentPicker)}
+            disabled={uploading}
+            className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 flex-shrink-0"
+            title="Đính kèm"
+          >
+            {uploading ? (
+              <span className="animate-spin inline-block">⏳</span>
+            ) : (
+              '📎'
+            )}
+          </button>
+          {showAttachmentPicker && (
+            <AttachmentPicker
+              onSelect={handleAttachmentSelect}
+              onFileClick={() => fileInputRef.current?.click()}
+              onClose={() => setShowAttachmentPicker(false)}
+            />
           )}
-        </button>
+        </div>
         <textarea
           ref={inputRef}
           value={newMessage}
@@ -523,7 +685,7 @@ export default function ChatWindow({
         />
         <button
           onClick={() => sendMessage(newMessage)}
-          disabled={sending || (!newMessage.trim() && !uploading)}
+          disabled={sending || (!canSend && !uploading)}
           className="p-2 text-green-600 hover:text-green-800 disabled:text-gray-300 flex-shrink-0"
           title="Gửi"
         >
@@ -532,6 +694,22 @@ export default function ChatWindow({
           </svg>
         </button>
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <MessageContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          message={contextMenu.message}
+          isOwn={contextMenu.message.sender_id === currentUser?.id}
+          isPinned={contextMenu.message.is_pinned}
+          onPin={handlePin}
+          onReply={setReplyTo}
+          onCopy={handleCopy}
+          onDelete={handleDelete}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

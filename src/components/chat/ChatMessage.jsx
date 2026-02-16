@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
+import AttachmentCard from './AttachmentCard';
 
 // Format file size
 const formatFileSize = (bytes) => {
@@ -24,9 +25,42 @@ const ImagePreview = ({ url, onClose }) => (
   </div>
 );
 
-export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMessage }) {
+export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMessage, onContextMenu, onNavigate }) {
   const [showPreview, setShowPreview] = useState(false);
-  const [showActions, setShowActions] = useState(false);
+  const longPressTimer = useRef(null);
+  const touchMoved = useRef(false);
+
+  // Long press detection for mobile
+  const handleTouchStart = useCallback((e) => {
+    touchMoved.current = false;
+    longPressTimer.current = setTimeout(() => {
+      if (!touchMoved.current) {
+        const touch = e.touches?.[0];
+        if (touch) {
+          onContextMenu?.(message, touch.clientX, touch.clientY);
+        }
+      }
+    }, 500);
+  }, [message, onContextMenu]);
+
+  const handleTouchMove = useCallback(() => {
+    touchMoved.current = true;
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  }, []);
+
+  // Right-click for desktop
+  const handleRightClick = useCallback((e) => {
+    e.preventDefault();
+    onContextMenu?.(message, e.clientX, e.clientY);
+  }, [message, onContextMenu]);
 
   if (message.is_deleted) {
     return (
@@ -49,6 +83,7 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
 
   const isImage = message.message_type === 'image';
   const isFile = message.message_type === 'file';
+  const attachments = message.attachments || [];
 
   // Get public URL for files
   const getFileUrl = (path) => {
@@ -62,10 +97,20 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
     <>
       <div
         className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 px-3 group`}
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
+        onContextMenu={handleRightClick}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <div className={`max-w-[75%] ${isOwn ? 'order-1' : 'order-2'}`}>
+          {/* Pin indicator */}
+          {message.is_pinned && (
+            <div className={`text-[10px] mb-0.5 flex items-center gap-1 ${isOwn ? 'justify-end mr-1' : 'ml-1'}`}>
+              <span>📌</span>
+              <span className="text-gray-400">Đã ghim</span>
+            </div>
+          )}
+
           {/* Tên người gửi (nhóm, không phải tin mình) */}
           {isGroup && !isOwn && (
             <div className="text-[10px] text-gray-500 mb-0.5 ml-1 font-medium">
@@ -132,7 +177,12 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
               </p>
             )}
 
-            {/* Time + edited */}
+            {/* Attachment cards */}
+            {attachments.length > 0 && attachments.map((att, i) => (
+              <AttachmentCard key={i} attachment={att} isOwn={isOwn} onNavigate={onNavigate} />
+            ))}
+
+            {/* Time + edited + pinned */}
             <div className={`text-[10px] mt-0.5 flex items-center gap-1 ${
               isOwn ? 'text-green-200 justify-end' : 'text-gray-400 justify-start'
             }`}>
@@ -141,19 +191,6 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
             </div>
           </div>
         </div>
-
-        {/* Action buttons (hover) */}
-        {showActions && (
-          <div className={`flex items-center gap-0.5 ${isOwn ? 'order-0 mr-1' : 'order-3 ml-1'}`}>
-            <button
-              onClick={() => onReply?.(message)}
-              className="w-6 h-6 rounded-full hover:bg-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 text-xs"
-              title="Trả lời"
-            >
-              ↩
-            </button>
-          </div>
-        )}
       </div>
 
       {showPreview && (
