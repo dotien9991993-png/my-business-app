@@ -35,6 +35,7 @@ export function AppProvider({ children }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [pendingOpenRecord, setPendingOpenRecord] = useState(null); // { type, id }
 
   // ---- Users & Permissions ----
   const [allUsers, setAllUsers] = useState([]);
@@ -163,10 +164,13 @@ export function AppProvider({ children }) {
   }, [tenant, navigate]);
 
   // ---- Navigation helper ----
-  const navigateTo = useCallback((module, tab) => {
+  const navigateTo = useCallback((module, tab, openRecord) => {
     setActiveModule(module);
     setActiveTab(tab);
     navigate(`${module}/${tab}`);
+    if (openRecord) {
+      setPendingOpenRecord(openRecord);
+    }
   }, [navigate]);
 
   // ---- Permission helpers ----
@@ -530,6 +534,7 @@ export function AppProvider({ children }) {
     // Navigation
     path, navigate,
     activeModule, setActiveModule, activeTab, setActiveTab, navigateTo,
+    pendingOpenRecord, setPendingOpenRecord,
     showMobileSidebar, setShowMobileSidebar,
     showAdminMenu, setShowAdminMenu,
     // Users

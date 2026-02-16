@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 
@@ -10,7 +10,7 @@ import TechnicalSummaryView from './TechnicalSummaryView';
 import IntegrationsView from '../../components/shared/IntegrationsView';
 
 export default function TechnicalModule() {
-  const { activeTab, currentUser, tenant, hasPermission, canEdit, getPermissionLevel } = useApp();
+  const { activeTab, currentUser, tenant, hasPermission, canEdit, getPermissionLevel, pendingOpenRecord, setPendingOpenRecord } = useApp();
   const {
     technicalJobs,
     setSelectedJob, setShowJobModal, setShowCreateJobModal, setPrefillJobData,
@@ -20,6 +20,18 @@ export default function TechnicalModule() {
     jobCustomStartDate, setJobCustomStartDate, jobCustomEndDate, setJobCustomEndDate,
     integrations, setIntegrations
   } = useData();
+
+  // Open job detail from chat attachment
+  useEffect(() => {
+    if (pendingOpenRecord?.type === 'technical_job' && pendingOpenRecord.id) {
+      const job = technicalJobs.find(j => j.id === pendingOpenRecord.id);
+      if (job) {
+        setSelectedJob(job);
+        setShowJobModal(true);
+      }
+      setPendingOpenRecord(null);
+    }
+  }, [pendingOpenRecord, technicalJobs, setSelectedJob, setShowJobModal, setPendingOpenRecord]);
 
   return (
     <>

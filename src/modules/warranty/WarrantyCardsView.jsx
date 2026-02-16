@@ -1,11 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import { useApp } from '../../contexts/AppContext';
 import { getNowISOVN, getTodayVN, formatDateVN, getDateStrVN, addMonthsVN } from '../../utils/dateUtils';
 import { warrantyStatuses } from '../../constants/warrantyConstants';
 import QRCode from 'qrcode';
 import { logActivity } from '../../lib/activityLog';
 
 export default function WarrantyCardsView({ tenant, currentUser, warrantyCards, serials, products, loadWarrantyData, hasPermission, canEdit }) {
+  const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterStartDate] = useState('');
@@ -41,6 +43,18 @@ export default function WarrantyCardsView({ tenant, currentUser, warrantyCards, 
     const now = new Date();
     return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
   };
+
+  // Open warranty card detail from chat attachment
+  useEffect(() => {
+    if (pendingOpenRecord?.type === 'warranty' && pendingOpenRecord.id) {
+      const card = (warrantyCards || []).find(c => c.id === pendingOpenRecord.id);
+      if (card) {
+        setSelectedCard(card);
+        setShowDetailModal(true);
+      }
+      setPendingOpenRecord(null);
+    }
+  }, [pendingOpenRecord]);
 
   const filteredCards = useMemo(() => {
     let list = warrantyCards || [];

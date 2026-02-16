@@ -22,7 +22,7 @@ export default function AttachmentCard({ attachment, isOwn, onNavigate }) {
   const handleClick = (e) => {
     e.stopPropagation();
     if (onNavigate && config.module) {
-      onNavigate(config.module, config.tab);
+      onNavigate(config.module, config.tab, { type: attachment.type, id: attachment.id });
     }
   };
 

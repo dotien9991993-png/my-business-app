@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import { useApp } from '../../contexts/AppContext';
 import { formatMoney } from '../../utils/formatUtils';
 import { getDateStrVN, getNowISOVN, getTodayVN } from '../../utils/dateUtils';
 import { orderStatuses, orderStatusFlow, orderTypes, paymentMethods, shippingProviders, shippingPayers, paymentStatuses } from '../../constants/salesConstants';
@@ -11,6 +12,7 @@ import HaravanImportModal from './HaravanImportModal';
 import { logActivity } from '../../lib/activityLog';
 
 export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
+  const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const permLevel = getPermissionLevel('sales');
   const effectiveShippingProviders = dynamicShippingProviders || shippingProviders;
   const vtpConfig = (shippingConfigs || []).find(c => c.provider === 'viettel_post' && c.is_active && c.api_token);
@@ -613,6 +615,21 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     } catch (err) { console.error(err); }
     finally { setLoadingItems(false); }
   };
+
+  // Open order detail from chat attachment
+  useEffect(() => {
+    if (pendingOpenRecord?.type === 'order' && pendingOpenRecord.id) {
+      const order = orders.find(o => o.id === pendingOpenRecord.id);
+      if (order) {
+        setSelectedOrder(order);
+        loadOrderItems(order.id);
+        setEditMode(false);
+        setShowPaymentInput(false);
+        setShowDetailModal(true);
+      }
+      setPendingOpenRecord(null);
+    }
+  }, [pendingOpenRecord]);
 
   // ---- Change order status ----
   const changeOrderStatus = async (orderId, newStatus, order) => {

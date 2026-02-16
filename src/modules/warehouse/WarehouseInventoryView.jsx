@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import { useApp } from '../../contexts/AppContext';
 import { getNowISOVN, getTodayVN, formatDateTimeVN } from '../../utils/dateUtils';
 import { warehouseCategories, warehouseUnits } from '../../constants/warehouseConstants';
 import { logActivity } from '../../lib/activityLog';
 
 export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, hasPermission, canEdit, getPermissionLevel }) {
+  const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const permLevel = getPermissionLevel('warehouse');
   const effectiveCategories = dynamicCategories || warehouseCategories;
   const effectiveUnits = dynamicUnits || warehouseUnits;
@@ -318,6 +320,17 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     setComboChildSearch('');
     setShowDetailModal(true);
   };
+
+  // Open product detail from chat attachment
+  useEffect(() => {
+    if (pendingOpenRecord?.type === 'product' && pendingOpenRecord.id) {
+      const product = products.find(p => p.id === pendingOpenRecord.id);
+      if (product) {
+        openDetail(product);
+      }
+      setPendingOpenRecord(null);
+    }
+  }, [pendingOpenRecord]);
 
   const openAdjust = (product, e) => {
     e?.stopPropagation();

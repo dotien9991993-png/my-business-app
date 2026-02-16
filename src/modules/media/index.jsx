@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 
@@ -23,7 +23,7 @@ const NoAccess = () => (
 );
 
 export default function MediaModule() {
-  const { activeTab, currentUser, allUsers, canAccessTab, changeUserRole, deleteUser, loadUsers } = useApp();
+  const { activeTab, currentUser, allUsers, canAccessTab, changeUserRole, deleteUser, loadUsers, pendingOpenRecord, setPendingOpenRecord } = useApp();
   const {
     tasks, visibleTasks, reportData,
     setSelectedTask, setShowModal, setShowCreateTaskModal,
@@ -34,6 +34,18 @@ export default function MediaModule() {
     taskFilterCrew, setTaskFilterCrew, taskFilterActor, setTaskFilterActor,
     integrations, setIntegrations, automations, setAutomations, templates, createFromTemplate
   } = useData();
+
+  // Open task detail from chat attachment
+  useEffect(() => {
+    if (pendingOpenRecord?.type === 'task' && pendingOpenRecord.id) {
+      const task = tasks.find(t => t.id === pendingOpenRecord.id);
+      if (task) {
+        setSelectedTask(task);
+        setShowModal(true);
+      }
+      setPendingOpenRecord(null);
+    }
+  }, [pendingOpenRecord, tasks, setSelectedTask, setShowModal, setPendingOpenRecord]);
 
   return (
     <>

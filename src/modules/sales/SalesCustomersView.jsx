@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
+import { useApp } from '../../contexts/AppContext';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN, getDateStrVN } from '../../utils/dateUtils';
 import * as XLSX from 'xlsx';
@@ -32,6 +33,7 @@ const INTERACTION_TYPES = {
 const TAG_SUGGESTIONS = ['Đại lý miền Bắc', 'Đại lý miền Nam', 'Karaoke', 'Hội trường', 'Nhà thờ', 'Sự kiện', 'Quán cafe', 'Trường học'];
 
 export default function SalesCustomersView({ tenant, currentUser, customers, orders, loadSalesData, warrantyCards, warrantyRepairs, hasPermission, canEdit: canEditSales }) {
+  const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -241,6 +243,22 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
     } catch (err) { console.error(err); }
     finally { setLoadingInteractions(false); }
   };
+
+  // Open customer detail from chat attachment
+  useEffect(() => {
+    if (pendingOpenRecord?.type === 'customer' && pendingOpenRecord.id) {
+      const customer = customers.find(c => c.id === pendingOpenRecord.id);
+      if (customer) {
+        setSelectedCustomer(customer);
+        fillForm(customer);
+        setEditMode(false);
+        setDetailTab('orders');
+        setShowDetailModal(true);
+        loadInteractions(customer.id);
+      }
+      setPendingOpenRecord(null);
+    }
+  }, [pendingOpenRecord]);
 
   // Add interaction
   const handleAddInteraction = async () => {
