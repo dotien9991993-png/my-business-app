@@ -50,6 +50,7 @@ export default function ChatWindow({
   const [hasMore, setHasMore] = useState(true);
   const [replyTo, setReplyTo] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
   const messagesEndRef = useRef(null);
@@ -57,6 +58,7 @@ export default function ChatWindow({
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const initialLoadRef = useRef(true);
+  const sendingRef = useRef(false);
 
   // Room display info
   const isGroup = room.type === 'group';
@@ -192,9 +194,13 @@ export default function ChatWindow({
     }
   };
 
-  // Send message
+  // Send message (with double-submit guard)
   const sendMessage = useCallback(async (content, messageType = 'text', fileData = null) => {
+    if (sendingRef.current) return;
     if (!content?.trim() && !fileData) return;
+
+    sendingRef.current = true;
+    setSending(true);
 
     const msgData = {
       room_id: room.id,
@@ -212,6 +218,10 @@ export default function ChatWindow({
       msgData.file_size = fileData.size;
     }
 
+    // Clear input immediately to prevent double-send
+    setNewMessage('');
+    setReplyTo(null);
+
     try {
       const { error } = await supabase.from('chat_messages').insert([msgData]);
       if (error) throw error;
@@ -226,13 +236,14 @@ export default function ChatWindow({
         })
         .eq('id', room.id);
 
-      setReplyTo(null);
-      setNewMessage('');
       inputRef.current?.focus();
       onRoomUpdated?.();
     } catch (err) {
       console.error('Error sending message:', err);
       alert('Lỗi gửi tin nhắn!');
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
   }, [room.id, currentUser, replyTo, onRoomUpdated]);
 
@@ -240,7 +251,7 @@ export default function ChatWindow({
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(newMessage);
+      if (!sendingRef.current) sendMessage(newMessage);
     }
   };
 
@@ -511,7 +522,7 @@ export default function ChatWindow({
         />
         <button
           onClick={() => sendMessage(newMessage)}
-          disabled={!newMessage.trim() && !uploading}
+          disabled={sending || (!newMessage.trim() && !uploading)}
           className="p-2 text-green-600 hover:text-green-800 disabled:text-gray-300 flex-shrink-0"
           title="Gửi"
         >
