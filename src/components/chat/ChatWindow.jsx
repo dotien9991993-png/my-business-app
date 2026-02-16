@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { uploadImage, uploadImages } from '../../utils/cloudinaryUpload';
 import ChatMessage from './ChatMessage';
 import AttachmentPicker from './AttachmentPicker';
 import MessageContextMenu from './MessageContextMenu';
+import MentionPopup from './MentionPopup';
+import ReactionPicker from './ReactionPicker';
 
 const PAGE_SIZE = 50;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -75,6 +77,25 @@ export default function ChatWindow({
   // Context menu states
   const [contextMenu, setContextMenu] = useState(null); // { message, x, y }
 
+  // @Mention states
+  const [showMentionPopup, setShowMentionPopup] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentionedUsers, setMentionedUsers] = useState([]);
+  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
+
+  // Reaction states
+  const [reactions, setReactions] = useState({}); // { messageId: [{ emoji, user_id, user_name }] }
+  const [reactionPicker, setReactionPicker] = useState(null); // { messageId, x, y }
+
+  // Read receipt states
+  const [memberReadStatus, setMemberReadStatus] = useState({}); // { user_id: last_read_at }
+
+  // Search states
+  const [searchMode, setSearchMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
@@ -82,6 +103,7 @@ export default function ChatWindow({
   const imageInputRef = useRef(null);
   const initialLoadRef = useRef(true);
   const sendingRef = useRef(false);
+  const searchTimerRef = useRef(null);
 
   // Room display info
   const isGroup = room.type === 'group';
@@ -93,6 +115,12 @@ export default function ChatWindow({
     : null;
   const roomName = isGroup ? (room.name || 'Nhóm chat') : (otherUser?.name || otherMember?.user_name || 'Người dùng');
   const roomAvatar = isGroup ? null : (otherUser?.avatar_url || otherMember?.user_avatar);
+
+  // Active room members (for @mention)
+  const activeMembers = useMemo(() =>
+    (room.members || []).filter(m => m.is_active !== false && m.user_id !== currentUser?.id),
+    [room.members, currentUser?.id]
+  );
 
   // Load messages
   const loadMessages = useCallback(async (before) => {
@@ -139,6 +167,45 @@ export default function ChatWindow({
     } catch (_e) { /* ignore */ }
   }, [room.id]);
 
+  // Load reactions for messages
+  const loadReactions = useCallback(async (messageIds) => {
+    if (!messageIds?.length) return;
+    try {
+      const { data, error } = await supabase
+        .from('chat_message_reactions')
+        .select('*')
+        .in('message_id', messageIds);
+
+      if (error) throw error;
+      const grouped = {};
+      (data || []).forEach(r => {
+        if (!grouped[r.message_id]) grouped[r.message_id] = [];
+        grouped[r.message_id].push(r);
+      });
+      setReactions(prev => ({ ...prev, ...grouped }));
+    } catch (_e) { /* ignore */ }
+  }, []);
+
+  // Load member read status
+  const loadMemberReadStatus = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('chat_room_members')
+        .select('user_id, user_name, last_read_at')
+        .eq('room_id', room.id)
+        .eq('is_active', true);
+
+      if (error) throw error;
+      const statusMap = {};
+      (data || []).forEach(m => {
+        if (m.user_id !== currentUser?.id) {
+          statusMap[m.user_id] = { last_read_at: m.last_read_at, user_name: m.user_name };
+        }
+      });
+      setMemberReadStatus(statusMap);
+    } catch (_e) { /* ignore */ }
+  }, [room.id, currentUser?.id]);
+
   // Initial load
   useEffect(() => {
     initialLoadRef.current = true;
@@ -147,17 +214,25 @@ export default function ChatWindow({
     setHasMore(true);
     setPendingAttachments([]);
     setReplyTo(null);
+    setReactions({});
+    setSearchMode(false);
+    setSearchQuery('');
+    setMentionedUsers([]);
     loadMessages().finally(() => setLoading(false));
     loadPinnedMessages();
-  }, [loadMessages, loadPinnedMessages]);
+    loadMemberReadStatus();
+  }, [loadMessages, loadPinnedMessages, loadMemberReadStatus]);
 
-  // Scroll to bottom on initial load
+  // Scroll to bottom on initial load + load reactions
   useEffect(() => {
     if (initialLoadRef.current && messages.length > 0 && !loading) {
       messagesEndRef.current?.scrollIntoView();
       initialLoadRef.current = false;
+      // Load reactions for initial messages
+      const msgIds = messages.map(m => m.id);
+      loadReactions(msgIds);
     }
-  }, [messages, loading]);
+  }, [messages, loading, loadReactions]);
 
   // Mark as read
   useEffect(() => {
@@ -224,6 +299,58 @@ export default function ChatWindow({
     return () => { supabase.removeChannel(channel); };
   }, [room.id, currentUser?.id, loadPinnedMessages]);
 
+  // Realtime subscription for reactions
+  useEffect(() => {
+    const channel = supabase
+      .channel(`chat-reactions-${room.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'chat_message_reactions'
+      }, (payload) => {
+        const record = payload.new || payload.old;
+        if (!record?.message_id) return;
+        // Check if this reaction belongs to a message in current room
+        const msgExists = messages.some(m => m.id === record.message_id);
+        if (!msgExists) return;
+
+        // Reload reactions for this message
+        supabase
+          .from('chat_message_reactions')
+          .select('*')
+          .eq('message_id', record.message_id)
+          .then(({ data }) => {
+            setReactions(prev => ({ ...prev, [record.message_id]: data || [] }));
+          });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [room.id, messages]);
+
+  // Realtime subscription for member read status
+  useEffect(() => {
+    const channel = supabase
+      .channel(`chat-read-${room.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'chat_room_members',
+        filter: `room_id=eq.${room.id}`
+      }, (payload) => {
+        const updated = payload.new;
+        if (updated.user_id !== currentUser?.id && updated.is_active) {
+          setMemberReadStatus(prev => ({
+            ...prev,
+            [updated.user_id]: { last_read_at: updated.last_read_at, user_name: updated.user_name }
+          }));
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [room.id, currentUser?.id]);
+
   // Load more (scroll up)
   const handleLoadMore = async () => {
     if (loadingMore || !hasMore || messages.length === 0) return;
@@ -247,6 +374,9 @@ export default function ChatWindow({
     sendingRef.current = true;
     setSending(true);
 
+    // Capture mentions before clearing
+    const currentMentions = mentionedUsers.map(u => u.user_id);
+
     const msgData = {
       room_id: room.id,
       sender_id: currentUser.id,
@@ -255,7 +385,8 @@ export default function ChatWindow({
       content: content?.trim() || null,
       message_type: messageType,
       reply_to: replyTo?.id || null,
-      attachments: pendingAttachments.length > 0 ? pendingAttachments : []
+      attachments: pendingAttachments.length > 0 ? pendingAttachments : [],
+      mentions: currentMentions.length > 0 ? currentMentions : []
     };
 
     if (fileData) {
@@ -268,6 +399,7 @@ export default function ChatWindow({
     setNewMessage('');
     setReplyTo(null);
     setPendingAttachments([]);
+    setMentionedUsers([]);
 
     try {
       const { error } = await supabase.from('chat_messages').insert([msgData]);
@@ -286,6 +418,27 @@ export default function ChatWindow({
         })
         .eq('id', room.id);
 
+      // Send notifications for mentioned users
+      if (currentMentions.length > 0) {
+        const mentionTargets = currentMentions.includes('all')
+          ? activeMembers.map(m => m.user_id)
+          : currentMentions.filter(id => id !== currentUser.id);
+
+        const notifications = mentionTargets.map(userId => ({
+          tenant_id: room.tenant_id,
+          user_id: userId,
+          type: 'chat_mention',
+          title: `${currentUser.name} nhắc đến bạn`,
+          content: content?.trim()?.substring(0, 100) || 'trong một tin nhắn',
+          link: `/chat/${room.id}`,
+          is_read: false
+        }));
+
+        if (notifications.length > 0) {
+          supabase.from('notifications').insert(notifications).then();
+        }
+      }
+
       inputRef.current?.focus();
       onRoomUpdated?.();
     } catch (err) {
@@ -295,12 +448,67 @@ export default function ChatWindow({
       sendingRef.current = false;
       setSending(false);
     }
-  }, [room.id, currentUser, replyTo, pendingAttachments, onRoomUpdated]);
+  }, [room.id, room.tenant_id, currentUser, replyTo, pendingAttachments, mentionedUsers, activeMembers, onRoomUpdated]);
+
+  // Handle input change (with @mention detection)
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setNewMessage(value);
+
+    // Detect "@" for mention popup
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = value.substring(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (atIndex >= 0) {
+      const charBefore = atIndex > 0 ? textBeforeCursor[atIndex - 1] : ' ';
+      if (charBefore === ' ' || charBefore === '\n' || atIndex === 0) {
+        const search = textBeforeCursor.substring(atIndex + 1);
+        if (!search.includes(' ')) {
+          setShowMentionPopup(true);
+          setMentionSearch(search);
+          setMentionStartIndex(atIndex);
+          return;
+        }
+      }
+    }
+    setShowMentionPopup(false);
+  };
+
+  // Handle mention selection
+  const handleSelectMention = (member) => {
+    const before = newMessage.substring(0, mentionStartIndex);
+    const after = newMessage.substring(inputRef.current?.selectionStart || mentionStartIndex);
+    const mentionText = member.isAll ? '@Tat ca ' : `@${member.user_name} `;
+    setNewMessage(before + mentionText + after);
+    setShowMentionPopup(false);
+    setMentionSearch('');
+
+    // Track mentioned user
+    if (member.isAll) {
+      setMentionedUsers([{ user_id: 'all', user_name: 'Tat ca' }]);
+    } else {
+      setMentionedUsers(prev => {
+        if (prev.some(u => u.user_id === member.user_id)) return prev;
+        return [...prev, { user_id: member.user_id, user_name: member.user_name }];
+      });
+    }
+
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
 
   // Handle Enter key
   const handleKeyDown = (e) => {
+    if (e.key === 'Escape' && showMentionPopup) {
+      setShowMentionPopup(false);
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (showMentionPopup) {
+        setShowMentionPopup(false);
+        return;
+      }
       if (!sendingRef.current) sendMessage(newMessage);
     }
   };
@@ -590,6 +798,91 @@ export default function ChatWindow({
     }
   };
 
+  // Toggle reaction
+  const toggleReaction = useCallback(async (messageId, emoji) => {
+    try {
+      const existing = (reactions[messageId] || []).find(
+        r => r.user_id === currentUser?.id && r.emoji === emoji
+      );
+
+      if (existing) {
+        await supabase.from('chat_message_reactions').delete().eq('id', existing.id);
+        setReactions(prev => ({
+          ...prev,
+          [messageId]: (prev[messageId] || []).filter(r => r.id !== existing.id)
+        }));
+      } else {
+        const { data, error } = await supabase
+          .from('chat_message_reactions')
+          .insert([{
+            message_id: messageId,
+            user_id: currentUser.id,
+            user_name: currentUser.name,
+            emoji
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+        setReactions(prev => ({
+          ...prev,
+          [messageId]: [...(prev[messageId] || []), data]
+        }));
+      }
+    } catch (err) {
+      console.error('Error toggling reaction:', err);
+    }
+  }, [reactions, currentUser]);
+
+  // Show reaction picker from context menu
+  const handleShowReactionPicker = useCallback((message, x, y) => {
+    setReactionPicker({ messageId: message.id, x, y });
+  }, []);
+
+  // Search messages
+  const handleSearch = useCallback(async (query) => {
+    if (!query?.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('id, content, sender_name, created_at')
+        .eq('room_id', room.id)
+        .ilike('content', `%${query.trim()}%`)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      setSearchResults(data || []);
+    } catch (err) {
+      console.error('Error searching messages:', err);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [room.id]);
+
+  // Debounced search
+  const handleSearchInput = (value) => {
+    setSearchQuery(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => handleSearch(value), 300);
+  };
+
+  // Compute read-by info for messages
+  const getReadBy = useCallback((message) => {
+    if (message.sender_id !== currentUser?.id) return [];
+    const readers = [];
+    Object.entries(memberReadStatus).forEach(([userId, info]) => {
+      if (info.last_read_at && new Date(info.last_read_at) >= new Date(message.created_at)) {
+        readers.push({ user_id: userId, user_name: info.user_name });
+      }
+    });
+    return readers;
+  }, [memberReadStatus, currentUser?.id]);
+
   // Build reply message map
   const replyMessages = {};
   messages.forEach(m => { replyMessages[m.id] = m; });
@@ -634,6 +927,15 @@ export default function ChatWindow({
             </div>
           )}
         </div>
+        <button
+          onClick={() => { setSearchMode(!searchMode); setSearchQuery(''); setSearchResults([]); }}
+          className="text-white/80 hover:text-white p-1"
+          title="Tim kiem tin nhan"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
         <div className="relative">
           <button onClick={() => setShowMenu(!showMenu)} className="text-white/80 hover:text-white p-1">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -698,6 +1000,62 @@ export default function ChatWindow({
         </div>
       )}
 
+      {/* Search bar */}
+      {searchMode && (
+        <div className="border-b bg-gray-50">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => handleSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') { setSearchMode(false); setSearchQuery(''); setSearchResults([]); } }}
+              placeholder="Tim kiem tin nhan..."
+              className="flex-1 bg-transparent text-sm focus:outline-none"
+              autoFocus
+            />
+            {searchLoading && <span className="text-xs text-gray-400 animate-pulse">...</span>}
+            <button
+              onClick={() => { setSearchMode(false); setSearchQuery(''); setSearchResults([]); }}
+              className="text-gray-400 hover:text-gray-600 text-lg"
+            >
+              &times;
+            </button>
+          </div>
+          {searchResults.length > 0 && (
+            <div className="max-h-48 overflow-y-auto border-t">
+              {searchResults.map(result => (
+                <button
+                  key={result.id}
+                  onClick={() => {
+                    scrollToMessage(result.id);
+                    setSearchMode(false);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-gray-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-700">{result.sender_name}</span>
+                    <span className="text-[10px] text-gray-400">
+                      {new Date(result.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">{result.content}</p>
+                </button>
+              ))}
+            </div>
+          )}
+          {searchQuery && !searchLoading && searchResults.length === 0 && (
+            <div className="px-3 py-3 text-xs text-gray-400 text-center border-t">
+              Khong tim thay ket qua
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
       <div
         ref={messagesContainerRef}
@@ -746,6 +1104,13 @@ export default function ChatWindow({
                     replyMessage={msg.reply_to ? replyMessages[msg.reply_to] : null}
                     onContextMenu={handleContextMenu}
                     onNavigate={onNavigate}
+                    reactions={reactions[msg.id] || []}
+                    currentUserId={currentUser?.id}
+                    onToggleReaction={toggleReaction}
+                    onShowReactionPicker={handleShowReactionPicker}
+                    readBy={getReadBy(msg)}
+                    isDirectChat={!isGroup}
+                    roomMembers={activeMembers}
                   />
                 </div>
               );
@@ -861,16 +1226,26 @@ export default function ChatWindow({
         >
           🖼️
         </button>
-        <textarea
-          ref={inputRef}
-          value={newMessage}
-          onChange={e => setNewMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Nhập tin nhắn..."
-          rows={1}
-          className="flex-1 px-3 py-1.5 bg-white border rounded-2xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500 max-h-24"
-          style={{ minHeight: '36px' }}
-        />
+        <div className="relative flex-1">
+          <textarea
+            ref={inputRef}
+            value={newMessage}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Nhap tin nhan... (@ten de tag)"
+            rows={1}
+            className="w-full px-3 py-1.5 bg-white border rounded-2xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500 max-h-24"
+            style={{ minHeight: '36px' }}
+          />
+          {showMentionPopup && (
+            <MentionPopup
+              members={activeMembers}
+              search={mentionSearch}
+              onSelect={handleSelectMention}
+              position={{ left: 8, bottom: 44 }}
+            />
+          )}
+        </div>
         <button
           onClick={() => pendingImages.length > 0 ? sendImagesMessage() : sendMessage(newMessage)}
           disabled={sending || (!canSend && !uploading)}
@@ -895,7 +1270,19 @@ export default function ChatWindow({
           onReply={setReplyTo}
           onCopy={handleCopy}
           onDelete={handleDelete}
+          onReaction={(msg) => {
+            handleShowReactionPicker(msg, contextMenu.x, contextMenu.y - 50);
+          }}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Reaction picker */}
+      {reactionPicker && (
+        <ReactionPicker
+          position={{ x: reactionPicker.x, y: reactionPicker.y }}
+          onSelect={(emoji) => toggleReaction(reactionPicker.messageId, emoji)}
+          onClose={() => setReactionPicker(null)}
         />
       )}
     </div>

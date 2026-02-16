@@ -26,7 +26,106 @@ const ImagePreview = ({ url, onClose }) => (
   </div>
 );
 
-export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMessage, onContextMenu, onNavigate }) {
+// Parse @mentions and render with highlight
+const renderContentWithMentions = (content) => {
+  if (!content) return null;
+  // Match @Name patterns (name can be Vietnamese with spaces, up to reasonable length)
+  const parts = content.split(/(@(?:Tat ca|[^\s@]{1,30}(?:\s[^\s@]{1,30})*))/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('@')) {
+      return (
+        <span key={i} className="text-blue-400 font-bold cursor-pointer hover:underline">
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+};
+
+// Reaction badge display
+const ReactionBadges = ({ reactions, currentUserId, messageId, onToggleReaction, onShowReactionPicker, isOwn }) => {
+  if (!reactions?.length) return null;
+
+  // Group by emoji
+  const grouped = {};
+  reactions.forEach(r => {
+    if (!grouped[r.emoji]) grouped[r.emoji] = [];
+    grouped[r.emoji].push(r);
+  });
+
+  return (
+    <div className={`flex flex-wrap gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+      {Object.entries(grouped).map(([emoji, users]) => {
+        const iReacted = users.some(u => u.user_id === currentUserId);
+        return (
+          <button
+            key={emoji}
+            onClick={() => onToggleReaction(messageId, emoji)}
+            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+              iReacted
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+            }`}
+            title={users.map(u => u.user_name).join(', ')}
+          >
+            <span>{emoji}</span>
+            <span className="text-[10px] font-medium">{users.length}</span>
+          </button>
+        );
+      })}
+      <button
+        onClick={(e) => onShowReactionPicker({ id: messageId }, e.clientX, e.clientY - 50)}
+        className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs border border-gray-200 text-gray-400 hover:bg-gray-100 transition-colors"
+      >
+        +
+      </button>
+    </div>
+  );
+};
+
+// Read receipt display
+const ReadReceipt = ({ readBy, isOwn, isDirectChat }) => {
+  if (!isOwn || !readBy) return null;
+
+  if (isDirectChat) {
+    // Direct chat: checkmarks
+    if (readBy.length > 0) {
+      return (
+        <span className="text-blue-400 ml-1" title={`Da xem boi ${readBy[0]?.user_name}`}>
+          <svg className="w-3.5 h-3.5 inline" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
+          </svg>
+        </span>
+      );
+    }
+    return (
+      <span className="text-gray-400 ml-1" title="Da gui">
+        <svg className="w-3 h-3 inline" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+        </svg>
+      </span>
+    );
+  }
+
+  // Group chat
+  if (readBy.length === 0) return null;
+  const label = readBy.length <= 2
+    ? `Da xem boi ${readBy.map(r => r.user_name).join(', ')}`
+    : `Da xem boi ${readBy.length} nguoi`;
+
+  return (
+    <span className="text-[9px] text-blue-400 ml-1" title={readBy.map(r => r.user_name).join(', ')}>
+      {label}
+    </span>
+  );
+};
+
+export default function ChatMessage({
+  message, isOwn, isGroup, onReply, replyMessage, onContextMenu, onNavigate,
+  reactions, currentUserId, onToggleReaction, onShowReactionPicker,
+  readBy, isDirectChat, roomMembers
+}) {
   const [previewUrl, setPreviewUrl] = useState(null);
   const longPressTimer = useRef(null);
   const touchMoved = useRef(false);
@@ -213,10 +312,13 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
               </a>
             )}
 
-            {/* Text content */}
+            {/* Text content with @mentions */}
             {message.content && (
               <p className="text-[13.5px] leading-snug whitespace-pre-wrap break-words">
-                {message.content}
+                {message.mentions?.length > 0
+                  ? renderContentWithMentions(message.content)
+                  : message.content
+                }
               </p>
             )}
 
@@ -225,14 +327,25 @@ export default function ChatMessage({ message, isOwn, isGroup, onReply, replyMes
               <AttachmentCard key={i} attachment={att} isOwn={isOwn} onNavigate={onNavigate} />
             ))}
 
-            {/* Time + edited + pinned */}
+            {/* Time + edited + read receipt */}
             <div className={`text-[10px] mt-0.5 flex items-center gap-1 ${
               isOwn ? 'text-green-200 justify-end' : 'text-gray-400 justify-start'
             }`}>
-              {message.is_edited && <span>đã sửa ·</span>}
+              {message.is_edited && <span>da sua ·</span>}
               <span>{formatMessageTime(message.created_at)}</span>
+              <ReadReceipt readBy={readBy} isOwn={isOwn} isDirectChat={isDirectChat} />
             </div>
           </div>
+
+          {/* Reaction badges */}
+          <ReactionBadges
+            reactions={reactions}
+            currentUserId={currentUserId}
+            messageId={message.id}
+            onToggleReaction={onToggleReaction}
+            onShowReactionPicker={onShowReactionPicker}
+            isOwn={isOwn}
+          />
         </div>
       </div>
 

@@ -9,6 +9,7 @@ export default function MessageContextMenu({
   onReply,
   onCopy,
   onDelete,
+  onReaction,
   onClose
 }) {
   const menuRef = useRef(null);
@@ -38,6 +39,16 @@ export default function MessageContextMenu({
         className="fixed z-[10004] bg-white rounded-xl shadow-xl border py-1.5 w-44 animate-in"
         style={{ left: x, top: y }}
       >
+        {/* Reaction */}
+        {onReaction && (
+          <button
+            onClick={() => { onReaction(message); onClose(); }}
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+          >
+            😀 Phan hoi
+          </button>
+        )}
+
         {/* Pin */}
         <button
           onClick={() => { onPin(message); onClose(); }}
