@@ -413,7 +413,7 @@ ${qrHtml}
                   <input type="text" value={formCustomerAddress} onChange={e => setFormCustomerAddress(e.target.value)} className="w-full mt-1 px-3 py-2 border rounded-lg" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-sm font-medium text-gray-700">Ngày BH</label>
                   <input type="date" value={formWarrantyStart} onChange={e => setFormWarrantyStart(e.target.value)} className="w-full mt-1 px-3 py-2 border rounded-lg" />

@@ -1073,7 +1073,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
       </div>
 
       {/* Stats (server-side counts) */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
           { label: 'Tổng', value: statusCounts.total, color: 'bg-gray-50 text-gray-700' },
           { label: 'Mới', value: statusCounts.new, color: 'bg-yellow-50 text-yellow-700' },
@@ -1337,7 +1337,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                       <AddressPicker token={vtpToken} value={shippingAddressData} onChange={setShippingAddressData} />
                       <input value={shippingAddressDetail} onChange={e => setShippingAddressDetail(e.target.value)}
                         placeholder="Số nhà, tên đường..." className="w-full border rounded-lg px-3 py-2 text-sm" />
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <input type="number" value={shippingFee} onChange={e => setShippingFee(e.target.value)}
                           placeholder="Phí ship" className="border rounded-lg px-3 py-2 text-sm" />
                         <button type="button" onClick={handleCalcVtpFee} disabled={calculatingFee}

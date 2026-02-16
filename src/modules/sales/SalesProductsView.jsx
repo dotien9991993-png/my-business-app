@@ -106,7 +106,7 @@ export default function SalesProductsView({ products, dynamicCategories, comboIt
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="bg-blue-50 p-2.5 rounded-lg text-center">
           <div className="text-lg font-bold text-blue-700">{stats.total}</div>
           <div className="text-xs text-gray-600">Sản phẩm</div>

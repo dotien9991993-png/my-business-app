@@ -184,7 +184,7 @@ const TasksView = ({
         </div>
 
         {/* Filter Row 1: Dropdowns */}
-        <div className="p-2 grid grid-cols-4 gap-1.5">
+        <div className="p-2 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
           <select
             value={filterTeam}
             onChange={(e) => setFilterTeam(e.target.value)}

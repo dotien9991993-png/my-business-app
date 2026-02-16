@@ -862,7 +862,7 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
                 const stats = getCustomerStats(selectedCustomer.id);
                 const days = daysSinceLastPurchase(stats.lastOrder);
                 return (
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <div className="bg-green-50 p-2.5 rounded-lg text-center">
                       <div className="text-lg font-bold text-green-700">{stats.completedCount}</div>
                       <div className="text-[10px] text-gray-600">Đơn hoàn thành</div>
@@ -1184,8 +1184,8 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
                     </div>
                   </div>
                   {/* Preview table */}
-                  <div className="max-h-64 overflow-y-auto border rounded-lg">
-                    <table className="w-full text-xs">
+                  <div className="max-h-64 overflow-auto border rounded-lg">
+                    <table className="w-full text-xs min-w-[400px]">
                       <thead className="bg-gray-50 sticky top-0">
                         <tr>
                           <th className="text-left px-2 py-1.5 text-gray-500">Dòng</th>

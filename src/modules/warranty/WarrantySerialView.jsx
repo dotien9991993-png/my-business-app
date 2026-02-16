@@ -409,7 +409,7 @@ ${labels.map(l => `<div class="label">${l.qr ? `<img src="${l.qr}">` : ''}<div c
                 <label className="text-sm font-medium text-gray-700">Tiền tố serial *</label>
                 <input type="text" value={batchPrefix} onChange={e => setBatchPrefix(e.target.value)} className="w-full mt-1 px-3 py-2 border rounded-lg" placeholder="VD: HNA-SPK-" />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-sm font-medium text-gray-700">Bắt đầu</label>
                   <input type="number" value={batchStart} onChange={e => setBatchStart(e.target.value)} className="w-full mt-1 px-3 py-2 border rounded-lg" />

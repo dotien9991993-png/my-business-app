@@ -624,8 +624,8 @@ export default function WarehouseExportView({ products, warehouses, warehouseSto
               {/* Items Table */}
               <div>
                 <h3 className="font-medium text-gray-700 mb-2">Danh sách sản phẩm</h3>
-                <div className="border rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
+                <div className="border rounded-xl overflow-x-auto">
+                  <table className="w-full text-sm min-w-[400px]">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-4 py-2 text-left font-medium text-gray-600">Sản phẩm</th>

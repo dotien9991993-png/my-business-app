@@ -608,7 +608,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
 
               <div className="bg-blue-50 rounded-lg p-4 space-y-4">
                 <h3 className="font-medium text-blue-700">💰 Giá & Tồn kho</h3>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Đơn vị</label>
                     <select value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
@@ -773,7 +773,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
 
               <div className="bg-blue-50 rounded-lg p-4 space-y-4">
                 <h3 className="font-medium text-blue-700">💰 Giá & Định mức</h3>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Đơn vị</label><select value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full px-3 py-2 border rounded-lg">{effectiveUnits.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Giá nhập</label><input type="number" value={formImportPrice} onChange={(e) => setFormImportPrice(e.target.value)} className="w-full px-3 py-2 border rounded-lg" /></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Giá bán</label><input type="number" value={formSellPrice} onChange={(e) => setFormSellPrice(e.target.value)} className="w-full px-3 py-2 border rounded-lg" /></div>

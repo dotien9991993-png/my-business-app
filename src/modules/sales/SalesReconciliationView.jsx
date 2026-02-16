@@ -487,7 +487,7 @@ export default function SalesReconciliationView({
       {innerTab === 'history' && (
         <div className="space-y-4">
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="bg-blue-50 p-2.5 rounded-lg text-center">
               <div className="text-lg font-bold text-blue-700">{historyStats.total}</div>
               <div className="text-xs text-gray-600">Tổng</div>

@@ -601,8 +601,8 @@ export default function HaravanImportModal({ isOpen, onClose, tenant, currentUse
                 <div className="text-xs text-gray-500 mb-1">
                   Xem trước {previewOrders.length} / {parsedOrders.length} đơn hàng
                 </div>
-                <div className="max-h-64 overflow-y-auto border rounded-lg">
-                  <table className="w-full text-xs">
+                <div className="max-h-64 overflow-auto border rounded-lg">
+                  <table className="w-full text-xs min-w-[500px]">
                     <thead className="bg-gray-50 sticky top-0">
                       <tr>
                         <th className="text-left px-2 py-1.5 text-gray-500">Mã đơn</th>
