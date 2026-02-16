@@ -110,6 +110,7 @@ export default function HrmEmployeesView({
   // --- Sync state ---
   const [syncing, setSyncing] = useState(false);
   const autoSyncDone = useRef(false);
+  const [merging, setMerging] = useState(false);
 
   // ========== User map (user_id → user) ==========
   const userMap = useMemo(() => {
@@ -123,12 +124,27 @@ export default function HrmEmployeesView({
     if (!tenant || !allUsers?.length) return 0;
     setSyncing(true);
     try {
+      // Lấy danh sách employees mới nhất từ DB để tránh dùng state cũ
+      const { data: freshEmployees } = await supabase
+        .from('employees')
+        .select('user_id, full_name, phone, email')
+        .eq('tenant_id', tenant.id);
+
+      const existingList = freshEmployees || [];
       const approvedUsers = allUsers.filter(u => u.status === 'approved' || u.is_active);
-      const existingUserIds = new Set((employees || []).filter(e => e.user_id).map(e => e.user_id));
-      const existingEmails = new Set((employees || []).filter(e => e.email).map(e => e.email?.toLowerCase()));
-      const unsyncedUsers = approvedUsers.filter(u =>
-        !existingUserIds.has(u.id) && !existingEmails.has(u.email?.toLowerCase())
-      );
+      const existingUserIds = new Set(existingList.filter(e => e.user_id).map(e => e.user_id));
+      const existingEmails = new Set(existingList.filter(e => e.email).map(e => e.email?.toLowerCase()));
+      const existingNames = new Set(existingList.map(e => e.full_name?.trim().toLowerCase()).filter(Boolean));
+
+      const unsyncedUsers = approvedUsers.filter(u => {
+        // Skip nếu user_id đã tồn tại
+        if (existingUserIds.has(u.id)) return false;
+        // Skip nếu email đã tồn tại
+        if (u.email && existingEmails.has(u.email.toLowerCase())) return false;
+        // Skip nếu tên đã tồn tại (trường hợp tạo thủ công không có user_id)
+        if (u.name && existingNames.has(u.name.trim().toLowerCase())) return false;
+        return true;
+      });
 
       if (unsyncedUsers.length === 0) {
         setToast({ type: 'success', msg: 'Tất cả đã đồng bộ - không có user mới' });
@@ -193,6 +209,77 @@ export default function HrmEmployeesView({
       syncUsersToEmployees();
     }
   }, [employees, allUsers, tenant, syncUsersToEmployees]);
+
+  // ========== Phát hiện nhân viên trùng ==========
+  const duplicates = useMemo(() => {
+    const list = employees || [];
+    const groups = {};
+    list.forEach(emp => {
+      const key = emp.user_id ? `uid:${emp.user_id}` : `name:${emp.full_name?.trim().toLowerCase()}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(emp);
+    });
+    // Chỉ trả về nhóm có > 1 record
+    return Object.values(groups).filter(g => g.length > 1);
+  }, [employees]);
+
+  const duplicateCount = useMemo(() =>
+    duplicates.reduce((sum, g) => sum + g.length - 1, 0),
+    [duplicates]
+  );
+
+  // ========== Gộp trùng ==========
+  const handleMergeDuplicates = useCallback(async () => {
+    if (duplicates.length === 0) return;
+    if (!confirm(`Phát hiện ${duplicateCount} bản trùng. Giữ bản có mã NV nhỏ nhất, xóa bản trùng. Tiếp tục?`)) return;
+
+    setMerging(true);
+    try {
+      const idsToDelete = [];
+      for (const group of duplicates) {
+        // Sắp xếp theo employee_code ASC → giữ bản đầu tiên
+        const sorted = [...group].sort((a, b) =>
+          (a.employee_code || '').localeCompare(b.employee_code || '')
+        );
+        // Bản giữ lại
+        const keep = sorted[0];
+        // Các bản xóa
+        for (let i = 1; i < sorted.length; i++) {
+          const dup = sorted[i];
+          // Nếu bản giữ lại thiếu user_id mà bản trùng có → cập nhật
+          if (!keep.user_id && dup.user_id) {
+            await supabase
+              .from('employees')
+              .update({ user_id: dup.user_id })
+              .eq('id', keep.id);
+          }
+          idsToDelete.push(dup.id);
+        }
+      }
+
+      if (idsToDelete.length > 0) {
+        const { error } = await supabase
+          .from('employees')
+          .delete()
+          .in('id', idsToDelete);
+        if (error) throw error;
+
+        logActivity({
+          tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
+          module: 'hrm', action: 'delete', entityType: 'employee',
+          description: `Gộp trùng: xóa ${idsToDelete.length} bản nhân viên trùng lặp`
+        });
+      }
+
+      setToast({ type: 'success', msg: `Đã xóa ${idsToDelete.length} bản trùng thành công` });
+      if (loadHrmData) loadHrmData();
+    } catch (err) {
+      console.error('Lỗi gộp trùng:', err);
+      setToast({ type: 'error', msg: 'Lỗi gộp trùng: ' + (err.message || 'Không xác định') });
+    } finally {
+      setMerging(false);
+    }
+  }, [duplicates, duplicateCount, tenant, currentUser, loadHrmData]);
 
   // ========== Thống kê ==========
   const stats = useMemo(() => {
@@ -516,6 +603,25 @@ export default function HrmEmployeesView({
           <div className="text-xs text-gray-400 mt-1">Nghỉ / Sa thải</div>
         </div>
       </div>
+
+      {/* ===== CẢNH BÁO TRÙNG ===== */}
+      {duplicateCount > 0 && userCanEdit && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-amber-800">
+            <span className="text-lg">&#9888;&#65039;</span>
+            <span className="text-sm font-medium">
+              Phát hiện {duplicateCount} nhân viên bị trùng ({duplicates.length} nhóm)
+            </span>
+          </div>
+          <button
+            onClick={handleMergeDuplicates}
+            disabled={merging}
+            className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {merging ? 'Đang gộp...' : 'Gộp trùng'}
+          </button>
+        </div>
+      )}
 
       {/* ===== BỘ LỌC & TÌM KIẾM ===== */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
