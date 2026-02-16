@@ -9,11 +9,11 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
     <>
       {/* Module Selector - Desktop Only */}
       <div className="hidden md:block bg-gradient-to-r from-green-700 to-green-800">
-        <div className="max-w-7xl mx-auto px-6 flex gap-2">
+        <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
           {(isAdmin || (currentUser.permissions && currentUser.permissions.dashboard > 0)) && (
             <button
               onClick={() => navigateTo('dashboard', 'overview')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'dashboard' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -23,7 +23,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {(isAdminRole(currentUser) || (currentUser.permissions && currentUser.permissions.media > 0)) && (
             <button
               onClick={() => navigateTo('media', 'dashboard')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'media' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -33,7 +33,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {(isAdminRole(currentUser) || (currentUser.permissions && currentUser.permissions.warehouse > 0)) && (
             <button
               onClick={() => navigateTo('warehouse', 'inventory')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'warehouse' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -43,7 +43,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {(isAdminRole(currentUser) || (currentUser.permissions && currentUser.permissions.sales > 0)) && (
             <button
               onClick={() => navigateTo('sales', 'orders')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'sales' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -53,7 +53,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {(isAdminRole(currentUser) || (currentUser.permissions && currentUser.permissions.technical > 0)) && (
             <button
               onClick={() => navigateTo('technical', 'today')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'technical' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -63,7 +63,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {(isAdmin || (currentUser.permissions && currentUser.permissions.finance > 0)) && (
             <button
               onClick={() => navigateTo('finance', 'dashboard')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'finance' && !isSalaryMode ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -73,7 +73,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {(isAdminRole(currentUser) || (currentUser.permissions && currentUser.permissions.warranty > 0)) && (
             <button
               onClick={() => navigateTo('warranty', 'lookup')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'warranty' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -83,7 +83,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {(isAdminRole(currentUser) || (currentUser.permissions && currentUser.permissions.hrm > 0)) && (
             <button
               onClick={() => navigateTo('hrm', 'employees')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 activeModule === 'hrm' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -93,7 +93,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
           {!isAdmin && (
             <button
               onClick={() => navigateTo('finance', 'salaries')}
-              className={`px-6 py-4 font-bold text-lg transition-all rounded-t-lg ${
+              className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
                 isSalaryMode ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
