@@ -356,17 +356,18 @@ export default function ChatWindow({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b bg-[#1B5E20] text-white rounded-t-xl">
-        <button onClick={onBack} className="text-white/80 hover:text-white p-1">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b bg-[#1B5E20] text-white">
+        {/* Back button - mobile only */}
+        <button onClick={onBack} className="md:hidden text-white/80 hover:text-white p-1">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div className="w-8 h-8 rounded-full bg-green-300 flex items-center justify-center text-green-900 font-bold text-xs overflow-hidden flex-shrink-0">
+        <div className="w-9 h-9 rounded-full bg-green-300 flex items-center justify-center text-green-900 font-bold text-xs overflow-hidden flex-shrink-0">
           {isGroup ? (
             <span className="text-sm">👥</span>
           ) : roomAvatar ? (
-            <img src={roomAvatar} alt="" className="w-8 h-8 rounded-full object-cover" />
+            <img src={roomAvatar} alt="" className="w-9 h-9 rounded-full object-cover" />
           ) : (
             roomName.charAt(0).toUpperCase()
           )}
@@ -490,7 +491,7 @@ export default function ChatWindow({
       )}
 
       {/* Input */}
-      <div className="flex items-end gap-1.5 px-2 py-2 border-t bg-gray-50 rounded-b-xl">
+      <div className="flex items-end gap-1.5 px-2 py-2 border-t bg-gray-50">
         <input
           ref={fileInputRef}
           type="file"

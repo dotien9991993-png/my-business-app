@@ -134,13 +134,21 @@ const Sidebar = ({
           {!isAdmin && (
             <button
               onClick={() => { navigateTo('finance', 'salaries'); setShowMobileSidebar(false); }}
-              className={`w-full px-3 py-2.5 rounded-lg font-medium text-left text-sm ${
+              className={`w-full px-3 py-2.5 rounded-lg mb-1.5 font-medium text-left text-sm ${
                 isSalaryMode ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
               }`}
             >
               💰 Lương Của Tôi
             </button>
           )}
+          <button
+            onClick={() => { navigateTo('chat', 'messages'); setShowMobileSidebar(false); }}
+            className={`w-full px-3 py-2.5 rounded-lg font-medium text-left text-sm ${
+              activeModule === 'chat' ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
+            }`}
+          >
+            💬 Tin Nhắn
+          </button>
         </div>
 
         {/* Admin Functions */}

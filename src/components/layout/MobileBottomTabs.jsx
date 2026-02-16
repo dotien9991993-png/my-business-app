@@ -17,6 +17,9 @@ export default function MobileBottomTabs({
   const [showHrmMoreMenu, setShowHrmMoreMenu] = React.useState(false);
   const [showDashboardMoreMenu, setShowDashboardMoreMenu] = React.useState(false);
 
+  // Chat module has its own full layout, no bottom tabs needed
+  if (activeModule === 'chat') return null;
+
   if (activeModule === 'dashboard') {
     const dashLevel = isAdminRole(currentUser) ? 3 : (currentUser?.permissions?.dashboard || 0);
     const allDashTabs = [

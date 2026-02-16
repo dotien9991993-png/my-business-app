@@ -27,17 +27,20 @@ export default function ChatRoomList({
   onSelectRoom,
   onNewChat,
   onNewGroup,
-  onClose
+  selectedRoomId
 }) {
   const [search, setSearch] = useState('');
+  const [showNewMenu, setShowNewMenu] = useState(false);
 
   // Tìm tên hiển thị cho phòng
   const getRoomDisplayInfo = (room) => {
     if (room.type === 'group') {
+      const activeMembers = (room.members || []).filter(m => m.is_active !== false);
       return {
         name: room.name || 'Nhóm chat',
         avatar: null,
-        isGroup: true
+        isGroup: true,
+        memberCount: activeMembers.length
       };
     }
     // Direct: tìm người kia
@@ -63,7 +66,6 @@ export default function ChatRoomList({
         return info.name.toLowerCase().includes(q);
       });
     }
-    // Sắp xếp: phòng có tin mới nhất lên trên
     return [...filtered].sort((a, b) => {
       const tA = a.last_message_at ? new Date(a.last_message_at).getTime() : new Date(a.created_at).getTime();
       const tB = b.last_message_at ? new Date(b.last_message_at).getTime() : new Date(b.created_at).getTime();
@@ -72,22 +74,42 @@ export default function ChatRoomList({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rooms, search, currentUser, allUsers]);
 
-  const totalUnread = Object.values(unreadCounts || {}).reduce((s, v) => s + v, 0);
-
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-[#1B5E20] text-white rounded-t-xl">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
         <div className="flex items-center gap-2">
           <span className="text-lg">💬</span>
-          <span className="font-bold text-sm">Tin nhắn</span>
-          {totalUnread > 0 && (
-            <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-              {totalUnread > 99 ? '99+' : totalUnread}
-            </span>
+          <span className="font-bold text-base text-gray-900">Tin nhắn</span>
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => setShowNewMenu(!showNewMenu)}
+            className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center hover:bg-green-200 transition-colors font-bold text-sm"
+            title="Tạo mới"
+          >
+            +
+          </button>
+          {showNewMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
+              <div className="absolute right-0 top-9 bg-white rounded-lg shadow-xl border z-20 py-1 w-40">
+                <button
+                  onClick={() => { onNewChat(); setShowNewMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  💬 Chat mới
+                </button>
+                <button
+                  onClick={() => { onNewGroup(); setShowNewMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  👥 Tạo nhóm
+                </button>
+              </div>
+            </>
           )}
         </div>
-        <button onClick={onClose} className="text-white/80 hover:text-white text-xl leading-none">&times;</button>
       </div>
 
       {/* Search */}
@@ -96,25 +118,9 @@ export default function ChatRoomList({
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 Tìm kiếm..."
-          className="w-full px-3 py-1.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+          placeholder="Tìm kiếm..."
+          className="w-full px-3 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
         />
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex gap-2 px-3 py-2 border-b">
-        <button
-          onClick={onNewChat}
-          className="flex-1 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors"
-        >
-          + Chat mới
-        </button>
-        <button
-          onClick={onNewGroup}
-          className="flex-1 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors"
-        >
-          + Tạo nhóm
-        </button>
       </div>
 
       {/* Room list */}
@@ -127,24 +133,29 @@ export default function ChatRoomList({
           sortedRooms.map(room => {
             const info = getRoomDisplayInfo(room);
             const unread = unreadCounts?.[room.id] || 0;
+            const isSelected = selectedRoomId === room.id;
 
             return (
               <button
                 key={room.id}
                 onClick={() => onSelectRoom(room)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left ${
-                  unread > 0 ? 'bg-green-50/50' : ''
+                className={`w-full flex items-center gap-3 px-3 py-3 transition-colors text-left border-l-4 ${
+                  isSelected
+                    ? 'bg-green-50 border-green-600'
+                    : unread > 0
+                      ? 'bg-green-50/30 border-transparent hover:bg-gray-50'
+                      : 'border-transparent hover:bg-gray-50'
                 }`}
               >
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
-                  <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm overflow-hidden">
+                  <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm overflow-hidden">
                     {info.isGroup ? (
-                      <span className="text-lg">👥</span>
+                      <span className="text-xl">👥</span>
                     ) : info.avatar ? (
-                      <img src={info.avatar} alt="" className="w-11 h-11 rounded-full object-cover" />
+                      <img src={info.avatar} alt="" className="w-12 h-12 rounded-full object-cover" />
                     ) : (
-                      info.name.charAt(0).toUpperCase()
+                      <span className="text-lg">{info.name.charAt(0).toUpperCase()}</span>
                     )}
                   </div>
                 </div>
@@ -154,8 +165,11 @@ export default function ChatRoomList({
                   <div className="flex items-center justify-between">
                     <span className={`text-sm truncate ${unread > 0 ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
                       {info.name}
+                      {info.isGroup && info.memberCount > 0 && (
+                        <span className="text-gray-400 font-normal ml-1">({info.memberCount})</span>
+                      )}
                     </span>
-                    <span className={`text-[10px] flex-shrink-0 ml-2 ${unread > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
+                    <span className={`text-[11px] flex-shrink-0 ml-2 ${unread > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
                       {formatLastTime(room.last_message_at)}
                     </span>
                   </div>

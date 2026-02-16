@@ -100,11 +100,19 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
               💰 Lương
             </button>
           )}
+          <button
+            onClick={() => navigateTo('chat', 'messages')}
+            className={`px-3 py-2.5 font-semibold text-sm whitespace-nowrap transition-all rounded-t-lg ${
+              activeModule === 'chat' ? 'bg-white text-green-700' : 'text-white/80 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            💬 Tin Nhắn
+          </button>
         </div>
       </div>
 
-      {/* Desktop Tab Bar */}
-      <div className="hidden md:block bg-white border-b">
+      {/* Desktop Tab Bar - hide for chat module */}
+      <div className={`hidden ${activeModule === 'chat' ? '' : 'md:block'} bg-white border-b`}>
         <div className="max-w-7xl mx-auto px-6 flex gap-2 overflow-x-auto">
           {isSalaryMode ? (
             <button className="px-6 py-3 font-medium border-b-4 border-green-700 text-green-700 whitespace-nowrap">
@@ -197,8 +205,8 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
         </div>
       </div>
 
-      {/* Mobile Title Bar */}
-      <div className="md:hidden bg-white border-b px-4 py-3 sticky top-[52px] z-30">
+      {/* Mobile Title Bar - hide for chat module (has own layout) */}
+      <div className={`md:hidden bg-white border-b px-4 py-3 sticky top-[52px] z-30 ${activeModule === 'chat' ? 'hidden' : ''}`}>
         <h2 className="font-bold text-lg">
           {isSalaryMode ? '💰 Lương Của Tôi' : (activeModule === 'dashboard' ? [
             { id: 'overview', l: '📊 Tổng Quan Doanh Nghiệp', minLevel: 1 },

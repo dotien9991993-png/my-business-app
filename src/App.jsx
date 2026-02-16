@@ -28,6 +28,7 @@ const SettingsModule = React.lazy(() => import('./modules/settings'));
 const WarrantyModule = React.lazy(() => import('./modules/warranty'));
 const HrmModule = React.lazy(() => import('./modules/hrm'));
 const PublicWarrantyCheck = React.lazy(() => import('./components/shared/PublicWarrantyCheck'));
+const ChatModule = React.lazy(() => import('./modules/chat'));
 const ChatWidget = React.lazy(() => import('./components/chat/ChatWidget'));
 import { isAdmin } from './utils/permissionUtils';
 
@@ -268,6 +269,8 @@ function AppContent() {
           {activeModule === 'hrm' && canAccessModule('hrm') && <HrmModule />}
 
           {activeModule === 'settings' && isAdmin(currentUser) && <SettingsModule />}
+
+          {activeModule === 'chat' && <ChatModule />}
         </Suspense>
       </div>
 

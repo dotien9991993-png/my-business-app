@@ -90,7 +90,7 @@ export function AppProvider({ children }) {
       if (parts.length >= 1) {
         const module = parts[0];
         const tab = parts[1] || 'dashboard';
-        if (['dashboard', 'media', 'warehouse', 'sales', 'technical', 'finance', 'warranty', 'hrm', 'settings'].includes(module)) {
+        if (['dashboard', 'media', 'warehouse', 'sales', 'technical', 'finance', 'warranty', 'hrm', 'settings', 'chat'].includes(module)) {
           setActiveModule(module);
           setActiveTab(tab);
         }
