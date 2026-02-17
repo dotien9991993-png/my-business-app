@@ -128,6 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_zalo_conv_tenant ON zalo_conversations(tenant_id)
 CREATE INDEX IF NOT EXISTS idx_zalo_conv_status ON zalo_conversations(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_zalo_conv_assigned ON zalo_conversations(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_zalo_conv_zalo_user ON zalo_conversations(zalo_user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_zalo_conv_tenant_user ON zalo_conversations(tenant_id, zalo_user_id);
 
 -- 6. Bảng tin nhắn Zalo chat
 CREATE TABLE IF NOT EXISTS zalo_chat_messages (
@@ -148,6 +149,7 @@ CREATE TABLE IF NOT EXISTS zalo_chat_messages (
 
 CREATE INDEX IF NOT EXISTS idx_zalo_chat_msg_conv ON zalo_chat_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_zalo_chat_msg_tenant ON zalo_chat_messages(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_zalo_chat_msg_zalo_id ON zalo_chat_messages(zalo_message_id) WHERE zalo_message_id IS NOT NULL;
 
 -- 7. Bảng ghi chú nội bộ (KH không thấy)
 CREATE TABLE IF NOT EXISTS zalo_internal_notes (

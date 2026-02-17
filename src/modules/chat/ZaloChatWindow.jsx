@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
+import { sendZaloReply, sendZaloProductCard } from '../../utils/zaloOA';
 
 const QUICK_REPLY_CATEGORIES = [
   { id: 'greeting', label: 'Chào hỏi' },
@@ -157,79 +158,75 @@ export default function ZaloChatWindow({
       .then();
   }, [conversation?.id, conversation?.unread_count]);
 
-  // Send message
+  // Send message qua Zalo API
   const handleSend = async () => {
     const text = inputText.trim();
     if (!text || !conversation?.id) return;
 
     setInputText('');
 
-    const newMsg = {
-      tenant_id: tenant.id,
-      conversation_id: conversation.id,
-      direction: 'outbound',
-      sender_type: 'staff',
-      sender_id: currentUser.id,
-      sender_name: currentUser.name,
-      message_type: 'text',
-      content: text,
-      status: 'sent',
-    };
-
-    const { error } = await supabase.from('zalo_chat_messages').insert([newMsg]);
-    if (error) {
-      console.error('Error sending message:', error);
-      return;
+    try {
+      await sendZaloReply(
+        tenant.id,
+        conversation.zalo_user_id,
+        conversation.id,
+        text,
+        currentUser,
+        'text',
+      );
+      onConversationUpdated?.();
+    } catch (err) {
+      console.error('Lỗi gửi tin Zalo:', err);
+      // Fallback: lưu DB nếu API lỗi
+      await supabase.from('zalo_chat_messages').insert([{
+        tenant_id: tenant.id,
+        conversation_id: conversation.id,
+        direction: 'outbound',
+        sender_type: 'staff',
+        sender_id: currentUser.id,
+        sender_name: currentUser.name,
+        message_type: 'text',
+        content: text,
+        status: 'failed',
+      }]);
+      onConversationUpdated?.();
     }
 
-    // Update conversation
-    await supabase
-      .from('zalo_conversations')
-      .update({
-        last_message: text,
-        last_message_at: new Date().toISOString(),
-        last_message_by: 'staff',
-        status: conversation.status === 'waiting' ? 'active' : conversation.status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', conversation.id);
-
-    onConversationUpdated?.();
     inputRef.current?.focus();
   };
 
-  // Send product card
+  // Send product card qua Zalo API
   const handleSendProductCard = async (product) => {
-    const cardContent = JSON.stringify({
-      type: 'product_card',
-      product_id: product.id,
-      name: product.name,
-      price: product.price || product.selling_price,
-      image: product.image_url || product.images?.[0],
-      description: product.description || '',
-    });
-
-    const { error } = await supabase.from('zalo_chat_messages').insert([{
-      tenant_id: tenant.id,
-      conversation_id: conversation.id,
-      direction: 'outbound',
-      sender_type: 'staff',
-      sender_id: currentUser.id,
-      sender_name: currentUser.name,
-      message_type: 'product_card',
-      content: cardContent,
-      status: 'sent',
-    }]);
-
-    if (!error) {
-      await supabase.from('zalo_conversations').update({
-        last_message: `[Sản phẩm] ${product.name}`,
-        last_message_at: new Date().toISOString(),
-        last_message_by: 'staff',
-        updated_at: new Date().toISOString(),
-      }).eq('id', conversation.id);
-
+    try {
+      await sendZaloProductCard(
+        tenant.id,
+        conversation.zalo_user_id,
+        conversation.id,
+        product,
+        currentUser,
+      );
       onConversationUpdated?.();
+    } catch (err) {
+      console.error('Lỗi gửi sản phẩm:', err);
+      // Fallback: lưu DB
+      const cardContent = JSON.stringify({
+        type: 'product_card',
+        product_id: product.id,
+        name: product.name,
+        price: product.price || product.selling_price,
+        image: product.image_url || product.images?.[0],
+      });
+      await supabase.from('zalo_chat_messages').insert([{
+        tenant_id: tenant.id,
+        conversation_id: conversation.id,
+        direction: 'outbound',
+        sender_type: 'staff',
+        sender_id: currentUser.id,
+        sender_name: currentUser.name,
+        message_type: 'product_card',
+        content: cardContent,
+        status: 'failed',
+      }]);
     }
     setShowProductPicker(false);
     setProductSearch('');
