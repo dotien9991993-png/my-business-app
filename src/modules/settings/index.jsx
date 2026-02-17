@@ -7,6 +7,7 @@ import WarehouseSettings from './WarehouseSettings';
 import FinanceSettings from './FinanceSettings';
 import ProductSettings from './ProductSettings';
 import ShippingSettings from './ShippingSettings';
+import ZaloOASettings from './ZaloOASettings';
 import ActivityLogView from './ActivityLogView';
 
 export default function SettingsModule() {
@@ -38,6 +39,9 @@ export default function SettingsModule() {
       )}
       {activeTab === 'shipping' && (
         <ShippingSettings {...commonProps} shippingConfigs={shippingConfigs} />
+      )}
+      {activeTab === 'zalo' && (
+        <ZaloOASettings tenant={tenant} currentUser={currentUser} />
       )}
       {activeTab === 'logs' && (
         <ActivityLogView tenant={tenant} currentUser={currentUser} />

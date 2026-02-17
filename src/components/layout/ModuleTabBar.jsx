@@ -184,6 +184,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'finance', l: '💰 Tài Chính' },
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
+            { id: 'zalo', l: '📱 Zalo OA' },
             { id: 'logs', l: '📋 Lịch Sử HĐ' }
           ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => {
             const pendingCount = (t.id === 'receipts' && activeModule === 'finance')
@@ -276,6 +277,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'finance', l: '💰 Tài Chính' },
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
+            { id: 'zalo', l: '📱 Zalo OA' },
             { id: 'logs', l: '📋 Lịch Sử HĐ' }
           ] : []).find(t => t.id === activeTab)?.l || ''}
         </h2>

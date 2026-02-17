@@ -10,6 +10,7 @@ import QRScanner from '../../components/shared/QRScanner';
 import * as vtpApi from '../../utils/viettelpostApi';
 import HaravanImportModal from './HaravanImportModal';
 import { logActivity } from '../../lib/activityLog';
+import { sendOrderConfirmation, sendShippingNotification } from '../../utils/zaloAutomation';
 
 export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
@@ -601,6 +602,18 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
 
       showToast('Tạo đơn thành công! ' + orderNumber);
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'create', entityType: 'order', entityId: orderNumber, entityName: orderNumber, description: 'Tạo đơn ' + orderNumber + ', KH: ' + (customerName || 'Khách lẻ') + ', ' + formatMoney(totalAmount) });
+
+      // Zalo OA: Queue xác nhận đơn hàng
+      if (customerPhone?.trim()) {
+        sendOrderConfirmation(tenant.id, {
+          id: order.id, order_code: orderNumber,
+          total_amount: totalAmount,
+          items: cartItems.map(i => ({ product_name: i.product_name }))
+        }, {
+          id: resolvedCustomerId, name: customerName, phone: customerPhone
+        }).catch(() => {}); // Silent - không block flow chính
+      }
+
       setShowCreateModal(false); resetForm();
       await Promise.all([loadSalesData(), loadWarehouseData(), loadFinanceData(), loadPagedOrders()]);
     } catch (err) { console.error(err); alert('❌ Lỗi: ' + err.message); } finally { setSubmitting(false); }
@@ -767,6 +780,19 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'cancel', entityType: 'order', entityId: order.order_number, entityName: order.order_number, description: 'Hủy đơn ' + order.order_number });
       } else {
         logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'update', entityType: 'order', entityId: order.order_number, entityName: order.order_number, description: 'Cập nhật trạng thái đơn ' + order.order_number + ': ' + statusLabel });
+      }
+
+      // Zalo OA: Gửi thông báo giao hàng
+      if (newStatus === 'shipping' && order.customer_phone) {
+        sendShippingNotification(tenant.id, {
+          id: orderId, order_code: order.order_number
+        }, {
+          id: order.customer_id, name: order.customer_name, phone: order.customer_phone
+        }, {
+          carrier: order.shipping_provider || '',
+          tracking_code: order.tracking_number || '',
+          estimated_date: 'Trong 2-3 ngày',
+        }).catch(() => {});
       }
       setSelectedOrder(prev => prev ? { ...prev, ...updates } : prev);
       await Promise.all([loadSalesData(), loadWarehouseData(), loadFinanceData(), loadPagedOrders()]);
