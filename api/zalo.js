@@ -19,8 +19,27 @@ export default async function handler(req, res) {
   const { action, ...params } = req.body;
 
   try {
-    if (action === 'get_token') {
-      // Lấy access token từ refresh token
+    // === Lấy OAuth URL (cho nút "Kết nối Zalo OA") ===
+    if (action === 'get_oauth_url') {
+      const APP_ID = process.env.ZALO_APP_ID;
+      const REDIRECT_URI =
+        process.env.ZALO_REDIRECT_URI || `https://${req.headers.host}/api/zalo-callback`;
+
+      if (!APP_ID) {
+        return res.status(500).json({ error: 'Server chưa cấu hình ZALO_APP_ID' });
+      }
+
+      const state = params.state || '';
+      const url =
+        `https://oauth.zaloapp.com/v4/oa/permission?app_id=${APP_ID}` +
+        `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+        `&state=${encodeURIComponent(state)}`;
+
+      return res.status(200).json({ url });
+    }
+
+    // === Refresh access token từ refresh token ===
+    if (action === 'refresh_token') {
       const response = await fetch('https://oauth.zaloapp.com/v4/oa/access_token', {
         method: 'POST',
         headers: {
@@ -38,6 +57,7 @@ export default async function handler(req, res) {
       return res.status(200).json(data);
     }
 
+    // === Gọi Zalo OA API ===
     if (action === 'api_call') {
       // Gọi Zalo OA API
       const fetchOptions = {

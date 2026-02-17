@@ -128,7 +128,7 @@ export const getAccessToken = async (config) => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      action: 'get_token',
+      action: 'refresh_token',
       app_id: (config.app_id || '').trim(),
       secret_key: (config.secret_key || '').trim(),
       refresh_token: (config.refresh_token || '').trim(),

@@ -84,90 +84,227 @@ export default function ZaloOASettings({ tenant, currentUser }) {
 }
 
 // ================================================================
-// CONFIG VIEW - Cấu hình kết nối Zalo OA
+// CONFIG VIEW - Kết nối Zalo OA qua OAuth 2.0
 // ================================================================
 function ConfigView({ tenant, setToast }) {
-  const [config, setConfig] = useState({
-    app_id: '', secret_key: '', oa_id: '', refresh_token: ''
-  });
+  const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [showSecret, setShowSecret] = useState(false);
-  const [showToken, setShowToken] = useState(false);
-  const [configId, setConfigId] = useState(null);
+  const [connecting, setConnecting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   // Load config
-  useEffect(() => {
-    const load = async () => {
-      const data = await getZaloConfig(tenant.id);
-      if (data) {
-        setConfig({
-          app_id: data.app_id || '',
-          secret_key: data.secret_key || '',
-          oa_id: data.oa_id || '',
-          refresh_token: data.refresh_token || '',
-        });
-        setConfigId(data.id);
-      }
-      setLoading(false);
-    };
-    load();
+  const loadConfig = useCallback(async () => {
+    const data = await getZaloConfig(tenant.id);
+    setConfig(data);
+    setLoading(false);
   }, [tenant.id]);
 
-  const isConnected = Boolean(config.app_id && config.secret_key && config.oa_id);
+  useEffect(() => { loadConfig(); }, [loadConfig]);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const payload = {
-        tenant_id: tenant.id,
-        app_id: config.app_id.trim(),
-        secret_key: config.secret_key.trim(),
-        oa_id: config.oa_id.trim(),
-        refresh_token: config.refresh_token.trim(),
-        is_active: true,
-        updated_at: new Date().toISOString(),
-      };
+  // Check URL params cho OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('zalo_connected');
+    const error = params.get('zalo_error');
 
-      if (configId) {
-        const { error } = await supabase.from('zalo_config').update(payload).eq('id', configId);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.from('zalo_config').insert([payload]).select().single();
-        if (error) throw error;
-        setConfigId(data.id);
-      }
-      setToast({ type: 'success', msg: 'Đã lưu cấu hình Zalo OA' });
-    } catch (err) {
-      setToast({ type: 'error', msg: 'Lỗi lưu: ' + (err.message || '') });
-    } finally {
-      setSaving(false);
+    if (connected === 'true') {
+      setToast({ type: 'success', msg: 'Kết nối Zalo OA thành công!' });
+      loadConfig(); // Reload để thấy config mới
+      // Clean URL
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+    } else if (error) {
+      setToast({ type: 'error', msg: 'Lỗi kết nối Zalo: ' + decodeURIComponent(error) });
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
     }
+  }, []);
+
+  const isConnected = Boolean(config?.access_token && config?.refresh_token);
+
+  // Kết nối Zalo OA - lấy OAuth URL từ server rồi redirect
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      const response = await fetch('/api/zalo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_oauth_url',
+          state: tenant.id,
+        }),
+      });
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setToast({ type: 'error', msg: data.error || 'Không lấy được OAuth URL' });
+        setConnecting(false);
+      }
+    } catch (err) {
+      setToast({ type: 'error', msg: 'Lỗi: ' + err.message });
+      setConnecting(false);
+    }
+  };
+
+  // Làm mới token thủ công
+  const handleRefreshToken = async () => {
+    if (!config) return;
+    setRefreshing(true);
+    try {
+      const response = await fetch('/api/zalo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'refresh_token',
+          app_id: (config.app_id || '').trim(),
+          secret_key: (config.secret_key || '').trim(),
+          refresh_token: (config.refresh_token || '').trim(),
+        }),
+      });
+      const data = await response.json();
+      if (data.access_token) {
+        await supabase.from('zalo_config').update({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token || config.refresh_token,
+          access_token_expires_at: new Date(Date.now() + (data.expires_in || 3600) * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('id', config.id);
+        setToast({ type: 'success', msg: 'Đã làm mới token thành công' });
+        loadConfig();
+      } else {
+        setToast({ type: 'error', msg: 'Lỗi refresh: ' + (data.error_description || data.message || 'Không rõ') });
+      }
+    } catch (err) {
+      setToast({ type: 'error', msg: 'Lỗi: ' + err.message });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Ngắt kết nối
+  const handleDisconnect = async () => {
+    if (!config?.id) return;
+    if (!confirm('Bạn có chắc muốn ngắt kết nối Zalo OA? Mọi token sẽ bị xoá.')) return;
+    setDisconnecting(true);
+    try {
+      const { error } = await supabase.from('zalo_config').update({
+        access_token: null,
+        refresh_token: null,
+        access_token_expires_at: null,
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      }).eq('id', config.id);
+      if (error) throw error;
+      setToast({ type: 'success', msg: 'Đã ngắt kết nối Zalo OA' });
+      loadConfig();
+    } catch (err) {
+      setToast({ type: 'error', msg: 'Lỗi: ' + err.message });
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  // Token status
+  const getTokenStatus = () => {
+    if (!config?.access_token_expires_at) return { text: 'Không rõ', color: 'gray' };
+    const expiresAt = new Date(config.access_token_expires_at);
+    const now = new Date();
+    const diffMs = expiresAt - now;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (diffMs <= 0) return { text: 'Đã hết hạn', color: 'red' };
+    if (diffHours < 1) return { text: `Còn ${diffMins} phút`, color: 'yellow' };
+    if (diffHours < 24) return { text: `Còn ${diffHours}h ${diffMins}p`, color: 'yellow' };
+    return { text: `Còn ${Math.floor(diffHours / 24)} ngày`, color: 'green' };
   };
 
   if (loading) return <div className="text-center py-8 text-gray-400">Đang tải...</div>;
 
+  // === CHƯA KẾT NỐI ===
+  if (!isConnected) {
+    return (
+      <div className="space-y-4">
+        {/* Status */}
+        <div className="flex items-center gap-3 p-4 rounded-xl border bg-gray-50 border-gray-200">
+          <span className="text-2xl">🔴</span>
+          <div>
+            <div className="font-medium text-gray-800">Chưa kết nối Zalo OA</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              Kết nối Zalo OA để gửi tin nhắn tự động và chat với khách hàng
+            </div>
+          </div>
+        </div>
+
+        {/* Connect button */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 text-center space-y-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-50">
+            <svg className="w-8 h-8 text-blue-600" viewBox="0 0 48 48" fill="currentColor">
+              <path d="M24 4C12.954 4 4 12.954 4 24s8.954 20 20 20 20-8.954 20-20S35.046 4 24 4zm8.5 13.5l-4 9.5c-.2.4-.6.7-1 .8-.1 0-.3.1-.4.1-.3 0-.6-.1-.9-.3L22 24.5l-4.3 3.2c-.5.4-1.2.3-1.7-.1-.4-.5-.4-1.2 0-1.7l5-4c.4-.3.9-.4 1.4-.2l4.3 3.1 3.4-8c.3-.6.9-.9 1.5-.7.7.2 1 .9.9 1.4z"/>
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-800">Kết nối Zalo Official Account</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Bấm nút bên dưới để đăng nhập Zalo và cấp quyền cho ứng dụng
+            </p>
+          </div>
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-lg shadow-blue-200"
+          >
+            {connecting ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Đang chuyển hướng...
+              </>
+            ) : (
+              <>📱 Kết nối Zalo OA</>
+            )}
+          </button>
+        </div>
+
+        {/* Hướng dẫn */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-blue-800 mb-2">📖 Cách hoạt động</h4>
+          <ol className="text-xs text-blue-700 space-y-1.5 list-decimal list-inside">
+            <li>Bấm <strong>"Kết nối Zalo OA"</strong> → chuyển đến trang Zalo</li>
+            <li>Đăng nhập tài khoản Zalo quản lý OA</li>
+            <li>Cấp quyền cho ứng dụng (gửi tin, đọc tin, quản lý OA)</li>
+            <li>Tự động quay lại trang này → Kết nối hoàn tất!</li>
+          </ol>
+        </div>
+      </div>
+    );
+  }
+
+  // === ĐÃ KẾT NỐI ===
+  const tokenStatus = getTokenStatus();
+  const tokenColors = {
+    green: 'bg-green-100 text-green-700 border-green-200',
+    yellow: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    red: 'bg-red-100 text-red-700 border-red-200',
+    gray: 'bg-gray-100 text-gray-600 border-gray-200',
+  };
+
   return (
     <div className="space-y-4">
       {/* Connection status */}
-      <div className={`flex items-center gap-3 p-4 rounded-xl border ${
-        isConnected ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-      }`}>
-        <span className="text-2xl">{isConnected ? '🟢' : '🔴'}</span>
-        <div>
-          <div className="font-medium text-gray-800">
-            {isConnected ? 'Đã cấu hình Zalo OA' : 'Chưa kết nối Zalo OA'}
-          </div>
+      <div className="flex items-center gap-3 p-4 rounded-xl border bg-green-50 border-green-200">
+        <span className="text-2xl">🟢</span>
+        <div className="flex-1">
+          <div className="font-medium text-gray-800">Đã kết nối Zalo OA</div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {isConnected
-              ? 'Điền Refresh Token và cấu hình kịch bản gửi tin tự động'
-              : 'Vui lòng điền thông tin từ Zalo Developers Console'
-            }
+            Zalo OA đang hoạt động, có thể gửi tin nhắn và chat với khách hàng
           </div>
         </div>
       </div>
 
-      {/* Form */}
+      {/* Config info */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
         <h3 className="text-sm font-semibold text-green-700 flex items-center gap-2">
           🔑 Thông tin kết nối
@@ -175,87 +312,64 @@ function ConfigView({ tenant, setToast }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">App ID</label>
-            <input
-              type="text"
-              value={config.app_id}
-              onChange={e => setConfig(p => ({ ...p, app_id: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
-              placeholder="Nhập App ID từ Zalo Developers"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">OA ID</label>
-            <input
-              type="text"
-              value={config.oa_id}
-              onChange={e => setConfig(p => ({ ...p, oa_id: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
-              placeholder="Nhập OA ID"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Secret Key</label>
-            <div className="relative">
-              <input
-                type={showSecret ? 'text' : 'password'}
-                value={config.secret_key}
-                onChange={e => setConfig(p => ({ ...p, secret_key: e.target.value }))}
-                className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                placeholder="Nhập Secret Key"
-              />
-              <button
-                type="button"
-                onClick={() => setShowSecret(!showSecret)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showSecret ? '🙈' : '👁️'}
-              </button>
+            <label className="block text-[11px] text-gray-400 mb-1">OA ID</label>
+            <div className="px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700 font-mono">
+              {config.oa_id || '-'}
             </div>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Refresh Token</label>
-            <div className="relative">
-              <input
-                type={showToken ? 'text' : 'password'}
-                value={config.refresh_token}
-                onChange={e => setConfig(p => ({ ...p, refresh_token: e.target.value }))}
-                className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                placeholder="Nhập Refresh Token"
-              />
-              <button
-                type="button"
-                onClick={() => setShowToken(!showToken)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showToken ? '🙈' : '👁️'}
-              </button>
+            <label className="block text-[11px] text-gray-400 mb-1">App ID</label>
+            <div className="px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700 font-mono">
+              {config.app_id || '-'}
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-400 mb-1">Access Token</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-500 font-mono truncate">
+                {config.access_token ? '••••••••' + config.access_token.slice(-8) : '-'}
+              </div>
+              <span className={`inline-block px-2 py-1 rounded-full text-[10px] font-medium border whitespace-nowrap ${tokenColors[tokenStatus.color]}`}>
+                {tokenStatus.text}
+              </span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-400 mb-1">Hết hạn lúc</label>
+            <div className="px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm text-gray-700">
+              {config.access_token_expires_at
+                ? new Date(config.access_token_expires_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+                : '-'
+              }
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 pt-2">
+        {/* Actions */}
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
           <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            onClick={handleRefreshToken}
+            disabled={refreshing}
+            className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
-            {saving ? 'Đang lưu...' : 'Lưu cấu hình'}
+            {refreshing ? 'Đang làm mới...' : '🔄 Làm mới Token'}
+          </button>
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
+            className="px-4 py-2 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg border border-blue-200 hover:bg-blue-100 disabled:opacity-50 transition-colors"
+          >
+            {connecting ? 'Đang chuyển...' : '🔗 Kết nối lại'}
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={handleDisconnect}
+            disabled={disconnecting}
+            className="px-4 py-2 text-red-600 text-sm font-medium rounded-lg border border-red-200 hover:bg-red-50 disabled:opacity-50 transition-colors"
+          >
+            {disconnecting ? 'Đang ngắt...' : '🔌 Ngắt kết nối'}
           </button>
         </div>
-      </div>
-
-      {/* Hướng dẫn */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <h4 className="text-sm font-semibold text-blue-800 mb-2">📖 Hướng dẫn lấy thông tin</h4>
-        <ol className="text-xs text-blue-700 space-y-1.5 list-decimal list-inside">
-          <li>Truy cập <strong>developers.zalo.me</strong> → Đăng nhập</li>
-          <li>Tạo ứng dụng mới hoặc chọn ứng dụng có sẵn</li>
-          <li>Vào <strong>Cài đặt</strong> → Sao chép <strong>App ID</strong> và <strong>Secret Key</strong></li>
-          <li>Vào <strong>Sản phẩm → Zalo OA</strong> → Liên kết OA → Sao chép <strong>OA ID</strong></li>
-          <li>Vào <strong>Tools → API Explorer</strong> → Lấy <strong>Refresh Token</strong></li>
-          <li>Dán tất cả vào form trên và bấm <strong>Lưu cấu hình</strong></li>
-        </ol>
       </div>
     </div>
   );
