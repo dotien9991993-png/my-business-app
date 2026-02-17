@@ -5,9 +5,16 @@ import ChatRoomList from '../../components/chat/ChatRoomList';
 import ChatWindow from '../../components/chat/ChatWindow';
 import NewChatModal from '../../components/chat/NewChatModal';
 import ChatGroupModal from '../../components/chat/ChatGroupModal';
+import ZaloChatView from './ZaloChatView';
+
+const CHAT_TABS = [
+  { id: 'internal', label: 'Nội bộ', icon: '💬' },
+  { id: 'zalo', label: 'Zalo OA', icon: '📱' },
+];
 
 export default function ChatModule() {
   const { currentUser, tenant, allUsers, navigateTo } = useApp();
+  const [chatTab, setChatTab] = useState('internal');
 
   const [activeRoom, setActiveRoom] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -317,60 +324,85 @@ export default function ChatModule() {
 
   return (
     <div className="bg-white md:rounded-xl md:shadow-sm md:border md:mx-4 md:mt-2 flex flex-col" style={{ height: 'calc(100vh - 160px)', minHeight: '400px' }}>
-      {/* Desktop: 2 columns */}
-      <div className="flex flex-1 min-h-0">
-        {/* Sidebar - desktop always visible, mobile only when no active room */}
-        <div className={`${activeRoom ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 md:border-r md:flex-shrink-0`}>
-          <ChatRoomList
-            rooms={rooms}
-            currentUser={currentUser}
-            allUsers={allUsers}
-            unreadCounts={unreadCounts}
-            onSelectRoom={handleSelectRoom}
-            onNewChat={() => setShowNewChat(true)}
-            onNewGroup={() => setShowNewGroup(true)}
-            selectedRoomId={activeRoom?.id}
-          />
-        </div>
-
-        {/* Chat area - desktop always visible, mobile only when room selected */}
-        <div className={`${activeRoom ? 'flex' : 'hidden md:flex'} flex-col flex-1 min-w-0`}>
-          {activeRoom ? (
-            <ChatWindow
-              room={activeRoom}
-              currentUser={currentUser}
-              allUsers={allUsers}
-              onBack={handleBackToList}
-              onRoomUpdated={loadRooms}
-              onNavigate={navigateTo}
-            />
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-              <div className="text-6xl mb-4">💬</div>
-              <h3 className="text-lg font-medium text-gray-500">Chọn hội thoại</h3>
-              <p className="text-sm mt-1">để bắt đầu nhắn tin</p>
-            </div>
-          )}
-        </div>
+      {/* Tab switcher */}
+      <div className="flex items-center border-b bg-gray-50 md:rounded-t-xl px-2 flex-shrink-0">
+        {CHAT_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setChatTab(tab.id)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              chatTab === tab.id
+                ? 'border-blue-500 text-blue-600 bg-white'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <span>{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Modals */}
-      {showNewChat && (
-        <NewChatModal
-          allUsers={allUsers}
-          currentUser={currentUser}
-          onSelectUser={handleSelectUserForChat}
-          onClose={() => setShowNewChat(false)}
-        />
-      )}
+      {/* Tab content */}
+      {chatTab === 'internal' ? (
+        <>
+          {/* Desktop: 2 columns */}
+          <div className="flex flex-1 min-h-0">
+            {/* Sidebar - desktop always visible, mobile only when no active room */}
+            <div className={`${activeRoom ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 md:border-r md:flex-shrink-0`}>
+              <ChatRoomList
+                rooms={rooms}
+                currentUser={currentUser}
+                allUsers={allUsers}
+                unreadCounts={unreadCounts}
+                onSelectRoom={handleSelectRoom}
+                onNewChat={() => setShowNewChat(true)}
+                onNewGroup={() => setShowNewGroup(true)}
+                selectedRoomId={activeRoom?.id}
+              />
+            </div>
 
-      {showNewGroup && (
-        <ChatGroupModal
-          allUsers={allUsers}
-          currentUser={currentUser}
-          onCreate={handleCreateGroup}
-          onClose={() => setShowNewGroup(false)}
-        />
+            {/* Chat area - desktop always visible, mobile only when room selected */}
+            <div className={`${activeRoom ? 'flex' : 'hidden md:flex'} flex-col flex-1 min-w-0`}>
+              {activeRoom ? (
+                <ChatWindow
+                  room={activeRoom}
+                  currentUser={currentUser}
+                  allUsers={allUsers}
+                  onBack={handleBackToList}
+                  onRoomUpdated={loadRooms}
+                  onNavigate={navigateTo}
+                />
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                  <div className="text-6xl mb-4">💬</div>
+                  <h3 className="text-lg font-medium text-gray-500">Chọn hội thoại</h3>
+                  <p className="text-sm mt-1">để bắt đầu nhắn tin</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Modals */}
+          {showNewChat && (
+            <NewChatModal
+              allUsers={allUsers}
+              currentUser={currentUser}
+              onSelectUser={handleSelectUserForChat}
+              onClose={() => setShowNewChat(false)}
+            />
+          )}
+
+          {showNewGroup && (
+            <ChatGroupModal
+              allUsers={allUsers}
+              currentUser={currentUser}
+              onCreate={handleCreateGroup}
+              onClose={() => setShowNewGroup(false)}
+            />
+          )}
+        </>
+      ) : (
+        <ZaloChatView />
       )}
     </div>
   );

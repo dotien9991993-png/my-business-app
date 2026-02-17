@@ -98,3 +98,99 @@ WHERE NOT EXISTS (
   SELECT 1 FROM zalo_templates zt WHERE zt.tenant_id = t.id AND zt.type = vals.type
 )
 LIMIT 5;
+
+-- ═══════════════════════════════════════
+-- ZALO OA CHAT (nhận + trả lời tin nhắn KH)
+-- ═══════════════════════════════════════
+
+-- 5. Bảng hội thoại Zalo
+CREATE TABLE IF NOT EXISTS zalo_conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  zalo_user_id TEXT NOT NULL,
+  zalo_user_name TEXT,
+  zalo_user_avatar TEXT,
+  customer_id UUID, -- link với bảng customers (auto-match by phone)
+  customer_phone TEXT,
+  assigned_to UUID, -- user_id nhân viên phụ trách
+  assigned_name TEXT,
+  status TEXT DEFAULT 'waiting', -- waiting, active, resolved
+  tags TEXT[] DEFAULT '{}',
+  last_message TEXT,
+  last_message_at TIMESTAMPTZ,
+  last_message_by TEXT, -- 'customer' hoặc 'staff'
+  unread_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_zalo_conv_tenant ON zalo_conversations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_zalo_conv_status ON zalo_conversations(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_zalo_conv_assigned ON zalo_conversations(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_zalo_conv_zalo_user ON zalo_conversations(zalo_user_id);
+
+-- 6. Bảng tin nhắn Zalo chat
+CREATE TABLE IF NOT EXISTS zalo_chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  conversation_id UUID NOT NULL REFERENCES zalo_conversations(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL, -- 'inbound' (KH gửi) hoặc 'outbound' (shop trả lời)
+  sender_type TEXT NOT NULL, -- 'customer' hoặc 'staff'
+  sender_id TEXT, -- zalo_user_id hoặc user_id
+  sender_name TEXT,
+  message_type TEXT DEFAULT 'text', -- text, image, file, product_card, sticker
+  content TEXT,
+  attachments JSONB DEFAULT '[]',
+  zalo_message_id TEXT, -- ID tin nhắn từ Zalo API
+  status TEXT DEFAULT 'sent', -- sent, delivered, seen, failed
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_zalo_chat_msg_conv ON zalo_chat_messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_zalo_chat_msg_tenant ON zalo_chat_messages(tenant_id);
+
+-- 7. Bảng ghi chú nội bộ (KH không thấy)
+CREATE TABLE IF NOT EXISTS zalo_internal_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  conversation_id UUID NOT NULL REFERENCES zalo_conversations(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL,
+  user_name TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_zalo_notes_conv ON zalo_internal_notes(conversation_id);
+
+-- 8. Bảng trả lời nhanh
+CREATE TABLE IF NOT EXISTS zalo_quick_replies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  category TEXT NOT NULL, -- greeting, price, shipping, warranty, closing
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_zalo_qr_tenant ON zalo_quick_replies(tenant_id);
+
+-- 9. Insert trả lời nhanh mặc định
+INSERT INTO zalo_quick_replies (tenant_id, category, title, content, sort_order)
+SELECT t.id, vals.category, vals.title, vals.content, vals.sort_order
+FROM tenants t
+CROSS JOIN (VALUES
+  ('greeting', 'Chào KH', 'Chào bạn! Cảm ơn bạn đã liên hệ Hoàng Nam Audio. Mình có thể giúp gì cho bạn ạ?', 1),
+  ('greeting', 'Chào KH quen', 'Chào bạn! Rất vui được gặp lại bạn. Hôm nay bạn cần tư vấn sản phẩm nào ạ?', 2),
+  ('price', 'Báo giá', 'Dạ giá sản phẩm này hiện tại là ... đồng ạ. Bạn muốn mình tư vấn thêm không ạ?', 3),
+  ('price', 'Giá ưu đãi', 'Hiện tại shop đang có chương trình ưu đãi, bạn sẽ được giảm ...% khi mua sản phẩm này ạ!', 4),
+  ('shipping', 'Phí ship', 'Phí vận chuyển tùy khu vực ạ. Bạn cho mình địa chỉ nhận hàng để mình báo chính xác nhé!', 5),
+  ('shipping', 'Thời gian giao', 'Đơn hàng sẽ được giao trong 2-3 ngày làm việc ạ. Nếu nội thành HCM thì 1-2 ngày thôi ạ!', 6),
+  ('warranty', 'Bảo hành', 'Sản phẩm được bảo hành chính hãng 12 tháng ạ. Nếu có vấn đề bạn mang ra cửa hàng mình hỗ trợ ngay!', 7),
+  ('warranty', 'Đổi trả', 'Shop hỗ trợ đổi trả trong 7 ngày nếu sản phẩm lỗi từ nhà sản xuất ạ.', 8),
+  ('closing', 'Cảm ơn', 'Cảm ơn bạn đã mua hàng tại Hoàng Nam Audio! Chúc bạn trải nghiệm sản phẩm vui vẻ nhé!', 9),
+  ('closing', 'Hẹn gặp lại', 'Cảm ơn bạn đã quan tâm! Nếu cần tư vấn thêm, bạn cứ nhắn tin cho mình nhé. Chúc bạn ngày vui!', 10)
+) AS vals(category, title, content, sort_order)
+WHERE NOT EXISTS (
+  SELECT 1 FROM zalo_quick_replies qr WHERE qr.tenant_id = t.id AND qr.title = vals.title
+);
