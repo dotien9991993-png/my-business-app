@@ -8,10 +8,9 @@
  */
 import { supabase } from '../supabaseClient';
 
-// ============ ZALO API URLS (dùng proxy trong dev, direct trong prod) ============
-const isDev = import.meta.env.DEV;
-const ZALO_OAUTH_URL = isDev ? '/zalo-oauth' : 'https://oauth.zaloapp.com';
-const ZALO_API_URL = isDev ? '/zalo-api' : 'https://openapi.zalo.me';
+// ============ ZALO API PROXY ============
+// Gọi qua Vercel Serverless Function để tránh CORS
+const PROXY_URL = '/api/zalo';
 
 // ============ TEMPLATE HELPERS ============
 
@@ -113,6 +112,7 @@ export const getZaloConfig = async (tenantId) => {
 
 /**
  * Lấy Access Token, tự refresh nếu hết hạn
+ * Gọi qua proxy để tránh CORS
  */
 export const getAccessToken = async (config) => {
   // Kiểm tra access_token còn hạn không (trừ 5 phút buffer)
@@ -123,21 +123,20 @@ export const getAccessToken = async (config) => {
     }
   }
 
-  // Refresh token để lấy access token mới
-  const response = await fetch(`${ZALO_OAUTH_URL}/v4/oa/access_token`, {
+  // Gọi qua proxy serverless function
+  const response = await fetch(PROXY_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'secret_key': config.secret_key,
-    },
-    body: new URLSearchParams({
-      refresh_token: config.refresh_token,
-      app_id: config.app_id,
-      grant_type: 'refresh_token',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'get_token',
+      app_id: (config.app_id || '').trim(),
+      secret_key: (config.secret_key || '').trim(),
+      refresh_token: (config.refresh_token || '').trim(),
     }),
   });
 
   const data = await response.json();
+  console.log('Zalo token response:', { hasToken: !!data.access_token, error: data.error });
 
   if (data.access_token) {
     // Lưu access_token mới vào DB
@@ -155,7 +154,7 @@ export const getAccessToken = async (config) => {
 };
 
 /**
- * Gọi Zalo OA API
+ * Gọi Zalo OA API qua proxy
  * @param {string} tenantId
  * @param {string} endpoint - VD: 'getfollowers', 'conversation', 'message'
  * @param {string} method - GET hoặc POST
@@ -167,29 +166,37 @@ export const callZaloAPI = async (tenantId, endpoint, method = 'GET', body = nul
 
   const accessToken = await getAccessToken(config);
 
-  const options = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'access_token': accessToken,
-    },
-  };
+  // Gọi qua proxy serverless function
+  const response = await fetch(PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'api_call',
+      endpoint,
+      method,
+      access_token: accessToken,
+      body: body || undefined,
+    }),
+  });
 
-  if (body && method === 'POST') {
-    options.body = JSON.stringify(body);
-  }
-
-  const url = `${ZALO_API_URL}/v3.0/oa/${endpoint}`;
-  const response = await fetch(url, options);
   const result = await response.json();
 
   // Nếu lỗi token hết hạn → thử refresh 1 lần
   if (result.error === -216 || result.error === -230) {
-    // Force refresh
     config.access_token = null;
     const newToken = await getAccessToken(config);
-    options.headers['access_token'] = newToken;
-    const retryResponse = await fetch(url, options);
+
+    const retryResponse = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'api_call',
+        endpoint,
+        method,
+        access_token: newToken,
+        body: body || undefined,
+      }),
+    });
     return retryResponse.json();
   }
 
