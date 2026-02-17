@@ -1,10 +1,10 @@
 /**
  * Zalo OA Helper - Quản lý gửi tin nhắn qua Zalo OA
  *
- * Kết nối trực tiếp Zalo OA API v3:
+ * Kết nối Zalo OA API v3 qua Vercel Serverless Proxy (/api/zalo):
  * - Access Token auto-refresh từ Refresh Token
  * - Gửi/nhận tin nhắn, đồng bộ hội thoại cũ
- * - Proxy qua Vite dev server (dev) hoặc direct (prod nếu CORS cho phép)
+ * - Tránh CORS: mọi request đều qua /api/zalo (server-side)
  */
 import { supabase } from '../supabaseClient';
 
