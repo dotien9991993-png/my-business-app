@@ -115,14 +115,28 @@ export const getZaloConfig = async (tenantId) => {
  * Gọi qua proxy để tránh CORS
  */
 export const getAccessToken = async (config) => {
+  console.log('[Zalo] getAccessToken - checking token validity...');
+  console.log('[Zalo] Config:', {
+    id: config.id,
+    app_id: config.app_id,
+    has_secret: !!config.secret_key,
+    has_refresh: !!config.refresh_token,
+    has_access: !!config.access_token,
+    expires_at: config.access_token_expires_at,
+  });
+
   // Kiểm tra access_token còn hạn không (trừ 5 phút buffer)
   if (config.access_token && config.access_token_expires_at) {
     const expiresAt = new Date(config.access_token_expires_at);
+    const now = new Date();
     if (expiresAt > new Date(Date.now() + 5 * 60 * 1000)) {
+      console.log('[Zalo] Token còn hạn, dùng token hiện tại. Hết hạn:', expiresAt.toISOString());
       return config.access_token;
     }
+    console.log('[Zalo] Token hết hạn hoặc sắp hết. Now:', now.toISOString(), 'Expires:', expiresAt.toISOString());
   }
 
+  console.log('[Zalo] Refreshing token qua proxy...');
   // Gọi qua proxy serverless function
   const response = await fetch(PROXY_URL, {
     method: 'POST',
@@ -136,7 +150,7 @@ export const getAccessToken = async (config) => {
   });
 
   const data = await response.json();
-  console.log('Zalo token response:', { hasToken: !!data.access_token, error: data.error });
+  console.log('[Zalo] Token refresh response:', JSON.stringify(data).substring(0, 200));
 
   if (data.access_token) {
     // Lưu access_token mới vào DB
@@ -147,10 +161,13 @@ export const getAccessToken = async (config) => {
       updated_at: new Date().toISOString(),
     }).eq('id', config.id);
 
+    console.log('[Zalo] Token refreshed thành công!');
     return data.access_token;
   }
 
-  throw new Error('Không thể lấy Access Token: ' + (data.error_description || data.message || JSON.stringify(data)));
+  const errMsg = data.error_description || data.error_reason || data.message || JSON.stringify(data);
+  console.error('[Zalo] Token refresh THẤT BẠI:', errMsg);
+  throw new Error('Không thể lấy Access Token: ' + errMsg);
 };
 
 /**
@@ -161,10 +178,16 @@ export const getAccessToken = async (config) => {
  * @param {object|null} body - body cho POST
  */
 export const callZaloAPI = async (tenantId, endpoint, method = 'GET', body = null) => {
+  console.log(`[Zalo API] Calling: ${method} ${endpoint}`, body ? JSON.stringify(body).substring(0, 100) : '');
+
   const config = await getZaloConfig(tenantId);
-  if (!config) throw new Error('Chưa cấu hình Zalo OA');
+  if (!config) {
+    console.error('[Zalo API] Chưa cấu hình Zalo OA cho tenant:', tenantId);
+    throw new Error('Chưa cấu hình Zalo OA');
+  }
 
   const accessToken = await getAccessToken(config);
+  console.log('[Zalo API] Got token:', accessToken?.substring(0, 20) + '...');
 
   // Gọi qua proxy serverless function
   const response = await fetch(PROXY_URL, {
@@ -180,9 +203,11 @@ export const callZaloAPI = async (tenantId, endpoint, method = 'GET', body = nul
   });
 
   const result = await response.json();
+  console.log(`[Zalo API] Response for ${endpoint}:`, JSON.stringify(result).substring(0, 300));
 
   // Nếu lỗi token hết hạn → thử refresh 1 lần
   if (result.error === -216 || result.error === -230) {
+    console.log('[Zalo API] Token hết hạn, refreshing...');
     config.access_token = null;
     const newToken = await getAccessToken(config);
 
@@ -197,7 +222,9 @@ export const callZaloAPI = async (tenantId, endpoint, method = 'GET', body = nul
         body: body || undefined,
       }),
     });
-    return retryResponse.json();
+    const retryResult = await retryResponse.json();
+    console.log(`[Zalo API] Retry response for ${endpoint}:`, JSON.stringify(retryResult).substring(0, 300));
+    return retryResult;
   }
 
   return result;
@@ -248,10 +275,127 @@ const parseAttachments = (msg) => {
 };
 
 /**
- * Đồng bộ danh sách người đã nhắn tin với OA
- * @returns {{ synced: number, total: number }}
+ * Đồng bộ danh sách hội thoại từ Zalo OA
+ * Dùng listrecentchat (lấy tất cả hội thoại gần đây) + getfollowers (fallback)
+ * @returns {{ synced: number }}
  */
 export const syncZaloConversations = async (tenantId, onProgress) => {
+  let totalSynced = 0;
+
+  // === Bước 1: Thử listrecentchat trước (lấy cả KH chưa follow) ===
+  console.log('[Zalo Sync] === BẮT ĐẦU ĐỒNG BỘ HỘI THOẠI ===');
+  onProgress?.('Đang lấy danh sách hội thoại gần đây...');
+
+  let offset = 0;
+  const count = 10; // Zalo giới hạn count tối đa 10 cho listrecentchat
+  let hasMore = true;
+
+  while (hasMore) {
+    console.log(`[Zalo Sync] Calling listrecentchat offset=${offset}...`);
+    onProgress?.(`Đang lấy hội thoại (offset: ${offset})...`);
+
+    try {
+      const result = await callZaloAPI(
+        tenantId,
+        `listrecentchat?data=${encodeURIComponent(JSON.stringify({ offset, count }))}`,
+      );
+
+      console.log('[Zalo Sync] listrecentchat result:', JSON.stringify(result).substring(0, 500));
+
+      if (result.error && result.error !== 0) {
+        console.error('[Zalo Sync] listrecentchat lỗi:', result.error, result.message);
+        // Nếu listrecentchat không hoạt động, thử getfollowers
+        if (offset === 0) {
+          console.log('[Zalo Sync] Fallback sang getfollowers...');
+          return syncViaGetFollowers(tenantId, onProgress);
+        }
+        break;
+      }
+
+      const conversations = result.data || [];
+      const total = result.data?.total || conversations.length;
+      console.log(`[Zalo Sync] Nhận được ${conversations.length} hội thoại (total: ${total})`);
+
+      if (conversations.length === 0) {
+        if (offset === 0) {
+          console.log('[Zalo Sync] Không có hội thoại nào. Thử getfollowers...');
+          return syncViaGetFollowers(tenantId, onProgress);
+        }
+        break;
+      }
+
+      for (const conv of conversations) {
+        const userId = conv.user_id || conv.to_id;
+        if (!userId) {
+          console.log('[Zalo Sync] Bỏ qua conversation không có user_id:', conv);
+          continue;
+        }
+
+        try {
+          const displayName = conv.display_name || conv.user_alias || 'Khách hàng';
+          const avatar = conv.avatar || conv.avatars?.['240'] || null;
+          const lastMsg = conv.last_msg || conv.lastmsg || {};
+
+          console.log(`[Zalo Sync] Upsert user: ${userId} - ${displayName}`);
+
+          // Upsert conversation
+          const { data: existing } = await supabase
+            .from('zalo_conversations')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('zalo_user_id', userId)
+            .maybeSingle();
+
+          const convData = {
+            zalo_user_name: displayName,
+            zalo_user_avatar: avatar,
+            last_message: lastMsg.message || lastMsg.text || null,
+            last_message_at: lastMsg.time ? new Date(lastMsg.time).toISOString() : null,
+            last_message_by: (lastMsg.src === 0 || lastMsg.from_id === userId) ? 'customer' : 'staff',
+            updated_at: new Date().toISOString(),
+          };
+
+          if (existing) {
+            await supabase.from('zalo_conversations').update(convData).eq('id', existing.id);
+          } else {
+            await supabase.from('zalo_conversations').insert([{
+              tenant_id: tenantId,
+              zalo_user_id: userId,
+              ...convData,
+              status: 'active',
+            }]);
+          }
+
+          totalSynced++;
+        } catch (err) {
+          console.error(`[Zalo Sync] Lỗi upsert user ${userId}:`, err);
+        }
+
+        // Rate limit
+        await new Promise(r => setTimeout(r, 150));
+      }
+
+      offset += count;
+      // Kiểm tra còn trang tiếp không
+      hasMore = conversations.length === count;
+    } catch (err) {
+      console.error('[Zalo Sync] Lỗi listrecentchat:', err);
+      if (offset === 0) {
+        return syncViaGetFollowers(tenantId, onProgress);
+      }
+      break;
+    }
+  }
+
+  console.log(`[Zalo Sync] Hoàn thành: ${totalSynced} hội thoại`);
+  return { synced: totalSynced };
+};
+
+/**
+ * Fallback: sync qua getfollowers nếu listrecentchat không hoạt động
+ */
+const syncViaGetFollowers = async (tenantId, onProgress) => {
+  console.log('[Zalo Sync] === FALLBACK: getfollowers ===');
   let offset = 0;
   const count = 50;
   let totalSynced = 0;
@@ -259,33 +403,37 @@ export const syncZaloConversations = async (tenantId, onProgress) => {
 
   while (hasMore) {
     onProgress?.(`Đang lấy danh sách người quan tâm (offset: ${offset})...`);
+    console.log(`[Zalo Sync] Calling getfollowers offset=${offset}...`);
 
     const result = await callZaloAPI(
       tenantId,
       `getfollowers?data=${encodeURIComponent(JSON.stringify({ offset, count }))}`,
     );
 
+    console.log('[Zalo Sync] getfollowers result:', JSON.stringify(result).substring(0, 500));
+
     if (result.error && result.error !== 0) {
-      console.error('Lỗi getfollowers:', result);
+      console.error('[Zalo Sync] getfollowers lỗi:', result.error, result.message);
       break;
     }
 
     const followers = result.data?.followers || [];
     const total = result.data?.total || 0;
+    console.log(`[Zalo Sync] Followers: ${followers.length} / ${total}`);
 
     for (const userId of followers) {
       try {
-        // Lấy profile
+        console.log(`[Zalo Sync] Getting profile for: ${userId}`);
         const profile = await callZaloAPI(
           tenantId,
           `getprofile?data=${encodeURIComponent(JSON.stringify({ user_id: userId }))}`,
         );
+        console.log(`[Zalo Sync] Profile result:`, JSON.stringify(profile).substring(0, 200));
 
         const displayName = profile.data?.display_name || profile.data?.user_alias || 'Khách hàng';
         const avatar = profile.data?.avatars?.['240'] || profile.data?.avatar || null;
         const phone = profile.data?.shared_info?.phone || null;
 
-        // Upsert conversation
         const { data: existing } = await supabase
           .from('zalo_conversations')
           .select('id')
@@ -312,10 +460,9 @@ export const syncZaloConversations = async (tenantId, onProgress) => {
         }
 
         totalSynced++;
-        // Rate limit: 200ms giữa mỗi request
         await new Promise(r => setTimeout(r, 200));
       } catch (err) {
-        console.error(`Lỗi sync user ${userId}:`, err);
+        console.error(`[Zalo Sync] Lỗi sync user ${userId}:`, err);
       }
     }
 
@@ -334,6 +481,7 @@ export const syncZaloMessages = async (tenantId, zaloUserId, conversationId, onP
   const count = 50;
   let totalSynced = 0;
 
+  console.log(`[Zalo Msg] Sync messages for user: ${zaloUserId}, conv: ${conversationId}`);
   onProgress?.(`Đang tải tin nhắn...`);
 
   const result = await callZaloAPI(
@@ -341,12 +489,15 @@ export const syncZaloMessages = async (tenantId, zaloUserId, conversationId, onP
     `conversation?data=${encodeURIComponent(JSON.stringify({ user_id: zaloUserId, offset, count }))}`,
   );
 
+  console.log(`[Zalo Msg] conversation result:`, JSON.stringify(result).substring(0, 500));
+
   if (result.error && result.error !== 0) {
-    console.error('Lỗi lấy conversation:', result);
+    console.error('[Zalo Msg] Lỗi lấy conversation:', result.error, result.message);
     return { synced: 0 };
   }
 
   const messages = result.data || [];
+  console.log(`[Zalo Msg] Got ${messages.length} messages`);
 
   for (const msg of messages) {
     const msgId = msg.message_id || msg.msg_id;
@@ -415,10 +566,32 @@ export const syncZaloMessages = async (tenantId, zaloUserId, conversationId, onP
  * @param {function} onProgress - callback(statusText, percent)
  */
 export const fullZaloSync = async (tenantId, onProgress) => {
-  onProgress?.('Đang lấy danh sách người theo dõi OA...', 5);
+  console.log('=== BẮT ĐẦU ĐỒNG BỘ ZALO ===');
+  console.log('[Zalo FullSync] Tenant:', tenantId);
+  onProgress?.('Đang lấy cấu hình Zalo OA...', 2);
+
+  // Kiểm tra config
+  const config = await getZaloConfig(tenantId);
+  console.log('[Zalo FullSync] Config:', config ? {
+    id: config.id,
+    app_id: config.app_id,
+    oa_id: config.oa_id,
+    has_access_token: !!config.access_token,
+    has_refresh_token: !!config.refresh_token,
+    expires_at: config.access_token_expires_at,
+  } : 'NULL - CHƯA CẤU HÌNH!');
+
+  if (!config) {
+    onProgress?.('Lỗi: Chưa cấu hình Zalo OA!', 0);
+    throw new Error('Chưa cấu hình Zalo OA. Vào Cài đặt → Zalo OA → Kết nối.');
+  }
+
+  onProgress?.('Đang lấy danh sách hội thoại từ Zalo OA...', 5);
 
   // Bước 1: Sync conversations
+  console.log('[Zalo FullSync] Bước 1: Sync conversations...');
   const convResult = await syncZaloConversations(tenantId, (msg) => onProgress?.(msg, 10));
+  console.log('[Zalo FullSync] Kết quả sync conversations:', convResult);
 
   // Bước 2: Load all conversations
   const { data: conversations } = await supabase
@@ -426,12 +599,17 @@ export const fullZaloSync = async (tenantId, onProgress) => {
     .select('*')
     .eq('tenant_id', tenantId);
 
+  console.log(`[Zalo FullSync] Conversations trong DB: ${conversations?.length || 0}`);
+
   if (!conversations?.length) {
-    onProgress?.('Không tìm thấy hội thoại nào', 100);
+    const msg = `Không tìm thấy hội thoại nào (synced: ${convResult.synced})`;
+    console.log('[Zalo FullSync]', msg);
+    onProgress?.(msg, 100);
     return { conversations: 0, messages: 0 };
   }
 
   // Bước 3: Sync messages cho từng conversation
+  console.log(`[Zalo FullSync] Bước 3: Sync messages cho ${conversations.length} conversations...`);
   let totalMessages = 0;
   for (let i = 0; i < conversations.length; i++) {
     const conv = conversations[i];
@@ -441,18 +619,24 @@ export const fullZaloSync = async (tenantId, onProgress) => {
       percent,
     );
 
+    console.log(`[Zalo FullSync] Sync messages ${i + 1}/${conversations.length}: ${conv.zalo_user_name} (${conv.zalo_user_id})`);
     const msgResult = await syncZaloMessages(tenantId, conv.zalo_user_id, conv.id);
     totalMessages += msgResult.synced;
+    console.log(`[Zalo FullSync] → ${msgResult.synced} tin nhắn mới`);
 
     // Rate limit: 200ms
     await new Promise(r => setTimeout(r, 200));
   }
 
   // Bước 4: Auto match customers
+  console.log('[Zalo FullSync] Bước 4: Auto match customers...');
   onProgress?.('Đang liên kết khách hàng...', 92);
-  await autoMatchCustomers(tenantId);
+  const matched = await autoMatchCustomers(tenantId);
+  console.log(`[Zalo FullSync] Matched: ${matched} khách hàng`);
 
-  onProgress?.(`Hoàn thành! ${convResult.synced} hội thoại, ${totalMessages} tin nhắn mới`, 100);
+  const summary = `Hoàn thành! ${convResult.synced} hội thoại, ${totalMessages} tin nhắn mới`;
+  console.log(`=== KẾT THÚC ĐỒNG BỘ ZALO: ${summary} ===`);
+  onProgress?.(summary, 100);
   return { conversations: convResult.synced, messages: totalMessages };
 };
 

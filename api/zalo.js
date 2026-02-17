@@ -59,7 +59,9 @@ export default async function handler(req, res) {
 
     // === Gọi Zalo OA API ===
     if (action === 'api_call') {
-      // Gọi Zalo OA API
+      const apiUrl = `https://openapi.zalo.me/v3.0/oa/${params.endpoint}`;
+      console.log('[Zalo Proxy] API call:', params.method || 'GET', apiUrl);
+
       const fetchOptions = {
         method: params.method || 'GET',
         headers: {
@@ -72,12 +74,9 @@ export default async function handler(req, res) {
         fetchOptions.body = JSON.stringify(params.body);
       }
 
-      const response = await fetch(
-        `https://openapi.zalo.me/v3.0/oa/${params.endpoint}`,
-        fetchOptions,
-      );
-
+      const response = await fetch(apiUrl, fetchOptions);
       const data = await response.json();
+      console.log('[Zalo Proxy] API response:', JSON.stringify(data).substring(0, 300));
       return res.status(200).json(data);
     }
 

@@ -111,15 +111,20 @@ export default function ZaloChatView() {
     setSyncing(true);
     setSyncResult(null);
     setSyncProgress({ text: 'Bắt đầu đồng bộ...', percent: 0 });
+    console.log('=== USER BẤM ĐỒNG BỘ ZALO ===');
+    console.log('Tenant ID:', tenant.id);
+    console.log('Zalo Config:', zaloConfig);
 
     try {
       const result = await fullZaloSync(tenant.id, (text, percent) => {
+        console.log(`[Sync Progress] ${percent}% - ${text}`);
         setSyncProgress({ text, percent: percent || 0 });
       });
+      console.log('=== KẾT QUẢ ĐỒNG BỘ ===', result);
       setSyncResult(result);
       await loadConversations();
     } catch (err) {
-      console.error('Sync error:', err);
+      console.error('=== LỖI ĐỒNG BỘ ===', err);
       setSyncProgress({ text: `Lỗi: ${err.message}`, percent: 0 });
       setSyncResult({ error: err.message });
     } finally {
@@ -184,7 +189,7 @@ export default function ZaloChatView() {
           {/* Progress bar */}
           <div className="mb-3">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>{syncProgress.text}</span>
+              <span className="flex-1 mr-2 break-words">{syncProgress.text}</span>
               <span>{syncProgress.percent}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5">
@@ -196,7 +201,8 @@ export default function ZaloChatView() {
           </div>
 
           <p className="text-xs text-gray-400 text-center">
-            Vui lòng không đóng trang trong quá trình đồng bộ
+            Vui lòng không đóng trang trong quá trình đồng bộ.
+            Mở Console (F12) để xem chi tiết.
           </p>
         </div>
       </div>
@@ -223,6 +229,11 @@ export default function ZaloChatView() {
           {syncResult?.error && (
             <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
               Lỗi: {syncResult.error}
+            </div>
+          )}
+          {syncResult && !syncResult.error && (
+            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+              Kết quả: {syncResult.conversations} hội thoại, {syncResult.messages} tin nhắn
             </div>
           )}
         </div>
