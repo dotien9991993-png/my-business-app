@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
 import { formatMoney } from '../../utils/formatUtils';
 import { getDateStrVN, getNowISOVN, getTodayVN } from '../../utils/dateUtils';
-import { orderStatuses, orderStatusFlow, orderTypes, paymentMethods, shippingProviders, shippingPayers, paymentStatuses } from '../../constants/salesConstants';
+import { orderStatuses, orderStatusFlow, orderTypes, paymentMethods, shippingProviders, shippingPayers, paymentStatuses, orderSources, shippingServices } from '../../constants/salesConstants';
 import QRCode from 'qrcode';
 import AddressPicker from '../../components/shared/AddressPicker';
 import QRScanner from '../../components/shared/QRScanner';
@@ -191,6 +191,12 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [sendingVtp, setSendingVtp] = useState(false);
   const [_vtpTracking, setVtpTracking] = useState(null);
 
+  // New form fields
+  const [orderSource, setOrderSource] = useState('manual');
+  const [internalNote, setInternalNote] = useState('');
+  const [totalWeight, setTotalWeight] = useState('');
+  const [shippingService, setShippingService] = useState('VCN');
+
   const isVTP = shippingProvider === 'Viettel Post' && !!vtpToken;
 
   // ---- Helpers: unique number generators ----
@@ -220,6 +226,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     setShowCustomerDropdown(false); setShippingAddressData(null); setShippingAddressDetail('');
     setCategoryFilter(''); setProductSortBy('name');
     setPaymentSplits([{ method: 'cash', amount: '' }]);
+    setOrderSource('manual'); setInternalNote(''); setTotalWeight(''); setShippingService('VCN');
     const defaultWh = (warehouses || []).find(w => w.is_default) || (warehouses || [])[0];
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
   };
@@ -231,12 +238,13 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     if (!sender?.province_id) return alert('Chưa cấu hình địa chỉ lấy hàng VTP trong Cài đặt > Vận chuyển');
     setCalculatingFee(true);
     try {
-      const totalWeight = cartItems.reduce((sum, i) => sum + (i.quantity || 1) * 500, 0); // 500g/item default
+      const weight = parseInt(totalWeight) || cartItems.reduce((sum, i) => sum + (i.quantity || 1) * 500, 0); // 500g/item default
       const totalPrice = cartItems.reduce((sum, i) => sum + (i.quantity || 1) * (i.price || 0), 0);
       const result = await vtpApi.calculateFee(vtpToken, {
         senderProvince: sender.province_id, senderDistrict: sender.district_id,
         receiverProvince: shippingAddressData.province_id, receiverDistrict: shippingAddressData.district_id,
-        productWeight: totalWeight, productPrice: totalPrice, codAmount: totalPrice
+        productWeight: weight, productPrice: totalPrice, codAmount: totalPrice,
+        orderService: shippingService
       });
       if (result.success && result.data) {
         const fee = result.data.MONEY_TOTAL || result.data.MONEY_TOTALFEE || result.data.MONEY_FEE || 0;
@@ -500,7 +508,11 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         payment_splits: splitsForDb.length > 0 ? splitsForDb : [],
         note, needs_installation: needsInstallation,
         created_by: currentUser.name,
-        warehouse_id: selectedWarehouseId || null
+        warehouse_id: selectedWarehouseId || null,
+        order_source: orderSource,
+        internal_note: internalNote || null,
+        total_weight: parseInt(totalWeight) || 0,
+        shipping_service: isVTP ? shippingService : null
       }]).select().single();
       if (orderErr) throw orderErr;
 
@@ -1246,6 +1258,14 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 ))}
               </div>
 
+              {/* Order source */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600 whitespace-nowrap">Kênh:</label>
+                <select value={orderSource} onChange={e => setOrderSource(e.target.value)} className="flex-1 border rounded-lg px-3 py-1.5 text-sm">
+                  {Object.entries(orderSources).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                </select>
+              </div>
+
               {/* Warehouse selector */}
               {(warehouses || []).length > 0 && (
                 <div className="bg-amber-50 rounded-lg p-3 space-y-1">
@@ -1380,6 +1400,19 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                       <AddressPicker token={vtpToken} value={shippingAddressData} onChange={setShippingAddressData} />
                       <input value={shippingAddressDetail} onChange={e => setShippingAddressDetail(e.target.value)}
                         placeholder="Số nhà, tên đường..." className="w-full border rounded-lg px-3 py-2 text-sm" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-purple-600 mb-0.5 block">Trọng lượng (gram)</label>
+                          <input type="number" value={totalWeight} onChange={e => setTotalWeight(e.target.value)}
+                            placeholder="Auto 500g/SP" className="w-full border rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-purple-600 mb-0.5 block">Dịch vụ VTP</label>
+                          <select value={shippingService} onChange={e => setShippingService(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
+                            {Object.entries(shippingServices).map(([k, v]) => <option key={k} value={k}>{v.label} ({v.desc})</option>)}
+                          </select>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <input type="number" value={shippingFee} onChange={e => setShippingFee(e.target.value)}
                           placeholder="Phí ship" className="border rounded-lg px-3 py-2 text-sm" />
@@ -1448,8 +1481,10 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               </label>
 
               {/* Note */}
-              <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Ghi chú đơn hàng..."
+              <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Ghi chú đơn hàng (hiện cho KH)..."
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Ghi chú nội bộ (chỉ nhân viên thấy)..."
+                className="w-full border border-orange-200 bg-orange-50 rounded-lg px-3 py-2 text-sm" />
 
               {/* Total */}
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
@@ -1461,6 +1496,9 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 <div className="flex justify-between text-lg font-bold text-green-700 pt-1 border-t">
                   <span>TỔNG</span><span>{formatMoney(totalAmount)}</span>
                 </div>
+                {orderType === 'online' && totalAmount > 0 && (
+                  <div className="flex justify-between text-sm text-purple-700 pt-1"><span>Thu hộ COD</span><span>{formatMoney(totalAmount)}</span></div>
+                )}
               </div>
 
               {/* Actions */}
@@ -1488,6 +1526,9 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 <h3 className="font-bold text-lg">{selectedOrder.order_number}</h3>
                 <div className="text-sm text-green-100 flex items-center gap-2">
                   <span>{orderTypes[selectedOrder.order_type]?.label}</span>
+                  {selectedOrder.order_source && selectedOrder.order_source !== 'manual' && (
+                    <><span>•</span><span>{orderSources[selectedOrder.order_source]?.icon} {orderSources[selectedOrder.order_source]?.label}</span></>
+                  )}
                   <span>•</span>
                   <span>{new Date(selectedOrder.created_at).toLocaleString('vi-VN')}</span>
                 </div>
@@ -1563,9 +1604,13 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               {selectedOrder.order_type === 'online' && (
                 <div className="bg-purple-50 rounded-lg p-3 space-y-2">
                   <div className="text-sm font-medium text-purple-700">Vận chuyển</div>
-                  <div className="text-sm">
+                  <div className="text-sm flex items-center gap-1 flex-wrap">
                     {selectedOrder.shipping_provider && <span>{selectedOrder.shipping_provider}</span>}
+                    {selectedOrder.shipping_service && (
+                      <span className="px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded text-xs">{shippingServices[selectedOrder.shipping_service]?.label || selectedOrder.shipping_service}</span>
+                    )}
                     {selectedOrder.shipping_fee > 0 && <span> • Ship: {formatMoney(selectedOrder.shipping_fee)} ({shippingPayers[selectedOrder.shipping_payer] || ''})</span>}
+                    {selectedOrder.total_weight > 0 && <span> • {selectedOrder.total_weight}g</span>}
                   </div>
                   {/* VTP tracking status */}
                   {selectedOrder.shipping_metadata?.vtp_order_code && (
@@ -1669,8 +1714,17 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 </div>
               )}
 
+              {/* COD */}
+              {selectedOrder.order_type === 'online' && selectedOrder.payment_status !== 'paid' && (selectedOrder.total_amount - (selectedOrder.paid_amount || 0)) > 0 && (
+                <div className="flex justify-between items-center bg-purple-50 rounded-lg p-2 text-sm">
+                  <span className="text-purple-700 font-medium">Thu hộ COD</span>
+                  <span className="font-bold text-purple-800">{formatMoney(selectedOrder.total_amount - (selectedOrder.paid_amount || 0))}</span>
+                </div>
+              )}
+
               {/* Note */}
               {selectedOrder.note && <div className="text-sm text-gray-600"><span className="font-medium">Ghi chú:</span> {selectedOrder.note}</div>}
+              {selectedOrder.internal_note && <div className="text-sm text-orange-600 bg-orange-50 rounded p-2"><span className="font-medium">Nội bộ:</span> {selectedOrder.internal_note}</div>}
               {selectedOrder.needs_installation && <div className="text-sm text-orange-600 font-medium">🔧 Cần lắp đặt</div>}
               {selectedOrder.warehouse_id && getWarehouseName(selectedOrder.warehouse_id) && (
                 <div className="text-sm text-amber-600">🏭 Kho: {getWarehouseName(selectedOrder.warehouse_id)}</div>

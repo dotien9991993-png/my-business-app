@@ -8,6 +8,8 @@ import SalesCustomersView from './SalesCustomersView';
 import SalesProductsView from './SalesProductsView';
 import SalesReportView from './SalesReportView';
 import SalesReconciliationView from './SalesReconciliationView';
+import SalesShippingView from './SalesShippingView';
+import SalesCodView from './SalesCodView';
 
 const NoAccess = () => (
   <div className="p-6">
@@ -80,6 +82,21 @@ export default function SalesModule() {
         <SalesReportView
           orders={orders} products={products} customers={customers}
           currentUser={currentUser}
+        />
+      )}
+      {activeTab === 'shipping' && canAccessTab('sales', 'shipping') && (
+        <SalesShippingView
+          tenant={tenant} currentUser={currentUser}
+          loadSalesData={loadSalesData}
+          shippingConfigs={shippingConfigs} getSettingValue={getSettingValue}
+          hasPermission={hasPermission}
+        />
+      )}
+      {activeTab === 'cod' && canAccessTab('sales', 'cod') && (
+        <SalesCodView
+          tenant={tenant} currentUser={currentUser}
+          loadSalesData={loadSalesData} loadFinanceData={loadFinanceData}
+          hasPermission={hasPermission}
         />
       )}
       {activeTab === 'reconciliation' && (

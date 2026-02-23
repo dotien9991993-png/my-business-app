@@ -1,24 +1,22 @@
 /**
  * Viettel Post API Utility
- * Base URL: https://partner.viettelpost.vn/v2
- * Auth: Token header (user pastes from VTP partner portal)
+ * Gọi qua proxy /api/viettelpost để bypass CORS
  */
 
-const VTP_BASE = 'https://partner.viettelpost.vn/v2';
+const PROXY_URL = '/api/viettelpost';
 
 // ---- In-memory cache ----
 let provincesCache = null;
 const districtsCache = new Map();
 const wardsCache = new Map();
 
-async function vtpFetch(method, path, token, body = null) {
+async function vtpProxy(action, token, params = {}) {
   try {
-    const opts = {
-      method,
-      headers: { 'Token': token, 'Content-Type': 'application/json' }
-    };
-    if (body) opts.body = JSON.stringify(body);
-    const resp = await fetch(`${VTP_BASE}${path}`, opts);
+    const resp = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, token, ...params })
+    });
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       return { success: false, data: null, error: `HTTP ${resp.status}: ${text.slice(0, 200)}` };
@@ -38,7 +36,7 @@ async function vtpFetch(method, path, token, body = null) {
 
 export async function getProvinces(token) {
   if (provincesCache) return { success: true, data: provincesCache, error: null };
-  const result = await vtpFetch('GET', '/categories/listProvinceById?provinceId=-1', token);
+  const result = await vtpProxy('get_provinces', token);
   if (result.success && Array.isArray(result.data)) {
     provincesCache = result.data;
   }
@@ -48,7 +46,7 @@ export async function getProvinces(token) {
 export async function getDistricts(token, provinceId) {
   const key = String(provinceId);
   if (districtsCache.has(key)) return { success: true, data: districtsCache.get(key), error: null };
-  const result = await vtpFetch('GET', `/categories/listDistrict?provinceId=${provinceId}`, token);
+  const result = await vtpProxy('get_districts', token, { provinceId });
   if (result.success && Array.isArray(result.data)) {
     districtsCache.set(key, result.data);
   }
@@ -58,7 +56,7 @@ export async function getDistricts(token, provinceId) {
 export async function getWards(token, districtId) {
   const key = String(districtId);
   if (wardsCache.has(key)) return { success: true, data: wardsCache.get(key), error: null };
-  const result = await vtpFetch('GET', `/categories/listWards?districtId=${districtId}`, token);
+  const result = await vtpProxy('get_wards', token, { districtId });
   if (result.success && Array.isArray(result.data)) {
     wardsCache.set(key, result.data);
   }
@@ -86,7 +84,7 @@ export async function calculateFee(token, {
     PRODUCT_TYPE: productType,
     NATIONAL_TYPE: 1                    // domestic
   };
-  return vtpFetch('POST', '/order/getPrice', token, body);
+  return vtpProxy('calculate_fee', token, { body });
 }
 
 // ---- Create shipping order ----
@@ -155,25 +153,25 @@ export async function createOrder(token, {
       PRODUCT_QUANTITY: item.quantity || 1
     }))
   };
-  return vtpFetch('POST', '/order/createOrder', token, body);
+  return vtpProxy('create_order', token, { body });
 }
 
 // ---- Get order detail / tracking ----
 
 export async function getOrderDetail(token, orderNumber) {
-  return vtpFetch('GET', `/order/detail?orderId=${orderNumber}`, token);
+  return vtpProxy('get_order_detail', token, { orderId: orderNumber });
 }
 
 // ---- Get available services ----
 
 export async function getServices(token) {
-  return vtpFetch('POST', '/categories/listService', token, {});
+  return vtpProxy('get_services', token);
 }
 
 // ---- Login ----
 
 export async function loginVtp(username, password) {
-  return vtpFetch('POST', '/user/Login', '', { USERNAME: username, PASSWORD: password });
+  return vtpProxy('login', '', { body: { USERNAME: username, PASSWORD: password } });
 }
 
 // ---- Clear cache (for testing) ----

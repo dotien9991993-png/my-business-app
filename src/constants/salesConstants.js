@@ -62,3 +62,25 @@ export const shippingPayers = {
   customer: 'Khách trả',
   shop: 'Shop trả',
 };
+
+// Dịch vụ vận chuyển VTP
+export const shippingServices = {
+  VCN: { label: 'Chuyển phát nhanh', desc: '1-2 ngày' },
+  VTK: { label: 'Tiết kiệm', desc: '3-5 ngày' },
+};
+
+// Trạng thái đối soát COD
+export const codStatuses = {
+  pending: { label: 'Chờ nhận', color: 'bg-yellow-100 text-yellow-700' },
+  received: { label: 'Đã nhận', color: 'bg-blue-100 text-blue-700' },
+  confirmed: { label: 'Đã xác nhận', color: 'bg-green-100 text-green-700' },
+  disputed: { label: 'Khiếu nại', color: 'bg-red-100 text-red-700' },
+};
+
+// Kênh đơn hàng
+export const orderSources = {
+  manual: { label: 'Thủ công', icon: '✍️' },
+  zalo: { label: 'Zalo', icon: '💬' },
+  haravan: { label: 'Haravan', icon: '🛍️' },
+  web: { label: 'Website', icon: '🌐' },
+};

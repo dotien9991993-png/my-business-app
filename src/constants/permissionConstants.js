@@ -50,6 +50,8 @@ export const moduleTabs = {
     { id: 'orders', name: '🛒 Đơn hàng', desc: 'Quản lý đơn hàng' },
     { id: 'customers', name: '👥 Khách hàng', desc: 'Quản lý khách hàng' },
     { id: 'products', name: '📱 Sản phẩm', desc: 'Xem sản phẩm bán' },
+    { id: 'shipping', name: '🚚 Vận chuyển', desc: 'Quản lý vận chuyển' },
+    { id: 'cod', name: '💰 Đối soát COD', desc: 'Đối soát tiền thu hộ' },
     { id: 'reconciliation', name: '📊 Đối soát', desc: 'Đối soát đơn hàng' },
     { id: 'report', name: '📈 Báo cáo', desc: 'Báo cáo bán hàng' }
   ],
