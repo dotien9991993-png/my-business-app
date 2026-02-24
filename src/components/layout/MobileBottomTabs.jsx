@@ -513,7 +513,8 @@ export default function MobileBottomTabs({
             { id: 'warehouses', icon: '🏭', label: 'Kho' },
             { id: 'products', icon: '📦', label: 'SP' },
             { id: 'shipping', icon: '🚚', label: 'Ship' },
-            { id: 'logs', icon: '📋', label: 'Log' }
+            { id: 'logs', icon: '📋', label: 'Log' },
+            { id: 'backup', icon: '💾', label: 'Backup' }
           ].map(tab => {
             const isActive = activeTab === tab.id;
             return (

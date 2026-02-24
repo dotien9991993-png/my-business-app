@@ -258,7 +258,8 @@ const Sidebar = ({
             { id: 'finance', l: '💰 Tài Chính' },
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
-            { id: 'logs', l: '📋 Lịch Sử HĐ' }
+            { id: 'logs', l: '📋 Lịch Sử HĐ' },
+            { id: 'backup', l: '💾 Sao Lưu' }
           ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => {
             const todayJobsCount = t.id === 'today' ? technicalJobs.filter(j => j.scheduledDate === getTodayVN() && j.status !== 'Hủy' && j.status !== 'Hoàn thành').length : 0;
             return (

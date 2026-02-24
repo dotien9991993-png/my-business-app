@@ -3,11 +3,9 @@ import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
 
 export default function CompanySettings({ tenant }) {
-  const { reloadTenant, currentUser } = useApp();
+  const { reloadTenant } = useApp();
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
-  const [backingUp, setBackingUp] = useState(false);
-  const [backupProgress, setBackupProgress] = useState('');
 
   const [form, setForm] = useState({
     name: '', slogan: '', address: '', phone: '', email: '', website: '',
@@ -67,99 +65,6 @@ export default function CompanySettings({ tenant }) {
   };
 
   const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
-
-  const isAdmin = currentUser?.role === 'admin';
-
-  const BACKUP_TABLES = [
-    'tenants', 'users', 'user_permissions', 'departments', 'positions', 'employees',
-    'products', 'product_combo_items', 'product_serials',
-    'customers', 'customer_interactions',
-    'orders', 'order_items', 'order_reconciliation',
-    'warehouses', 'warehouse_stock', 'warehouse_transfers', 'warehouse_transfer_items',
-    'stock_transactions', 'stock_transaction_items', 'stocktakes', 'stocktake_items',
-    'suppliers',
-    'receipts_payments', 'debts', 'cod_reconciliation',
-    'salaries', 'media_salaries', 'payrolls',
-    'tasks', 'technical_jobs', 'technician_bonuses',
-    'attendances', 'hrm_attendances', 'work_shifts',
-    'leave_requests', 'leave_balances',
-    'kpi_templates', 'kpi_criteria', 'kpi_evaluations', 'kpi_evaluation_details',
-    'notifications', 'activity_logs', 'system_settings',
-    'shipping_configs', 'shipping_tracking_events',
-    'warranty_cards', 'warranty_repairs', 'warranty_requests',
-    'chat_rooms', 'chat_room_members', 'chat_messages', 'chat_message_reactions',
-    'zalo_config', 'zalo_conversations', 'zalo_messages', 'zalo_chat_messages',
-    'zalo_internal_notes', 'zalo_quick_replies', 'zalo_templates',
-  ];
-
-  const handleBackup = async () => {
-    if (backingUp) return;
-    setBackingUp(true);
-    setBackupProgress('Đang chuẩn bị...');
-    try {
-      const backup = {
-        metadata: {
-          created_at: new Date().toISOString(),
-          tenant_id: tenant?.id,
-          tenant_name: tenant?.name,
-          tables_count: BACKUP_TABLES.length,
-        },
-        tables: {},
-      };
-
-      let totalRows = 0;
-      for (let i = 0; i < BACKUP_TABLES.length; i++) {
-        const table = BACKUP_TABLES[i];
-        setBackupProgress(`${i + 1}/${BACKUP_TABLES.length}: ${table}...`);
-
-        const allRows = [];
-        let from = 0;
-        const PAGE_SIZE = 1000;
-        while (true) {
-          const { data, error } = await supabase
-            .from(table)
-            .select('*')
-            .range(from, from + PAGE_SIZE - 1);
-          if (error) {
-            console.warn(`Lỗi backup "${table}":`, error.message);
-            break;
-          }
-          if (!data || data.length === 0) break;
-          allRows.push(...data);
-          if (data.length < PAGE_SIZE) break;
-          from += PAGE_SIZE;
-        }
-        backup.tables[table] = allRows;
-        totalRows += allRows.length;
-      }
-
-      backup.metadata.total_rows = totalRows;
-
-      // Download as JSON
-      const json = JSON.stringify(backup, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10);
-      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-      a.href = url;
-      a.download = `backup-${dateStr}-${timeStr}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setBackupProgress('');
-      showToast(`Backup thành công! ${totalRows} dòng từ ${BACKUP_TABLES.length} bảng`);
-    } catch (err) {
-      console.error('Lỗi backup:', err);
-      showToast('Lỗi backup: ' + err.message, 'error');
-    } finally {
-      setBackingUp(false);
-      setBackupProgress('');
-    }
-  };
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4">
@@ -260,37 +165,6 @@ export default function CompanySettings({ tenant }) {
           <p className="text-xs text-gray-400 mt-1">Nội dung này sẽ hiển thị ở cuối hóa đơn khi in.</p>
         </div>
       </div>
-
-      {/* Backup - chỉ Admin */}
-      {isAdmin && (
-        <div className="bg-white rounded-xl border p-4 space-y-3">
-          <h3 className="font-bold text-gray-800">💾 Sao lưu dữ liệu</h3>
-          <p className="text-sm text-gray-500">
-            Tạo bản sao lưu toàn bộ dữ liệu hệ thống ({BACKUP_TABLES.length} bảng) dưới dạng file JSON.
-            File sẽ được tải về máy tính của bạn.
-          </p>
-          <div className="flex items-center gap-3">
-            <button onClick={handleBackup} disabled={backingUp}
-              className={`px-5 py-2.5 rounded-lg font-medium text-sm text-white flex items-center gap-2 ${backingUp ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
-              {backingUp ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                  </svg>
-                  Đang backup...
-                </>
-              ) : 'Tạo backup ngay'}
-            </button>
-            {backupProgress && (
-              <span className="text-sm text-gray-500">{backupProgress}</span>
-            )}
-          </div>
-          <p className="text-xs text-gray-400">
-            Khôi phục bằng CLI: <code className="bg-gray-100 px-1.5 py-0.5 rounded">npm run restore -- backups/file.json</code>
-          </p>
-        </div>
-      )}
 
       {/* Save button */}
       <div className="flex justify-end">

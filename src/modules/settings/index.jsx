@@ -9,6 +9,7 @@ import ProductSettings from './ProductSettings';
 import ShippingSettings from './ShippingSettings';
 import ZaloOASettings from './ZaloOASettings';
 import ActivityLogView from './ActivityLogView';
+import BackupSettings from './BackupSettings';
 
 export default function SettingsModule() {
   const { activeTab, tenant, currentUser } = useApp();
@@ -45,6 +46,9 @@ export default function SettingsModule() {
       )}
       {activeTab === 'logs' && (
         <ActivityLogView tenant={tenant} currentUser={currentUser} />
+      )}
+      {activeTab === 'backup' && (
+        <BackupSettings tenant={tenant} />
       )}
     </>
   );

@@ -185,7 +185,8 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
             { id: 'zalo', l: '📱 Zalo OA' },
-            { id: 'logs', l: '📋 Lịch Sử HĐ' }
+            { id: 'logs', l: '📋 Lịch Sử HĐ' },
+            { id: 'backup', l: '💾 Sao Lưu' }
           ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => {
             const pendingCount = (t.id === 'receipts' && activeModule === 'finance')
               ? (receiptsPayments || []).filter(r => r.status === 'pending').length
@@ -278,7 +279,8 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
             { id: 'zalo', l: '📱 Zalo OA' },
-            { id: 'logs', l: '📋 Lịch Sử HĐ' }
+            { id: 'logs', l: '📋 Lịch Sử HĐ' },
+            { id: 'backup', l: '💾 Sao Lưu' }
           ] : []).find(t => t.id === activeTab)?.l || ''}
         </h2>
       </div>
