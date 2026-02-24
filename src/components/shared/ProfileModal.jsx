@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
+import { getNotificationSettings, saveNotificationSettings, playMessageSound, playNotificationSound } from '../../utils/notificationSound';
 
 export default function ProfileModal({ onClose }) {
   const { currentUser, setCurrentUser, changePassword } = useApp();
@@ -15,6 +16,18 @@ export default function ProfileModal({ onClose }) {
   });
   const [pwForm, setPwForm] = useState({ old: '', new: '', confirm: '' });
   const [saving, setSaving] = useState(false);
+  const [notifSettings, setNotifSettings] = useState(getNotificationSettings);
+
+  const toggleNotifSetting = (key) => {
+    const updated = { ...notifSettings, [key]: !notifSettings[key] };
+    setNotifSettings(updated);
+    saveNotificationSettings(updated);
+    // Phát âm thanh demo khi bật
+    if (updated[key]) {
+      if (key === 'soundMessage') playMessageSound();
+      if (key === 'soundSystem') playNotificationSound();
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -147,6 +160,49 @@ export default function ProfileModal({ onClose }) {
                 <InfoRow label="Số tài khoản" value={currentUser.bank_account} />
               </>
             )}
+          </div>
+
+          {/* Notification settings */}
+          <div>
+            <h3 className="font-semibold text-gray-700 mb-3">Cài đặt thông báo</h3>
+            <div className="space-y-3 bg-gray-50 rounded-lg p-4">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">💬</span>
+                  <span className="text-sm text-gray-700">Âm thanh tin nhắn mới</span>
+                </div>
+                <div
+                  onClick={() => toggleNotifSetting('soundMessage')}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${notifSettings.soundMessage ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${notifSettings.soundMessage ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                </div>
+              </label>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🔔</span>
+                  <span className="text-sm text-gray-700">Âm thanh thông báo hệ thống</span>
+                </div>
+                <div
+                  onClick={() => toggleNotifSetting('soundSystem')}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${notifSettings.soundSystem ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${notifSettings.soundSystem ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                </div>
+              </label>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📢</span>
+                  <span className="text-sm text-gray-700">Thông báo trên trình duyệt</span>
+                </div>
+                <div
+                  onClick={() => toggleNotifSetting('browserPush')}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${notifSettings.browserPush ? 'bg-green-500' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${notifSettings.browserPush ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Change password */}

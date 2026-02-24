@@ -6,6 +6,7 @@ import ChatWindow from '../../components/chat/ChatWindow';
 import NewChatModal from '../../components/chat/NewChatModal';
 import ChatGroupModal from '../../components/chat/ChatGroupModal';
 import ZaloChatView from './ZaloChatView';
+import { playMessageSound } from '../../utils/notificationSound';
 
 const CHAT_TABS = [
   { id: 'internal', label: 'Nội bộ', icon: '💬' },
@@ -168,6 +169,8 @@ export default function ChatModule() {
                 ...prev,
                 [roomId]: (prev[roomId] || 0) + 1
               }));
+              // Phát âm thanh khi tin nhắn ở room khác
+              playMessageSound();
             }
           }
         })

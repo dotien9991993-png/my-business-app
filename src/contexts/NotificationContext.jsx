@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import { formatMoney } from '../utils/formatUtils';
 import { isAdmin } from '../utils/permissionUtils';
 import { useApp } from './AppContext';
+import { playNotificationSound, playAlertSound, showBrowserNotification } from '../utils/notificationSound';
 
 const NotificationContext = createContext(null);
 
@@ -339,8 +340,25 @@ export function NotificationProvider({ children }) {
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` },
         (payload) => {
-          setNotifications(prev => [payload.new, ...prev]);
+          const notif = payload.new;
+          setNotifications(prev => [notif, ...prev]);
           setUnreadCount(prev => prev + 1);
+
+          // Phát âm thanh theo loại thông báo
+          const alertTypes = ['deadline_overdue', 'finance_pending', 'task_rejected'];
+          if (alertTypes.includes(notif.type)) {
+            playAlertSound();
+          } else {
+            playNotificationSound();
+          }
+
+          // Browser push notification khi tab ẩn
+          if (document.hidden) {
+            showBrowserNotification(
+              notif.title || '🔔 Thông báo mới',
+              notif.message || '',
+            );
+          }
         }
       )
       .subscribe();

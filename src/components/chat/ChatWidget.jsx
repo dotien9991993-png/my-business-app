@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
+import { playMessageSound, showBrowserNotification, incrementTabUnread, resetTabTitle } from '../../utils/notificationSound';
 
 export default function ChatWidget() {
   const { currentUser, tenant, activeModule, navigateTo } = useApp();
@@ -69,8 +70,19 @@ export default function ChatWidget() {
           table: 'chat_messages',
           filter: `room_id=eq.${roomId}`
         }, (payload) => {
-          if (payload.new.sender_id !== currentUser?.id) {
+          const msg = payload.new;
+          if (msg.sender_id !== currentUser?.id) {
             setTotalUnread(prev => prev + 1);
+            playMessageSound();
+            // Tab title + browser push khi tab ẩn hoặc không ở module chat
+            if (document.hidden || activeModule !== 'chat') {
+              incrementTabUnread();
+              showBrowserNotification(
+                `💬 ${msg.sender_name || 'Tin nhắn mới'}`,
+                msg.content || (msg.file_name ? `📎 ${msg.file_name}` : 'Tin nhắn mới'),
+                () => navigateTo('chat', 'messages')
+              );
+            }
           }
         })
         .subscribe();
@@ -79,12 +91,13 @@ export default function ChatWidget() {
     });
 
     return () => { channels.forEach(ch => supabase.removeChannel(ch)); };
-  }, [currentUser?.id, roomIdsKey]);
+  }, [currentUser?.id, roomIdsKey, activeModule, navigateTo]);
 
-  // Reset unread when entering chat module
+  // Reset unread + tab title when entering chat module
   useEffect(() => {
     if (activeModule === 'chat') {
       setTotalUnread(0);
+      resetTabTitle();
     }
   }, [activeModule]);
 

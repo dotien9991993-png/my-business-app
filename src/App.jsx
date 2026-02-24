@@ -31,6 +31,7 @@ const PublicWarrantyCheck = React.lazy(() => import('./components/shared/PublicW
 const ChatModule = React.lazy(() => import('./modules/chat'));
 const ChatWidget = React.lazy(() => import('./components/chat/ChatWidget'));
 import { isAdmin } from './utils/permissionUtils';
+import { requestNotificationPermission } from './utils/notificationSound';
 
 // Global modals (lazy loaded)
 const CreateTaskModal = React.lazy(() => import('./modules/media/CreateTaskModal'));
@@ -87,6 +88,13 @@ function AppContent() {
     markAsRead, markAllAsRead, deleteNotification, clearReadNotifications,
     addNotification, checkDeadlineNotifications
   } = useNotifications();
+
+  // Xin quyền browser notification sau khi đăng nhập
+  useEffect(() => {
+    if (isLoggedIn) {
+      requestNotificationPermission();
+    }
+  }, [isLoggedIn]);
 
   // Deadline check interval (needs tasks from DataContext)
   useEffect(() => {
