@@ -45,6 +45,14 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [toast, setToast] = useState(null);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
 
+  // Bulk selection state
+  const [checkedOrderIds, setCheckedOrderIds] = useState(new Set());
+  const [showBulkVtpModal, setShowBulkVtpModal] = useState(false);
+  const [bulkVtpService, setBulkVtpService] = useState('VCN');
+  const [bulkVtpPayer, setBulkVtpPayer] = useState('receiver');
+  const [bulkVtpCod, setBulkVtpCod] = useState('cod');
+  const [bulkVtpProgress, setBulkVtpProgress] = useState(null); // { current, total, results: [] }
+
   // Server-side pagination state
   const [serverOrders, setServerOrders] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -972,6 +980,127 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
     setTimeout(() => setToast(null), 3000);
   };
 
+  // ---- Bulk selection helpers ----
+  const canBulkSelect = (o) => ['confirmed', 'packing'].includes(o.status) && !o.tracking_number;
+  const selectableOnPage = serverOrders.filter(canBulkSelect);
+  const allPageSelected = selectableOnPage.length > 0 && selectableOnPage.every(o => checkedOrderIds.has(o.id));
+
+  const toggleCheck = (id) => {
+    setCheckedOrderIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllPage = () => {
+    if (allPageSelected) {
+      setCheckedOrderIds(prev => {
+        const next = new Set(prev);
+        selectableOnPage.forEach(o => next.delete(o.id));
+        return next;
+      });
+    } else {
+      setCheckedOrderIds(prev => {
+        const next = new Set(prev);
+        selectableOnPage.forEach(o => next.add(o.id));
+        return next;
+      });
+    }
+  };
+
+  const checkedOrders = serverOrders.filter(o => checkedOrderIds.has(o.id));
+  const checkedTotal = checkedOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
+
+  // ---- Bulk VTP: validate + push ----
+  const handleBulkVtpOpen = () => {
+    if (!vtpToken) return alert('Vui lòng kết nối Viettel Post trong Cài đặt > Vận chuyển');
+    const sender = getSettingValue ? getSettingValue('shipping', 'vtp_sender_address', null) : null;
+    if (!sender?.province_id) return alert('Chưa cấu hình địa chỉ lấy hàng VTP trong Cài đặt > Vận chuyển');
+    setBulkVtpProgress(null);
+    setBulkVtpService('VCN');
+    setBulkVtpPayer('receiver');
+    setBulkVtpCod('cod');
+    setShowBulkVtpModal(true);
+  };
+
+  const getBulkValidation = () => {
+    const valid = [];
+    const invalid = [];
+    for (const o of checkedOrders) {
+      const meta = o.shipping_metadata || {};
+      const errors = [];
+      if (!meta.province_id || !meta.district_id) errors.push('Thiếu tỉnh/quận/phường');
+      if (!o.customer_phone?.trim()) errors.push('Thiếu SĐT');
+      if (o.tracking_number) errors.push('Đã đẩy đơn');
+      if (errors.length > 0) {
+        invalid.push({ order: o, errors });
+      } else {
+        valid.push(o);
+      }
+    }
+    return { valid, invalid };
+  };
+
+  const handleBulkVtpPush = async () => {
+    const { valid } = getBulkValidation();
+    if (valid.length === 0) return alert('Không có đơn hợp lệ để đẩy');
+    const sender = getSettingValue('shipping', 'vtp_sender_address', null);
+    const results = [];
+    setBulkVtpProgress({ current: 0, total: valid.length, results: [] });
+
+    for (let i = 0; i < valid.length; i++) {
+      const o = valid[i];
+      const meta = o.shipping_metadata || {};
+      try {
+        // Load items for this order
+        const { data: items } = await supabase.from('order_items').select('*').eq('order_id', o.id);
+        const oItems = items || [];
+        const totalW = oItems.reduce((sum, it) => sum + (it.quantity || 1) * 500, 0);
+        const isCod = bulkVtpCod === 'cod';
+        const codAmt = isCod ? (o.total_amount - (o.paid_amount || 0)) : 0;
+
+        const result = await vtpApi.createOrder(vtpToken, {
+          partnerOrderNumber: o.order_number,
+          senderName: sender.name, senderPhone: sender.phone, senderAddress: sender.address,
+          senderProvince: sender.province_id, senderDistrict: sender.district_id, senderWard: sender.ward_id || 0,
+          receiverName: o.customer_name || 'Khách hàng',
+          receiverPhone: o.customer_phone || '',
+          receiverAddress: o.shipping_address || '',
+          receiverProvince: meta.province_id, receiverDistrict: meta.district_id, receiverWard: meta.ward_id || 0,
+          productName: oItems.map(it => it.product_name).join(', ').slice(0, 200) || 'Hàng hóa',
+          productQuantity: oItems.reduce((s, it) => s + it.quantity, 0),
+          productWeight: totalW, productPrice: o.total_amount,
+          codAmount: codAmt, orderService: bulkVtpService,
+          orderNote: o.note || '',
+          items: oItems
+        });
+
+        if (result.success && result.data) {
+          const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || '';
+          const newMeta = { ...meta, vtp_order_code: vtpCode };
+          await supabase.from('orders').update({
+            tracking_number: vtpCode,
+            shipping_metadata: newMeta,
+            status: 'shipping',
+            shipping_provider: 'Viettel Post',
+            updated_at: getNowISOVN()
+          }).eq('id', o.id);
+          results.push({ order: o, success: true, vtpCode });
+        } else {
+          results.push({ order: o, success: false, error: result.error || 'Lỗi không xác định' });
+        }
+      } catch (err) {
+        results.push({ order: o, success: false, error: err.message });
+      }
+      setBulkVtpProgress({ current: i + 1, total: valid.length, results: [...results] });
+    }
+
+    // Refresh data after bulk push
+    setCheckedOrderIds(new Set());
+    await Promise.all([loadSalesData(), loadPagedOrders()]);
+  };
+
   // ---- Barcode/QR scan handler ----
   const handleBarcodeScan = async (scannedText) => {
     if (!scannedText || !tenant?.id) return;
@@ -1089,7 +1218,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
   };
 
   return (
-    <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4">
+    <div className={`p-4 md:p-6 space-y-4 ${checkedOrderIds.size > 0 ? 'pb-28 md:pb-20' : 'pb-20 md:pb-6'}`}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-xl md:text-2xl font-bold">🛒 Đơn Hàng</h2>
@@ -1202,40 +1331,57 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         ) : serverOrders.map(o => {
           const shipLabel = getShippingLabel(o);
           const itemsText = getItemsPreview(o.id);
+          const selectable = canBulkSelect(o);
+          const isChecked = checkedOrderIds.has(o.id);
           return (
-            <div key={o.id} onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); setEditMode(false); setShowPaymentInput(false); setShowDetailModal(true); }}
-              className="bg-white rounded-xl border p-3 md:p-4 hover:shadow-md cursor-pointer transition-shadow space-y-1">
-              {/* Line 1: Mã đơn, loại, trạng thái, tổng tiền */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                  <span className="font-semibold text-sm">{o.order_number}</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${o.order_type === 'pos' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
-                    {orderTypes[o.order_type]?.icon} {orderTypes[o.order_type]?.label || o.order_type}
-                  </span>
-                  <StatusBadge status={o.status} />
+            <div key={o.id} className={`bg-white rounded-xl border p-3 md:p-4 hover:shadow-md cursor-pointer transition-shadow space-y-1 ${isChecked ? 'ring-2 ring-green-500 border-green-300' : ''}`}>
+              <div className="flex gap-2">
+                {/* Checkbox or tracking badge */}
+                <div className="flex-shrink-0 pt-0.5" onClick={e => e.stopPropagation()}>
+                  {selectable ? (
+                    <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(o.id)}
+                      className="w-4 h-4 rounded border-gray-300 text-green-600 cursor-pointer" />
+                  ) : o.tracking_number ? (
+                    <span className="text-[10px] text-purple-600" title={o.tracking_number}>🚚</span>
+                  ) : (
+                    <span className="w-4 inline-block" />
+                  )}
                 </div>
-                <div className="font-bold text-green-700 text-sm whitespace-nowrap">{formatMoney(o.total_amount)}</div>
-              </div>
-              {/* Line 2: KH, SĐT, ngày, thanh toán */}
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <div className="truncate">
-                  {o.customer_name && <span>👤 {o.customer_name}</span>}
-                  {o.customer_phone && <span className="hidden sm:inline"> · 📞 {o.customer_phone}</span>}
-                  <span className="ml-1.5">· 📅 {new Date(o.created_at).toLocaleDateString('vi-VN')}</span>
+                {/* Card content */}
+                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); setEditMode(false); setShowPaymentInput(false); setShowDetailModal(true); }}>
+                  {/* Line 1: Mã đơn, loại, trạng thái, tổng tiền */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className="font-semibold text-sm">{o.order_number}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${o.order_type === 'pos' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
+                        {orderTypes[o.order_type]?.icon} {orderTypes[o.order_type]?.label || o.order_type}
+                      </span>
+                      <StatusBadge status={o.status} />
+                    </div>
+                    <div className="font-bold text-green-700 text-sm whitespace-nowrap">{formatMoney(o.total_amount)}</div>
+                  </div>
+                  {/* Line 2: KH, SĐT, ngày, thanh toán */}
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <div className="truncate">
+                      {o.customer_name && <span>👤 {o.customer_name}</span>}
+                      {o.customer_phone && <span className="hidden sm:inline"> · 📞 {o.customer_phone}</span>}
+                      <span className="ml-1.5">· 📅 {new Date(o.created_at).toLocaleDateString('vi-VN')}</span>
+                    </div>
+                    <span className={`whitespace-nowrap ml-2 font-medium ${o.payment_status === 'paid' ? 'text-green-600' : o.payment_status === 'partial' ? 'text-amber-600' : 'text-red-500'}`}>
+                      {paymentStatuses[o.payment_status]?.label || o.payment_status}
+                    </span>
+                  </div>
+                  {/* Line 3 (desktop): Địa chỉ */}
+                  {o.shipping_address && (
+                    <div className="text-xs text-gray-400 truncate hidden sm:block">📍 {o.shipping_address}</div>
+                  )}
+                  {/* Line 4 (desktop): VC status + NV tạo */}
+                  <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
+                    {shipLabel && <span className={shipLabel.color}>{shipLabel.icon} {shipLabel.text}</span>}
+                    {o.created_by && <span>👨‍💼 NV: {o.created_by}</span>}
+                    {itemsText && <span className="text-gray-400 truncate">📦 {itemsText}</span>}
+                  </div>
                 </div>
-                <span className={`whitespace-nowrap ml-2 font-medium ${o.payment_status === 'paid' ? 'text-green-600' : o.payment_status === 'partial' ? 'text-amber-600' : 'text-red-500'}`}>
-                  {paymentStatuses[o.payment_status]?.label || o.payment_status}
-                </span>
-              </div>
-              {/* Line 3 (desktop): Địa chỉ */}
-              {o.shipping_address && (
-                <div className="text-xs text-gray-400 truncate hidden sm:block">📍 {o.shipping_address}</div>
-              )}
-              {/* Line 4 (desktop): VC status + NV tạo */}
-              <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
-                {shipLabel && <span className={shipLabel.color}>{shipLabel.icon} {shipLabel.text}</span>}
-                {o.created_by && <span>👨‍💼 NV: {o.created_by}</span>}
-                {itemsText && <span className="text-gray-400 truncate">📦 {itemsText}</span>}
               </div>
             </div>
           );
@@ -1696,6 +1842,170 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         customers={customers} products={products} orders={orders}
         loadSalesData={loadSalesData} warehouses={warehouses}
       />
+
+      {/* ===== Sticky Bulk Action Bar ===== */}
+      {checkedOrderIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-[55] bg-white border-t shadow-[0_-4px_12px_rgba(0,0,0,0.1)] px-3 py-2.5 md:px-6 md:py-3">
+          <div className="max-w-4xl mx-auto flex items-center gap-2 md:gap-4 overflow-x-auto">
+            <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 text-xs sm:text-sm">
+              <input type="checkbox" checked={allPageSelected} onChange={toggleAllPage}
+                className="w-4 h-4 rounded border-gray-300 text-green-600" />
+              <span className="hidden sm:inline">Chọn tất cả</span> ({selectableOnPage.length})
+            </label>
+            <div className="h-5 w-px bg-gray-200 flex-shrink-0" />
+            <span className="text-xs sm:text-sm font-medium text-gray-700 flex-shrink-0">
+              Đã chọn: <b className="text-green-700">{checkedOrderIds.size}</b> đơn
+            </span>
+            <span className="text-xs sm:text-sm font-bold text-green-700 flex-shrink-0">
+              {formatMoney(checkedTotal)}
+            </span>
+            <div className="flex-1" />
+            {vtpToken && hasPermission('sales', 2) && (
+              <button onClick={handleBulkVtpOpen}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
+                🚚 Đẩy đơn VTP
+              </button>
+            )}
+            <button onClick={() => setCheckedOrderIds(new Set())}
+              className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
+              Hủy chọn
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Bulk VTP Modal ===== */}
+      {showBulkVtpModal && (() => {
+        const { valid, invalid } = getBulkValidation();
+        const isDone = bulkVtpProgress && bulkVtpProgress.current >= bulkVtpProgress.total;
+        const isPushing = bulkVtpProgress && !isDone;
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[70] p-4 overflow-y-auto">
+            <div className="bg-white rounded-xl max-w-lg w-full my-4">
+              <div className="p-4 border-b bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-t-xl flex justify-between items-center">
+                <h3 className="font-bold text-lg">🚚 Đẩy đơn sang Viettel Post</h3>
+                <button onClick={() => { if (isPushing) return; setShowBulkVtpModal(false); }} className="text-white/80 hover:text-white text-xl" disabled={isPushing}>✕</button>
+              </div>
+              <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+                {/* Show results if done */}
+                {isDone ? (
+                  <div className="space-y-3">
+                    <div className="text-center text-lg font-bold text-gray-700">Kết quả đẩy đơn</div>
+                    <div className="space-y-2">
+                      {bulkVtpProgress.results.map((r, i) => (
+                        <div key={i} className={`flex items-center gap-2 p-2 rounded-lg text-sm ${r.success ? 'bg-green-50' : 'bg-red-50'}`}>
+                          <span>{r.success ? '✅' : '❌'}</span>
+                          <span className="font-medium">{r.order.order_number}</span>
+                          <span className="text-gray-500 truncate flex-1">
+                            {r.success ? `→ ${r.vtpCode}` : r.error}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-center text-sm font-medium text-gray-600">
+                      Thành công: {bulkVtpProgress.results.filter(r => r.success).length}/{bulkVtpProgress.total} đơn
+                    </div>
+                    <button onClick={() => { setShowBulkVtpModal(false); setBulkVtpProgress(null); }}
+                      className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium text-sm">Đóng</button>
+                  </div>
+                ) : isPushing ? (
+                  /* Progress */
+                  <div className="space-y-3">
+                    <div className="text-center text-sm font-medium text-gray-600">
+                      Đang đẩy {bulkVtpProgress.current}/{bulkVtpProgress.total}...
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div className="bg-blue-600 h-3 rounded-full transition-all" style={{ width: `${(bulkVtpProgress.current / bulkVtpProgress.total) * 100}%` }} />
+                    </div>
+                    {bulkVtpProgress.results.length > 0 && (
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {bulkVtpProgress.results.map((r, i) => (
+                          <div key={i} className="text-xs flex items-center gap-1.5">
+                            <span>{r.success ? '✅' : '❌'}</span>
+                            <span>{r.order.order_number}</span>
+                            <span className="text-gray-400 truncate">{r.success ? r.vtpCode : r.error}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Config form */
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-gray-600 mb-1 block">Dịch vụ vận chuyển</label>
+                        <select value={bulkVtpService} onChange={e => setBulkVtpService(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-sm">
+                          {Object.entries(shippingServices).map(([k, v]) => <option key={k} value={k}>{v.label} ({v.desc})</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-600 mb-1 block">Người trả ship</label>
+                        <select value={bulkVtpPayer} onChange={e => setBulkVtpPayer(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-sm">
+                          <option value="receiver">Người nhận trả</option>
+                          <option value="shop">Shop trả</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-1 block">Hình thức thanh toán</label>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                          <input type="radio" name="bulkCod" value="cod" checked={bulkVtpCod === 'cod'} onChange={e => setBulkVtpCod(e.target.value)} />
+                          COD (thu hộ)
+                        </label>
+                        <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                          <input type="radio" name="bulkCod" value="paid" checked={bulkVtpCod === 'paid'} onChange={e => setBulkVtpCod(e.target.value)} />
+                          Đã thanh toán
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Valid orders table */}
+                    {valid.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-gray-600 mb-1">{valid.length} đơn hợp lệ</div>
+                        <div className="border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-gray-50 sticky top-0">
+                              <tr><th className="px-2 py-1.5 text-left">Mã đơn</th><th className="px-2 py-1.5 text-left">KH</th><th className="px-2 py-1.5 text-right">Tổng tiền</th></tr>
+                            </thead>
+                            <tbody>
+                              {valid.map(o => (
+                                <tr key={o.id} className="border-t"><td className="px-2 py-1.5 font-medium">{o.order_number}</td><td className="px-2 py-1.5 truncate max-w-[120px]">{o.customer_name || 'Khách lẻ'}</td><td className="px-2 py-1.5 text-right text-green-700">{formatMoney(o.total_amount)}</td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Invalid orders warning */}
+                    {invalid.length > 0 && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+                        <div className="text-xs font-medium text-amber-700">{invalid.length} đơn không đủ thông tin:</div>
+                        {invalid.map((item, i) => (
+                          <div key={i} className="text-xs text-amber-600">- {item.order.order_number}: {item.errors.join(', ')}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      <button onClick={() => setShowBulkVtpModal(false)} className="flex-1 py-2.5 bg-gray-200 rounded-lg font-medium text-sm">Hủy</button>
+                      <button onClick={handleBulkVtpPush} disabled={valid.length === 0}
+                        className={`flex-1 py-2.5 rounded-lg font-medium text-sm text-white ${valid.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                        🚚 Đẩy {valid.length} đơn hợp lệ
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Toast */}
       {toast && (
