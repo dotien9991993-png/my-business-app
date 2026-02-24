@@ -228,370 +228,273 @@ const TasksView = ({
         </button>
       </div>
 
-      {/* Mobile Filter - Compact */}
-      <div className="md:hidden bg-white rounded-xl shadow mb-3 overflow-hidden">
-        {/* Quick Stats Bar */}
-        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
-          <span className="text-xs text-gray-600">
+      {/* Unified Responsive Filters */}
+      <div className="bg-white rounded-xl shadow mb-3 md:mb-6 overflow-hidden">
+        {/* Stats Bar */}
+        <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-50 border-b">
+          <span className="text-xs md:text-sm text-gray-600">
             <span className="font-bold text-blue-600">{filteredTasks.length}</span>/{visibleTasks.length} video
           </span>
-          <div className="flex gap-1">
-            {filterTeam !== 'all' && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full">{filterTeam}</span>}
-            {filterStatus !== 'all' && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full">{filterStatus}</span>}
-            {dateFilter !== 'all' && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] rounded-full">{dateFilter === 'today' ? 'Hôm nay' : dateFilter === 'week' ? 'Tuần' : dateFilter === 'month' ? 'Tháng' : dateFilter === 'overdue' ? 'Quá hạn' : 'Tùy chỉnh'}</span>}
+          <div className="flex gap-1 flex-wrap justify-end">
+            {filterProducts.length > 0 && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] md:text-xs rounded-full">{filterProducts.length} SP</span>}
+            {filterStatus !== 'all' && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] md:text-xs rounded-full">{filterStatus}</span>}
+            {filterAssignee !== 'all' && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] md:text-xs rounded-full">{filterAssignee.split(' ').pop()}</span>}
+            {filterTeam !== 'all' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] md:text-xs rounded-full">{filterTeam}</span>}
+            {dateFilter !== 'all' && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] md:text-xs rounded-full">{dateFilter === 'today' ? 'Hôm nay' : dateFilter === 'week' ? 'Tuần' : dateFilter === 'month' ? 'Tháng' : dateFilter === 'overdue' ? 'Quá hạn' : 'Tùy chỉnh'}</span>}
           </div>
         </div>
 
-        {/* Filter Row 1: Dropdowns */}
-        <div className="p-2 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-          <select
-            value={filterTeam}
-            onChange={(e) => setFilterTeam(e.target.value)}
-            className="px-2 py-1.5 border rounded-lg text-xs bg-white"
-          >
-            <option value="all">Team</option>
-            <option value="Content">Content</option>
-            <option value="Edit Video">Edit</option>
-            <option value="Livestream">Live</option>
-            <option value="Kho">Kho</option>
-          </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-2 py-1.5 border rounded-lg text-xs bg-white"
-          >
-            <option value="all">T.Thái</option>
-            <option value="Nháp">Nháp</option>
-            <option value="Chưa Quay">Chưa Quay</option>
-            <option value="Đã Quay">Đã Quay</option>
-            <option value="Đang Edit">Đang Edit</option>
-            <option value="Hoàn Thành">Xong</option>
-          </select>
-          <select
-            value={filterAssignee}
-            onChange={(e) => setFilterAssignee(e.target.value)}
-            className="px-2 py-1.5 border rounded-lg text-xs bg-white"
-          >
-            <option value="all">NV</option>
-            {Array.from(new Set(visibleTasks.map(t => t.assignee))).sort().map(assignee => (
-              <option key={assignee} value={assignee}>{assignee.split(' ').pop()}</option>
-            ))}
-          </select>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-2 py-1.5 border rounded-lg text-xs bg-white"
-          >
-            <option value="all">Loại</option>
-            {videoCategories.map(cat => (
-              <option key={cat.id} value={cat.id}>{cat.name.replace('Video ', '').substring(0, 8)}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Filter Row 2: Date chips */}
-        <div className="px-2 pb-2 flex gap-1 overflow-x-auto">
-          {[
-            { id: 'all', label: 'Tất cả' },
-            { id: 'today', label: 'Hôm nay' },
-            { id: 'week', label: 'Tuần' },
-            { id: 'month', label: 'Tháng' },
-            { id: 'overdue', label: '⚠️ Trễ', color: 'red' },
-          ].map(d => (
-            <button
-              key={d.id}
-              onClick={() => handleDateFilterChange(d.id)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
-                dateFilter === d.id
-                  ? d.color === 'red' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700"
-            >
-              ✕ Xóa
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Desktop Filter - Full */}
-      <div className="hidden md:block bg-white p-4 rounded-xl shadow mb-6">
-        <div className="flex gap-4 flex-wrap">
-          <div>
-            <label className="text-sm font-medium mb-2 block">Team</label>
-            <select
-              value={filterTeam}
-              onChange={(e) => setFilterTeam(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tất cả</option>
-              <option value="Content">Content</option>
-              <option value="Edit Video">Edit Video</option>
-              <option value="Livestream">Livestream</option>
-              <option value="Kho">Kho</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-2 block">Trạng thái</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tất cả</option>
-              <option value="Nháp">Nháp</option>
-              <option value="Chưa Quay">Chưa Quay</option>
-              <option value="Đã Quay">Đã Quay</option>
-              <option value="Đang Edit">Đang Edit</option>
-              <option value="Hoàn Thành">Hoàn Thành</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-2 block">Nhân viên</label>
-            <select
-              value={filterAssignee}
-              onChange={(e) => setFilterAssignee(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tất cả</option>
-              {Array.from(new Set(visibleTasks.map(t => t.assignee))).sort().map(assignee => (
-                <option key={assignee} value={assignee}>{assignee}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-2 block">🏷️ Danh mục</label>
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tất cả</option>
-              {videoCategories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
-          {uniqueCrew.length > 0 && (
-            <div>
-              <label className="text-sm font-medium mb-2 block">🎬 Quay & Dựng</label>
-              <select
-                value={filterCrew}
-                onChange={(e) => setFilterCrew(e.target.value)}
-                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">Tất cả</option>
-                {uniqueCrew.map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {uniqueActors.length > 0 && (
-            <div>
-              <label className="text-sm font-medium mb-2 block">🎭 Diễn viên</label>
-              <select
-                value={filterActor}
-                onChange={(e) => setFilterActor(e.target.value)}
-                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">Tất cả</option>
-                {uniqueActors.map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {uniqueProductIds.length > 0 && (
-            <div ref={productFilterRef} className="relative">
-              <label className="text-sm font-medium mb-2 block">📦 Sản phẩm</label>
-              <button
-                type="button"
-                onClick={() => { setShowProductFilter(!showProductFilter); setProductFilterSearch(''); }}
-                className={`px-4 py-2 border rounded-lg text-left min-w-[160px] flex items-center justify-between gap-2 transition-colors ${
-                  filterProducts.length > 0 ? 'border-green-400 bg-green-50' : 'bg-white'
-                }`}
-              >
-                <span className="text-sm truncate">
-                  {filterProducts.length === 0 ? 'Tất cả' : `${filterProducts.length} SP đã chọn`}
-                </span>
-                <span className="text-gray-400 text-xs">{showProductFilter ? '▲' : '▼'}</span>
-              </button>
-              {showProductFilter && (
-                <div className="absolute z-30 mt-1 w-72 bg-white border rounded-lg shadow-lg overflow-hidden">
-                  <div className="p-2 border-b">
-                    <input
-                      type="text"
-                      value={productFilterSearch}
-                      onChange={(e) => setProductFilterSearch(e.target.value)}
-                      placeholder="🔍 Tìm sản phẩm..."
-                      className="w-full px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                      autoFocus
-                    />
-                  </div>
-                  {filterProducts.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setFilterProducts([])}
-                      className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 border-b font-medium"
-                    >
-                      ✕ Bỏ chọn tất cả
-                    </button>
-                  )}
-                  <div className="max-h-48 overflow-y-auto">
-                    {uniqueProductIds
-                      .filter(id => {
+        <div className="p-2 md:p-4">
+          {/* Filter Grid: Row 1 = Product, Status, Assignee, Category | Row 2 = Crew, Actor, Team */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 md:gap-3">
+            {/* 1. Product - first, full width on mobile */}
+            {uniqueProductIds.length > 0 ? (
+              <div ref={productFilterRef} className="relative col-span-2 sm:col-span-1">
+                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">📦 Sản phẩm</label>
+                <button
+                  type="button"
+                  onClick={() => { setShowProductFilter(!showProductFilter); setProductFilterSearch(''); }}
+                  className={`w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-left flex items-center justify-between gap-1 text-xs sm:text-sm transition-colors ${
+                    filterProducts.length > 0 ? 'border-green-400 bg-green-50' : 'bg-white'
+                  }`}
+                >
+                  <span className="truncate">
+                    {filterProducts.length === 0 ? 'Tất cả' : `${filterProducts.length} SP đã chọn`}
+                  </span>
+                  <span className="text-gray-400 text-xs shrink-0">{showProductFilter ? '▲' : '▼'}</span>
+                </button>
+                {showProductFilter && (
+                  <div className="absolute z-30 mt-1 w-64 sm:w-72 bg-white border rounded-lg shadow-lg overflow-hidden">
+                    <div className="p-2 border-b">
+                      <input
+                        type="text"
+                        value={productFilterSearch}
+                        onChange={(e) => setProductFilterSearch(e.target.value)}
+                        placeholder="🔍 Tìm sản phẩm..."
+                        className="w-full px-3 py-1.5 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        autoFocus
+                      />
+                    </div>
+                    {filterProducts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setFilterProducts([])}
+                        className="w-full px-3 py-1.5 text-left text-xs sm:text-sm text-red-600 hover:bg-red-50 border-b font-medium"
+                      >
+                        ✕ Bỏ chọn tất cả
+                      </button>
+                    )}
+                    <div className="max-h-48 overflow-y-auto">
+                      {uniqueProductIds
+                        .filter(id => {
+                          if (!productFilterSearch) return true;
+                          const name = (productMap[id]?.name || '').toLowerCase();
+                          const sku = (productMap[id]?.sku || '').toLowerCase();
+                          return name.includes(productFilterSearch.toLowerCase()) || sku.includes(productFilterSearch.toLowerCase());
+                        })
+                        .map(id => (
+                          <label
+                            key={id}
+                            className="flex items-center gap-2 px-3 py-1.5 hover:bg-green-50 cursor-pointer text-xs sm:text-sm border-b last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={filterProducts.includes(id)}
+                              onChange={() => toggleProductFilter(id)}
+                              className="w-3.5 h-3.5 md:w-4 md:h-4 text-green-600 rounded"
+                            />
+                            <span className="truncate">{productMap[id]?.name || 'Sản phẩm'}</span>
+                          </label>
+                        ))}
+                      {uniqueProductIds.filter(id => {
                         if (!productFilterSearch) return true;
                         const name = (productMap[id]?.name || '').toLowerCase();
-                        return name.includes(productFilterSearch.toLowerCase());
-                      })
-                      .map(id => (
-                        <label
-                          key={id}
-                          className="flex items-center gap-2 px-4 py-2 hover:bg-green-50 cursor-pointer text-sm border-b last:border-b-0"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={filterProducts.includes(id)}
-                            onChange={() => toggleProductFilter(id)}
-                            className="w-4 h-4 text-green-600 rounded"
-                          />
-                          <span className="truncate">{productMap[id]?.name || 'Sản phẩm'}</span>
-                        </label>
-                      ))}
-                    {uniqueProductIds.filter(id => {
-                      if (!productFilterSearch) return true;
-                      return (productMap[id]?.name || '').toLowerCase().includes(productFilterSearch.toLowerCase());
-                    }).length === 0 && (
-                      <div className="px-4 py-3 text-sm text-gray-400 text-center">Không tìm thấy</div>
-                    )}
+                        const sku = (productMap[id]?.sku || '').toLowerCase();
+                        return name.includes(productFilterSearch.toLowerCase()) || sku.includes(productFilterSearch.toLowerCase());
+                      }).length === 0 && (
+                        <div className="px-3 py-2 text-xs sm:text-sm text-gray-400 text-center">Không tìm thấy</div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-              {filterProducts.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {filterProducts.map(id => (
-                    <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs">
-                      {productMap[id]?.name || 'SP'}
-                      <button type="button" onClick={() => toggleProductFilter(id)} className="hover:text-red-600 font-bold">✕</button>
-                    </span>
+                )}
+                {filterProducts.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {filterProducts.map(id => (
+                      <span key={id} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] sm:text-xs">
+                        {productMap[id]?.sku || productMap[id]?.name || 'SP'}
+                        <button type="button" onClick={() => toggleProductFilter(id)} className="hover:text-red-600 font-bold">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* 2. Trạng thái */}
+            <div>
+              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Trạng thái</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="all">Tất cả</option>
+                <option value="Nháp">Nháp</option>
+                <option value="Chưa Quay">Chưa Quay</option>
+                <option value="Đã Quay">Đã Quay</option>
+                <option value="Đang Edit">Đang Edit</option>
+                <option value="Hoàn Thành">Hoàn Thành</option>
+              </select>
+            </div>
+
+            {/* 3. Nhân viên */}
+            <div>
+              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Nhân viên</label>
+              <select
+                value={filterAssignee}
+                onChange={(e) => setFilterAssignee(e.target.value)}
+                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="all">Tất cả</option>
+                {Array.from(new Set(visibleTasks.map(t => t.assignee))).sort().map(assignee => (
+                  <option key={assignee} value={assignee}>{assignee}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 4. Danh mục */}
+            <div>
+              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Danh mục</label>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="all">Tất cả</option>
+                {videoCategories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 5. Quay & Dựng */}
+            {uniqueCrew.length > 0 && (
+              <div>
+                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎬 Quay & Dựng</label>
+                <select
+                  value={filterCrew}
+                  onChange={(e) => setFilterCrew(e.target.value)}
+                  className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">Tất cả</option>
+                  {uniqueCrew.map(name => (
+                    <option key={name} value={name}>{name}</option>
                   ))}
+                </select>
+              </div>
+            )}
+
+            {/* 6. Diễn viên */}
+            {uniqueActors.length > 0 && (
+              <div>
+                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎭 Diễn viên</label>
+                <select
+                  value={filterActor}
+                  onChange={(e) => setFilterActor(e.target.value)}
+                  className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">Tất cả</option>
+                  {uniqueActors.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* 7. Team - cuối cùng */}
+            <div>
+              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Team</label>
+              <select
+                value={filterTeam}
+                onChange={(e) => setFilterTeam(e.target.value)}
+                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="all">Tất cả</option>
+                <option value="Content">Content</option>
+                <option value="Edit Video">Edit Video</option>
+                <option value="Livestream">Livestream</option>
+                <option value="Kho">Kho</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Date Filter */}
+          <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t">
+            <label className="text-xs sm:text-sm font-medium mb-2 block">📅 Deadline:</label>
+            <div className="flex gap-1.5 md:gap-2 flex-wrap">
+              {[
+                { id: 'all', label: 'Tất cả' },
+                { id: 'today', label: 'Hôm nay' },
+                { id: 'week', label: 'Tuần này' },
+                { id: 'month', label: 'Tháng này' },
+                { id: 'overdue', label: '⚠️ Quá hạn', color: 'red' },
+                { id: 'custom', label: 'Tùy chỉnh', color: 'purple' },
+              ].map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => handleDateFilterChange(d.id)}
+                  className={`px-2.5 md:px-4 py-1 md:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                    dateFilter === d.id
+                      ? d.color === 'red' ? 'bg-red-600 text-white'
+                        : d.color === 'purple' ? 'bg-purple-600 text-white'
+                        : 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+
+            {showCustomDate && (
+              <div className="flex gap-2 md:gap-3 items-center bg-purple-50 p-2 md:p-3 rounded-lg mt-2">
+                <div>
+                  <label className="text-[10px] md:text-xs text-gray-600 block mb-1">Từ:</label>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Date Filter Section */}
-        <div className="mt-4 pt-4 border-t">
-          <label className="text-sm font-medium mb-3 block">📅 Lọc theo Deadline:</label>
-          <div className="flex gap-2 flex-wrap mb-3">
-            <button
-              onClick={() => handleDateFilterChange('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                dateFilter === 'all'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Tất cả
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('today')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                dateFilter === 'today'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Hôm nay
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('week')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                dateFilter === 'week'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Tuần này
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('month')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                dateFilter === 'month'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Tháng này
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('overdue')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                dateFilter === 'overdue'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              ⚠️ Quá hạn
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('custom')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                dateFilter === 'custom'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Tùy chỉnh
-            </button>
+                <div className="mt-4 text-xs">→</div>
+                <div>
+                  <label className="text-[10px] md:text-xs text-gray-600 block mb-1">Đến:</label>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          {showCustomDate && (
-            <div className="flex gap-3 items-center bg-purple-50 p-3 rounded-lg">
-              <div>
-                <label className="text-xs text-gray-600 block mb-1">Từ ngày:</label>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-              <div className="mt-5">→</div>
-              <div>
-                <label className="text-xs text-gray-600 block mb-1">Đến ngày:</label>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 pt-4 border-t flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            Hiển thị <span className="font-bold text-blue-600">{filteredTasks.length}</span> / {visibleTasks.length} tasks
+          {/* Footer: count + clear */}
+          <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t flex items-center justify-between">
+            <span className="text-xs md:text-sm text-gray-600">
+              <span className="font-bold text-blue-600">{filteredTasks.length}</span> / {visibleTasks.length} video
+            </span>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="px-3 md:px-4 py-1.5 md:py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs sm:text-sm font-medium"
+              >
+                ✕ Xóa bộ lọc
+              </button>
+            )}
           </div>
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium"
-            >
-              × Clear all filters
-            </button>
-          )}
         </div>
       </div>
 

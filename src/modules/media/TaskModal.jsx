@@ -404,37 +404,107 @@ const TaskModal = ({
             </div>
           </div>
 
-          {/* Product details section */}
-          {taskProducts.length > 0 && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-              <h4 className="font-bold text-sm mb-3 text-green-900">📦 Sản phẩm trong video</h4>
-              <div className="space-y-2">
-                {taskProducts.map(product => (
-                  <div key={product.id} className="flex items-center gap-3 bg-white rounded-lg p-3 border border-green-100">
-                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
-                      {product.image_url ? (
-                        <img src={product.image_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-gray-400 text-xl">📦</span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm">{product.name}</div>
-                      <div className="text-xs text-gray-500 flex gap-3">
-                        {product.sku && <span>SKU: {product.sku}</span>}
-                        {product.sell_price > 0 && <span>Giá: {formatMoney(product.sell_price)}</span>}
-                        {product.stock_quantity != null && <span>Tồn: {product.stock_quantity}</span>}
+          {/* Links per Platform — đưa lên trước SP */}
+          <div>
+            <h4 className="text-lg font-bold mb-3">🔗 Links Theo Platform</h4>
+            {(() => {
+              const platformIcons = { 'Facebook': '📘', 'Instagram': '📸', 'TikTok': '🎵', 'Blog': '📝', 'Ads': '📢', 'Email': '📧', 'YouTube': '📺' };
+              const platformColors = { 'Facebook': 'border-blue-300 bg-blue-50', 'Instagram': 'border-pink-300 bg-pink-50', 'TikTok': 'border-gray-800 bg-gray-50', 'Blog': 'border-green-300 bg-green-50', 'Ads': 'border-orange-300 bg-orange-50', 'Email': 'border-purple-300 bg-purple-50', 'YouTube': 'border-red-300 bg-red-50' };
+              const taskPlatforms = (selectedTask.platform || '').split(', ').filter(Boolean);
+              const existingLinks = selectedTask.postLinks || [];
+              const oldLinkPlatforms = existingLinks.map(l => l.type).filter(t => !taskPlatforms.includes(t));
+              const allPlatforms = [...taskPlatforms, ...oldLinkPlatforms];
+              return (
+                <div className="space-y-3">
+                  {allPlatforms.map(plat => {
+                    const link = existingLinks.find(l => l.type === plat);
+                    const icon = platformIcons[plat] || '🔗';
+                    const colorClass = platformColors[plat] || 'border-gray-300 bg-gray-50';
+                    return (
+                      <div key={plat} className={`border-2 rounded-lg p-3 ${colorClass}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">{icon}</span>
+                          <span className="font-bold text-sm">{plat}</span>
+                          {link && <span className="text-xs text-gray-500">• {link.addedBy} • {link.addedAt}</span>}
+                        </div>
+                        {link ? (
+                          <div className="flex items-center gap-2">
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all flex-1">{link.url}</a>
+                            <button onClick={() => { navigator.clipboard.writeText(link.url); alert('✅ Đã copy!'); }} className="px-2 py-1 bg-white rounded text-xs hover:bg-gray-100 shrink-0">📋</button>
+                            {(currentUser.name === link.addedBy || currentUser.role === 'Manager' || isAdmin(currentUser)) && (
+                              <button onClick={() => { if (window.confirm('Xóa link này?')) removePostLink(selectedTask.id, existingLinks.indexOf(link)); }} className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs hover:bg-red-200 shrink-0">🗑️</button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <input
+                              type="url"
+                              placeholder={`Paste link ${plat} vào đây...`}
+                              className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.target.value.trim()) {
+                                  addPostLink(selectedTask.id, e.target.value.trim(), plat);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                            <button
+                              onClick={(e) => {
+                                const input = e.target.closest('div').querySelector('input');
+                                if (input && input.value.trim()) {
+                                  addPostLink(selectedTask.id, input.value.trim(), plat);
+                                  input.value = '';
+                                }
+                              }}
+                              className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium shrink-0"
+                            >
+                              ✅ Lưu
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {/* Tổng tiền sản phẩm */}
-              <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-                <div className="text-sm text-gray-700">📊 Tổng: <span className="font-medium">{taskProducts.length} sản phẩm</span></div>
-                <div className="text-lg font-bold text-blue-700 mt-0.5">
-                  💰 Tổng giá trị: {formatMoney(taskProducts.reduce((sum, p) => sum + (parseFloat(p.sell_price) || 0), 0))}
+                    );
+                  })}
+                  {allPlatforms.length === 0 && (
+                    <div className="text-center py-6 bg-gray-50 rounded-lg text-gray-400 text-sm">Chưa chọn platform nào</div>
+                  )}
                 </div>
+              );
+            })()}
+          </div>
+
+          {/* Product details section — compact table */}
+          {taskProducts.length > 0 && (
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
+                <h4 className="font-bold text-sm text-gray-800">📦 Sản phẩm trong video ({taskProducts.length})</h4>
+                <span className="font-bold text-sm text-blue-600">
+                  💰 {formatMoney(taskProducts.reduce((sum, p) => sum + (parseFloat(p.sell_price) || 0), 0))}
+                </span>
+              </div>
+              <div className="max-h-[200px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs sticky top-0">
+                    <tr>
+                      <th className="text-left px-4 py-1.5 font-medium">SKU</th>
+                      <th className="text-left px-4 py-1.5 font-medium">Tên</th>
+                      <th className="text-right px-4 py-1.5 font-medium">Giá</th>
+                      <th className="text-right px-4 py-1.5 font-medium">Tồn</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {taskProducts.map(product => (
+                      <tr key={product.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{product.sku || '—'}</td>
+                        <td className="px-4 py-2 font-medium truncate max-w-[200px]">{product.name}</td>
+                        <td className="px-4 py-2 text-right text-gray-700 whitespace-nowrap">
+                          {product.sell_price > 0 ? (Math.round(product.sell_price / 1000).toLocaleString('vi-VN') + 'k') : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-right text-gray-600">{product.stock_quantity ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -661,78 +731,6 @@ const TaskModal = ({
               </div>
             </div>
           )}
-
-          {/* Links per Platform */}
-          <div>
-            <h4 className="text-lg font-bold mb-3">🔗 Links Theo Platform</h4>
-            {(() => {
-              const platformIcons = { 'Facebook': '📘', 'Instagram': '📸', 'TikTok': '🎵', 'Blog': '📝', 'Ads': '📢', 'Email': '📧', 'YouTube': '📺' };
-              const platformColors = { 'Facebook': 'border-blue-300 bg-blue-50', 'Instagram': 'border-pink-300 bg-pink-50', 'TikTok': 'border-gray-800 bg-gray-50', 'Blog': 'border-green-300 bg-green-50', 'Ads': 'border-orange-300 bg-orange-50', 'Email': 'border-purple-300 bg-purple-50', 'YouTube': 'border-red-300 bg-red-50' };
-              const taskPlatforms = (selectedTask.platform || '').split(', ').filter(Boolean);
-              const existingLinks = selectedTask.postLinks || [];
-
-              // Also show platforms from old links not in task.platform
-              const oldLinkPlatforms = existingLinks.map(l => l.type).filter(t => !taskPlatforms.includes(t));
-              const allPlatforms = [...taskPlatforms, ...oldLinkPlatforms];
-
-              return (
-                <div className="space-y-3">
-                  {allPlatforms.map(plat => {
-                    const link = existingLinks.find(l => l.type === plat);
-                    const icon = platformIcons[plat] || '🔗';
-                    const colorClass = platformColors[plat] || 'border-gray-300 bg-gray-50';
-                    return (
-                      <div key={plat} className={`border-2 rounded-lg p-3 ${colorClass}`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-lg">{icon}</span>
-                          <span className="font-bold text-sm">{plat}</span>
-                          {link && <span className="text-xs text-gray-500">• {link.addedBy} • {link.addedAt}</span>}
-                        </div>
-                        {link ? (
-                          <div className="flex items-center gap-2">
-                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all flex-1">{link.url}</a>
-                            <button onClick={() => { navigator.clipboard.writeText(link.url); alert('✅ Đã copy!'); }} className="px-2 py-1 bg-white rounded text-xs hover:bg-gray-100 shrink-0">📋</button>
-                            {(currentUser.name === link.addedBy || currentUser.role === 'Manager' || isAdmin(currentUser)) && (
-                              <button onClick={() => { if (window.confirm('Xóa link này?')) removePostLink(selectedTask.id, existingLinks.indexOf(link)); }} className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs hover:bg-red-200 shrink-0">🗑️</button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            <input
-                              type="url"
-                              placeholder={`Paste link ${plat} vào đây...`}
-                              className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && e.target.value.trim()) {
-                                  addPostLink(selectedTask.id, e.target.value.trim(), plat);
-                                  e.target.value = '';
-                                }
-                              }}
-                            />
-                            <button
-                              onClick={(e) => {
-                                const input = e.target.closest('div').querySelector('input');
-                                if (input && input.value.trim()) {
-                                  addPostLink(selectedTask.id, input.value.trim(), plat);
-                                  input.value = '';
-                                }
-                              }}
-                              className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium shrink-0"
-                            >
-                              ✅ Lưu
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {allPlatforms.length === 0 && (
-                    <div className="text-center py-6 bg-gray-50 rounded-lg text-gray-400 text-sm">Chưa chọn platform nào</div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
 
           <div className="border-t pt-6">
             <div className="flex items-center justify-between mb-4">
