@@ -171,7 +171,7 @@ export async function getServices(token) {
 // ---- Login ----
 
 export async function loginVtp(username, password) {
-  return vtpProxy('login', '', { body: { USERNAME: username, PASSWORD: password } });
+  return vtpProxy('login', '', { username, password });
 }
 
 // ---- Clear cache (for testing) ----

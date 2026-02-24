@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { shippingProviders as defaultProviders } from '../../constants/salesConstants';
 import AddressPicker from '../../components/shared/AddressPicker';
-import { loginVtp } from '../../utils/viettelpostApi';
+import { loginVtp, getProvinces } from '../../utils/viettelpostApi';
 
 const API_PROVIDERS = [
   {
@@ -131,15 +131,26 @@ export default function ShippingSettings({ tenant, currentUser, shippingConfigs,
     setTesting(prev => ({ ...prev, [provider.key]: true }));
     setTestResults(prev => ({ ...prev, [provider.key]: null }));
     try {
-      const resp = await fetch(provider.testUrl, {
-        method: 'GET',
-        headers: { [provider.tokenHeader]: cfg.api_token, 'Content-Type': 'application/json' }
-      });
-      if (resp.ok) {
-        setTestResults(prev => ({ ...prev, [provider.key]: { success: true, msg: 'Kết nối thành công!' } }));
+      if (provider.key === 'viettel_post') {
+        // VTP: gọi qua proxy để tránh CORS
+        const result = await getProvinces(cfg.api_token);
+        if (result.success) {
+          setTestResults(prev => ({ ...prev, [provider.key]: { success: true, msg: 'Kết nối thành công!' } }));
+        } else {
+          setTestResults(prev => ({ ...prev, [provider.key]: { success: false, msg: result.error || 'Token không hợp lệ' } }));
+        }
       } else {
-        const body = await resp.text().catch(() => '');
-        setTestResults(prev => ({ ...prev, [provider.key]: { success: false, msg: `Lỗi ${resp.status}: ${body.slice(0, 100)}` } }));
+        // GHN, GHTK: gọi qua proxy chung /api/shipping-test
+        const resp = await fetch(provider.testUrl, {
+          method: 'GET',
+          headers: { [provider.tokenHeader]: cfg.api_token, 'Content-Type': 'application/json' }
+        });
+        if (resp.ok) {
+          setTestResults(prev => ({ ...prev, [provider.key]: { success: true, msg: 'Kết nối thành công!' } }));
+        } else {
+          const body = await resp.text().catch(() => '');
+          setTestResults(prev => ({ ...prev, [provider.key]: { success: false, msg: `Lỗi ${resp.status}: ${body.slice(0, 100)}` } }));
+        }
       }
     } catch (err) {
       setTestResults(prev => ({ ...prev, [provider.key]: { success: false, msg: 'Không thể kết nối: ' + err.message } }));
