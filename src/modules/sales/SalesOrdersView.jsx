@@ -156,7 +156,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   }, [loadPagedOrders]);
 
   // ---- Create form state ----
-  const [orderType, setOrderType] = useState('pos');
+  const [orderType, setOrderType] = useState('online');
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -219,14 +219,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   };
 
   const resetForm = () => {
-    setOrderType('pos'); setCustomerId(''); setCustomerName(''); setCustomerPhone('');
-    setShippingAddress(''); setShippingProvider(''); setShippingFee(''); setShippingPayer('customer');
-    setPaymentMethod('cash'); setDiscountAmount(''); setDiscountNote(''); setNote('');
-    setNeedsInstallation(false); setCartItems([]); setProductSearch(''); setCustomerSearch('');
-    setShowCustomerDropdown(false); setShippingAddressData(null); setShippingAddressDetail('');
-    setCategoryFilter(''); setProductSortBy('name');
-    setPaymentSplits([{ method: 'cash', amount: '' }]);
-    setOrderSource('manual'); setInternalNote(''); setTotalWeight(''); setShippingService('VCN');
+    setOrderType('online'); setCustomerId(''); setCustomerName(''); setCustomerPhone('');
+    setShippingAddress(''); setShippingAddressData(null); setShippingAddressDetail('');
+    setCartItems([]); setProductSearch(''); setCustomerSearch('');
+    setShowCustomerDropdown(false); setInternalNote('');
     const defaultWh = (warehouses || []).find(w => w.is_default) || (warehouses || [])[0];
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
   };
@@ -404,15 +400,6 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
     if (cartItems.length === 0) return alert('Vui lòng thêm sản phẩm');
     if (submitting) return;
-    // Validate online required fields
-    if (orderType === 'online') {
-      if (isVTP) {
-        if (!shippingAddressData?.province_id) return alert('Vui lòng chọn tỉnh/quận/phường');
-      } else {
-        if (!shippingAddress.trim()) return alert('Vui lòng nhập địa chỉ giao hàng');
-      }
-      if (!shippingProvider) return alert('Vui lòng chọn đơn vị vận chuyển');
-    }
     // Pre-check stock at selected warehouse (combo: check each child)
     for (const item of cartItems) {
       if (item.is_combo) {
@@ -460,63 +447,42 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
 
       const orderNumber = await genOrderNumber();
       const isPOS = orderType === 'pos';
-      const orderStatus = isPOS ? 'completed' : 'new';
 
-      // Multi-payment: determine primary method and paid amount
-      // If single split with empty amount, auto-fill with totalAmount
-      const resolvedSplits = paymentSplits.map((s, _i) => {
-        if (paymentSplits.length === 1 && (!s.amount || s.amount === '' || s.amount === '0')) {
-          return { ...s, amount: String(totalAmount) };
-        }
-        return s;
-      });
-      const activeSplits = resolvedSplits.filter(s => parseFloat(s.amount) > 0);
-      const hasMixedPayment = activeSplits.length > 1;
-      const primaryMethod = hasMixedPayment ? 'mixed' : (activeSplits[0]?.method || paymentMethod);
-      const debtSplits = activeSplits.filter(s => s.method === 'debt');
-      const nonDebtSplits = activeSplits.filter(s => s.method !== 'debt');
-      const paidNonDebt = nonDebtSplits.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-      const allDebt = activeSplits.length > 0 && nonDebtSplits.length === 0;
-      const pStatus = (isPOS && !allDebt && paidNonDebt >= totalAmount) ? 'paid' : (paidNonDebt > 0 ? 'partial' : 'unpaid');
-      const splitsForDb = activeSplits.length > 1 ? activeSplits : [];
-
-      // 1. Build shipping fields
+      // Build shipping address from AddressPicker if available
       let finalShippingAddress = null;
       let finalShippingMetadata = {};
-      if (orderType === 'online') {
-        if (isVTP && shippingAddressData) {
-          finalShippingAddress = [shippingAddressDetail, shippingAddressData.ward_name, shippingAddressData.district_name, shippingAddressData.province_name].filter(Boolean).join(', ');
-          finalShippingMetadata = { ...shippingAddressData };
-        } else {
-          finalShippingAddress = shippingAddress;
-        }
+      if (shippingAddressData) {
+        finalShippingAddress = [shippingAddressDetail, shippingAddressData.ward_name, shippingAddressData.district_name, shippingAddressData.province_name].filter(Boolean).join(', ');
+        finalShippingMetadata = { ...shippingAddressData };
+      } else if (shippingAddress.trim()) {
+        finalShippingAddress = shippingAddress;
       }
 
-      // 2. Insert order with warehouse_id
+      // Insert order with hard defaults
       const { data: order, error: orderErr } = await supabase.from('orders').insert([{
         tenant_id: tenant.id, order_number: orderNumber, order_type: orderType,
-        status: orderStatus, customer_id: resolvedCustomerId,
+        status: 'confirmed', customer_id: resolvedCustomerId,
         customer_name: customerName, customer_phone: customerPhone,
         shipping_address: finalShippingAddress,
-        shipping_provider: orderType === 'online' ? shippingProvider : null,
-        shipping_fee: shipFee, shipping_payer: shippingPayer,
+        shipping_provider: null,
+        shipping_fee: 0, shipping_payer: 'customer',
         shipping_metadata: finalShippingMetadata,
-        discount_amount: discount, discount_note: discountNote,
+        discount_amount: 0, discount_note: '',
         subtotal, total_amount: totalAmount,
-        payment_method: primaryMethod, payment_status: pStatus,
-        paid_amount: paidNonDebt,
-        payment_splits: splitsForDb.length > 0 ? splitsForDb : [],
-        note, needs_installation: needsInstallation,
+        payment_method: 'cod', payment_status: 'unpaid',
+        paid_amount: 0,
+        payment_splits: [],
+        note: '', needs_installation: false,
         created_by: currentUser.name,
         warehouse_id: selectedWarehouseId || null,
-        order_source: orderSource,
+        order_source: 'manual',
         internal_note: internalNote || null,
-        total_weight: parseInt(totalWeight) || 0,
-        shipping_service: isVTP ? shippingService : null
+        total_weight: 0,
+        shipping_service: null
       }]).select().single();
       if (orderErr) throw orderErr;
 
-      // 2. Insert order items
+      // Insert order items
       const itemsData = cartItems.map(item => ({
         order_id: order.id, product_id: item.product_id, product_name: item.product_name,
         product_sku: item.product_sku, quantity: parseInt(item.quantity),
@@ -527,7 +493,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsData);
       if (itemsErr) throw itemsErr;
 
-      // 3. Deduct stock atomically (POS only — online deducts on confirm)
+      // Deduct stock atomically (POS only — online deducts on confirm)
       if (isPOS) {
         for (const item of cartItems) {
           if (item.is_combo) {
@@ -561,55 +527,6 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
             }
           }
         }
-      }
-
-      // 4. Create Finance receipts for non-debt payment splits
-      if (isPOS && nonDebtSplits.length > 0) {
-        let firstReceiptId = null;
-        for (const split of nonDebtSplits) {
-          const receiptNumber = await genReceiptNumber('thu');
-          const methodLabel = paymentMethods[split.method]?.label || split.method;
-          const { data: receipt } = await supabase.from('receipts_payments').insert([{
-            tenant_id: tenant.id, receipt_number: receiptNumber, type: 'thu',
-            amount: parseFloat(split.amount), description: `Bán hàng - ${orderNumber}${hasMixedPayment ? ` (${methodLabel})` : ''}` + (customerName ? ` - ${customerName}` : ''),
-            category: 'Bán tại cửa hàng', receipt_date: getTodayVN(),
-            note: `Đơn hàng: ${orderNumber}`, status: 'approved',
-            created_by: currentUser.name, created_at: getNowISOVN()
-          }]).select().single();
-          if (receipt && !firstReceiptId) firstReceiptId = receipt.id;
-        }
-        if (firstReceiptId) {
-          await supabase.from('orders').update({ receipt_id: firstReceiptId }).eq('id', order.id);
-        }
-      }
-
-      // 5. Create debt for debt payment splits
-      if (isPOS && debtSplits.length > 0 && customerId) {
-        const totalDebt = debtSplits.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
-        await supabase.from('debts').insert([{
-          tenant_id: tenant.id, type: 'receivable', customer_name: customerName,
-          customer_phone: customerPhone, original_amount: totalDebt, remaining_amount: totalDebt,
-          description: `Công nợ đơn hàng ${orderNumber}`, due_date: null,
-          status: 'active', created_by: currentUser.name, created_at: getNowISOVN()
-        }]);
-      }
-
-      // 6. Create technical job if needed
-      if (needsInstallation && createTechnicalJob) {
-        const equipmentList = cartItems.map(i => `${i.product_name} x${i.quantity}`);
-        await createTechnicalJob({
-          title: `Lắp đặt - ${orderNumber}`,
-          type: 'Lắp đặt',
-          customerName: customerName,
-          customerPhone: customerPhone,
-          address: shippingAddress || '',
-          equipment: equipmentList,
-          technicians: [],
-          scheduledDate: getTodayVN(),
-          scheduledTime: '09:00',
-          customerPayment: 0,
-          createdBy: currentUser.name
-        });
       }
 
       showToast('Tạo đơn thành công! ' + orderNumber);
@@ -1248,25 +1165,20 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
             </div>
 
             <div className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
-              {/* Order type */}
+              {/* Order type — Online first */}
               <div className="flex gap-2">
-                {Object.entries(orderTypes).map(([k, v]) => (
-                  <button key={k} onClick={() => setOrderType(k)}
-                    className={`flex-1 p-3 rounded-lg text-center font-medium text-sm border-2 transition ${orderType === k ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600'}`}>
-                    {v.icon} {v.label}
-                  </button>
-                ))}
+                {['online', 'pos'].map(k => {
+                  const v = orderTypes[k];
+                  return (
+                    <button key={k} onClick={() => setOrderType(k)}
+                      className={`flex-1 p-3 rounded-lg text-center font-medium text-sm border-2 transition ${orderType === k ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600'}`}>
+                      {v.icon} {v.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Order source */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-600 whitespace-nowrap">Kênh:</label>
-                <select value={orderSource} onChange={e => setOrderSource(e.target.value)} className="flex-1 border rounded-lg px-3 py-1.5 text-sm">
-                  {Object.entries(orderSources).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-                </select>
-              </div>
-
-              {/* Warehouse selector */}
+              {/* A. Kho bán */}
               {(warehouses || []).length > 0 && (
                 <div className="bg-amber-50 rounded-lg p-3 space-y-1">
                   <label className="text-sm font-medium text-amber-700">Kho xuất hàng</label>
@@ -1279,9 +1191,25 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 </div>
               )}
 
-              {/* Customer */}
+              {/* B. Khách hàng */}
               <div className="bg-gray-50 rounded-lg p-3 space-y-2">
                 <label className="text-sm font-medium text-gray-700">Khách hàng</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
+                    onBlur={() => {
+                      if (customerPhone.trim() && !customerId) {
+                        const found = (customers || []).find(c => c.phone === customerPhone.trim());
+                        if (found) {
+                          setCustomerId(found.id); setCustomerName(found.name);
+                          setShippingAddress(found.address || '');
+                          if (found.address_data) { setShippingAddressData(found.address_data); }
+                        }
+                      }
+                    }}
+                    placeholder="SĐT" className="border rounded-lg px-3 py-2 text-sm" />
+                  <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Tên KH" className="border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                {/* Customer search dropdown */}
                 <div className="relative">
                   <input value={customerSearch} onChange={e => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
                     onFocus={() => setShowCustomerDropdown(true)} placeholder="Tìm khách hàng (tên, SĐT)..."
@@ -1292,6 +1220,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                         <button key={c.id} onClick={() => {
                           setCustomerId(c.id); setCustomerName(c.name); setCustomerPhone(c.phone || '');
                           setShippingAddress(c.address || ''); setCustomerSearch(c.name);
+                          if (c.address_data) { setShippingAddressData(c.address_data); }
                           setShowCustomerDropdown(false);
                         }} className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">
                           <div className="font-medium">{c.name}</div>
@@ -1301,63 +1230,65 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                     </div>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Tên KH" className="border rounded-lg px-3 py-2 text-sm" />
-                  <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="SĐT" className="border rounded-lg px-3 py-2 text-sm" />
-                </div>
+                {/* Address: AddressPicker if VTP token available, else plain input */}
+                {vtpToken ? (
+                  <div className="space-y-2">
+                    <AddressPicker token={vtpToken} value={shippingAddressData} onChange={setShippingAddressData} />
+                    <input value={shippingAddressDetail} onChange={e => setShippingAddressDetail(e.target.value)}
+                      placeholder="Số nhà, tên đường..." className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                ) : (
+                  <input value={shippingAddress} onChange={e => setShippingAddress(e.target.value)}
+                    placeholder="Địa chỉ giao hàng" className="w-full border rounded-lg px-3 py-2 text-sm" />
+                )}
               </div>
 
-              {/* Products */}
+              {/* C. Sản phẩm — Dropdown search */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">Sản phẩm</label>
-                <div className="flex gap-2">
-                  <input value={productSearch} onChange={e => setProductSearch(e.target.value)}
-                    placeholder="Tìm sản phẩm (tên, mã, barcode)..." className="flex-1 border rounded-lg px-3 py-2 text-sm" />
-                  <button type="button" onClick={() => setShowScanner(true)}
-                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200"
-                    title="Quét mã barcode/QR">📷</button>
-                </div>
-                <div className="flex gap-2">
-                  <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="flex-1 border rounded-lg px-3 py-1.5 text-sm">
-                    <option value="">Tất cả danh mục</option>
-                    {productCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <select value={productSortBy} onChange={e => setProductSortBy(e.target.value)} className="flex-1 border rounded-lg px-3 py-1.5 text-sm">
-                    <option value="name">Tên A-Z</option>
-                    <option value="price_asc">Giá thấp → cao</option>
-                    <option value="price_desc">Giá cao → thấp</option>
-                    <option value="stock_desc">Tồn kho nhiều</option>
-                  </select>
-                </div>
-
-                {/* Product grid */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto bg-gray-50 rounded-lg p-2">
-                  {displayProducts.map(p => {
-                    const stock = getProductStock(p);
-                    const outOfStock = stock <= 0;
-                    const inCart = cartItems.find(i => i.product_id === p.id);
-                    return (
-                      <button key={p.id} type="button"
-                        onClick={() => !outOfStock && addToCart(p)}
-                        disabled={outOfStock}
-                        className={`relative p-2.5 rounded-lg border text-left transition ${outOfStock ? 'opacity-50 cursor-not-allowed bg-gray-100' : inCart ? 'border-green-500 bg-green-50 hover:bg-green-100' : 'border-gray-200 bg-white hover:border-green-400 hover:bg-green-50'}`}
-                      >
-                        {outOfStock && <span className="absolute top-1 right-1 px-1.5 py-0.5 bg-red-500 text-white text-[10px] rounded font-medium">Hết hàng</span>}
-                        {inCart && <span className="absolute top-1 right-1 w-5 h-5 bg-green-600 text-white text-[10px] rounded-full flex items-center justify-center font-bold">{inCart.quantity}</span>}
-                        <div className="text-sm font-medium truncate">
-                          {p.name}
-                          {p.is_combo && <span className="ml-1 px-1 py-0.5 bg-orange-100 text-orange-700 text-[9px] rounded font-medium align-middle">Combo</span>}
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">{p.is_combo ? getComboChildrenLabel(p.id) : (p.category || 'Chưa phân loại')}</div>
-                        <div className="text-sm font-bold text-green-700 mt-1">{formatMoney(p.sell_price)}</div>
-                        <div className="text-xs text-gray-400">Tồn: {stock}</div>
-                      </button>
-                    );
-                  })}
-                  {displayProducts.length === 0 && <div className="col-span-full text-center py-4 text-gray-400 text-sm">Không tìm thấy sản phẩm</div>}
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <input value={productSearch} onChange={e => setProductSearch(e.target.value)}
+                      placeholder="Tìm sản phẩm (tên, mã, barcode)..." className="flex-1 border rounded-lg px-3 py-2 text-sm" />
+                    <button type="button" onClick={() => setShowScanner(true)}
+                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200"
+                      title="Quét mã barcode/QR">📷</button>
+                  </div>
+                  {/* Product dropdown (max 10 results) */}
+                  {productSearch.trim() && (
+                    <div className="absolute top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 z-10 max-h-64 overflow-y-auto">
+                      {displayProducts.slice(0, 10).map(p => {
+                        const stock = getProductStock(p);
+                        const outOfStock = stock <= 0;
+                        return (
+                          <button key={p.id} type="button" disabled={outOfStock}
+                            onClick={() => { addToCart(p); setProductSearch(''); }}
+                            className={`w-full text-left px-3 py-2 flex items-center gap-3 ${outOfStock ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'hover:bg-green-50'}`}>
+                            {p.image_url ? (
+                              <img src={p.image_url} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center flex-shrink-0 text-gray-400 text-xs">SP</div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">
+                                {p.name}
+                                {p.is_combo && <span className="ml-1 px-1 py-0.5 bg-orange-100 text-orange-700 text-[9px] rounded font-medium">Combo</span>}
+                              </div>
+                              <div className="text-xs text-gray-500">{p.sku || ''} {p.category ? `- ${p.category}` : ''}</div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="text-sm font-bold text-green-700">{formatMoney(p.sell_price)}</div>
+                              <div className={`text-xs ${outOfStock ? 'text-red-500' : 'text-gray-400'}`}>Tồn: {stock}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {displayProducts.length === 0 && <div className="px-3 py-4 text-center text-gray-400 text-sm">Không tìm thấy sản phẩm</div>}
+                    </div>
+                  )}
                 </div>
 
-                {/* Cart */}
+                {/* Cart table */}
                 {cartItems.length > 0 && (
                   <div className="space-y-2 pt-2 border-t">
                     <div className="text-sm font-medium text-gray-700">Giỏ hàng ({cartItems.length} SP)</div>
@@ -1368,9 +1299,9 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                             {item.product_name}
                             {item.is_combo && <span className="ml-1 px-1 py-0.5 bg-orange-100 text-orange-700 text-[9px] rounded font-medium">Combo</span>}
                           </div>
+                          {item.product_sku && <div className="text-[10px] text-gray-400">{item.product_sku}</div>}
                           {item.is_combo && <div className="text-[10px] text-orange-600 truncate">Gồm: {getComboChildrenLabel(item.product_id)}</div>}
-                          <div className="text-xs text-gray-500">Tồn: {item.stock}</div>
-                          {parseInt(item.quantity) > item.stock && <div className="text-xs text-red-500 font-medium">Vượt tồn kho!</div>}
+                          {parseInt(item.quantity) > item.stock && <div className="text-xs text-red-500 font-medium">Vượt tồn kho! (tồn: {item.stock})</div>}
                         </div>
                         <input type="number" min="1" value={item.quantity} onChange={e => updateCartItem(idx, 'quantity', parseInt(e.target.value) || 1)}
                           className="w-14 border rounded px-2 py-1 text-sm text-center" />
@@ -1387,126 +1318,23 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 )}
               </div>
 
-              {/* Shipping (online only) */}
-              {orderType === 'online' && (
-                <div className="bg-purple-50 rounded-lg p-3 space-y-2">
-                  <label className="text-sm font-medium text-purple-700">Vận chuyển</label>
-                  <select value={shippingProvider} onChange={e => { setShippingProvider(e.target.value); setShippingAddressData(null); setShippingAddressDetail(''); setShippingFee(''); }} className="w-full border rounded-lg px-3 py-2 text-sm">
-                    <option value="">Chọn đơn vị VC</option>
-                    {effectiveShippingProviders.map(sp => <option key={sp} value={sp}>{sp}</option>)}
-                  </select>
-                  {isVTP ? (
-                    <>
-                      <AddressPicker token={vtpToken} value={shippingAddressData} onChange={setShippingAddressData} />
-                      <input value={shippingAddressDetail} onChange={e => setShippingAddressDetail(e.target.value)}
-                        placeholder="Số nhà, tên đường..." className="w-full border rounded-lg px-3 py-2 text-sm" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs text-purple-600 mb-0.5 block">Trọng lượng (gram)</label>
-                          <input type="number" value={totalWeight} onChange={e => setTotalWeight(e.target.value)}
-                            placeholder="Auto 500g/SP" className="w-full border rounded-lg px-3 py-2 text-sm" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-purple-600 mb-0.5 block">Dịch vụ VTP</label>
-                          <select value={shippingService} onChange={e => setShippingService(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
-                            {Object.entries(shippingServices).map(([k, v]) => <option key={k} value={k}>{v.label} ({v.desc})</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <input type="number" value={shippingFee} onChange={e => setShippingFee(e.target.value)}
-                          placeholder="Phí ship" className="border rounded-lg px-3 py-2 text-sm" />
-                        <button type="button" onClick={handleCalcVtpFee} disabled={calculatingFee}
-                          className={`px-2 py-2 rounded-lg text-xs font-medium ${calculatingFee ? 'bg-gray-200 text-gray-400' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}>
-                          {calculatingFee ? 'Đang tính...' : '📊 Tính phí VTP'}
-                        </button>
-                        <select value={shippingPayer} onChange={e => setShippingPayer(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-                          {Object.entries(shippingPayers).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <input value={shippingAddress} onChange={e => setShippingAddress(e.target.value)}
-                        placeholder="Địa chỉ giao hàng" className="w-full border rounded-lg px-3 py-2 text-sm" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" value={shippingFee} onChange={e => setShippingFee(e.target.value)}
-                          placeholder="Phí ship" className="border rounded-lg px-3 py-2 text-sm" />
-                        <select value={shippingPayer} onChange={e => setShippingPayer(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-                          {Object.entries(shippingPayers).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Payment & Discount */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-gray-700">Thanh toán</label>
-                  <button type="button" onClick={addPaymentSplit} className="text-xs text-blue-600 hover:text-blue-800">+ Thêm PT</button>
-                </div>
-                {paymentSplits.map((split, idx) => (
-                  <div key={idx} className="flex gap-2 items-center">
-                    <select value={split.method} onChange={e => updatePaymentSplit(idx, 'method', e.target.value)} className="flex-1 border rounded-lg px-3 py-2 text-sm">
-                      {Object.entries(paymentMethods).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-                    </select>
-                    <input type="number" value={split.amount} onChange={e => updatePaymentSplit(idx, 'amount', e.target.value)}
-                      placeholder={paymentSplits.length === 1 ? String(totalAmount) : '0'}
-                      onFocus={_e => { if (paymentSplits.length === 1 && !split.amount) updatePaymentSplit(idx, 'amount', String(totalAmount)); }}
-                      className="w-28 border rounded-lg px-3 py-2 text-sm text-right" />
-                    {paymentSplits.length > 1 && (
-                      <button type="button" onClick={() => removePaymentSplit(idx)} className="text-red-400 hover:text-red-600 text-sm">✕</button>
-                    )}
-                  </div>
-                ))}
-                {paymentSplits.length > 1 && paymentRemaining !== 0 && (
-                  <div className={`text-xs ${paymentRemaining > 0 ? 'text-orange-600' : 'text-red-600'}`}>
-                    {paymentRemaining > 0 ? `Còn thiếu: ${formatMoney(paymentRemaining)}` : `Vượt quá: ${formatMoney(-paymentRemaining)}`}
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1 block">Chiết khấu</label>
-                  <input type="number" value={discountAmount} onChange={e => setDiscountAmount(e.target.value)}
-                    placeholder="0" className="w-full border rounded-lg px-3 py-2 text-sm" />
-                </div>
-              </div>
-
-              {/* Installation checkbox */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={needsInstallation} onChange={e => setNeedsInstallation(e.target.checked)}
-                  className="w-4 h-4 rounded text-green-600" />
-                <span className="text-sm">Cần lắp đặt (tự tạo job Kỹ thuật)</span>
-              </label>
-
-              {/* Note */}
-              <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Ghi chú đơn hàng (hiện cho KH)..."
+              {/* D. Ghi chú */}
+              <textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Ghi chú nội bộ..."
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
-              <textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Ghi chú nội bộ (chỉ nhân viên thấy)..."
-                className="w-full border border-orange-200 bg-orange-50 rounded-lg px-3 py-2 text-sm" />
 
-              {/* Total */}
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
-                <div className="flex justify-between text-sm"><span>Tạm tính</span><span>{formatMoney(subtotal)}</span></div>
-                {discount > 0 && <div className="flex justify-between text-sm text-red-600"><span>Chiết khấu</span><span>-{formatMoney(discount)}</span></div>}
-                {orderType === 'online' && shipFee > 0 && (
-                  <div className="flex justify-between text-sm"><span>Phí ship {shippingPayer === 'shop' ? '(shop trả)' : '(KH trả)'}</span><span>{shippingPayer === 'shop' ? formatMoney(shipFee) : '—'}</span></div>
-                )}
-                <div className="flex justify-between text-lg font-bold text-green-700 pt-1 border-t">
-                  <span>TỔNG</span><span>{formatMoney(totalAmount)}</span>
+              {/* E. Footer: Tổng SP + Tổng tiền + Tạo đơn */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex justify-between text-lg font-bold text-green-700">
+                  <span>{cartItems.reduce((s, i) => s + parseInt(i.quantity || 0), 0)} SP</span>
+                  <span>{formatMoney(subtotal)}</span>
                 </div>
-                {orderType === 'online' && totalAmount > 0 && (
-                  <div className="flex justify-between text-sm text-purple-700 pt-1"><span>Thu hộ COD</span><span>{formatMoney(totalAmount)}</span></div>
-                )}
               </div>
 
-              {/* Actions */}
               <div className="flex gap-2">
                 <button onClick={() => { if (cartItems.length > 0 && !window.confirm('Giỏ hàng có sản phẩm. Hủy sẽ mất dữ liệu. Tiếp tục?')) return; setShowCreateModal(false); }} className="flex-1 px-4 py-2.5 bg-gray-200 rounded-lg font-medium text-sm">Hủy</button>
                 <button onClick={handleCreateOrder} disabled={submitting}
                   className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm text-white ${submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}>
-                  {submitting ? '⏳ Đang xử lý...' : orderType === 'pos' ? 'Thanh toán' : 'Tạo đơn'}
+                  {submitting ? 'Đang xử lý...' : 'Tạo đơn'}
                 </button>
               </div>
             </div>
