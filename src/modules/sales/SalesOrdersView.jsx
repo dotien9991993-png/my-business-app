@@ -1238,8 +1238,13 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                       placeholder="Số nhà, tên đường..." className="w-full border rounded-lg px-3 py-2 text-sm" />
                   </div>
                 ) : (
-                  <input value={shippingAddress} onChange={e => setShippingAddress(e.target.value)}
-                    placeholder="Địa chỉ giao hàng" className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  <div className="space-y-2">
+                    <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Vui lòng kết nối Viettel Post trong Cài đặt &gt; Vận chuyển để chọn Tỉnh/Quận/Phường
+                    </div>
+                    <input value={shippingAddress} onChange={e => setShippingAddress(e.target.value)}
+                      placeholder="Địa chỉ giao hàng (nhập tay)" className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  </div>
                 )}
               </div>
 

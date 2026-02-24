@@ -8,13 +8,24 @@ export default function AddressPicker({ token, value, onChange, disabled }) {
   const [loadingP, setLoadingP] = useState(false);
   const [loadingD, setLoadingD] = useState(false);
   const [loadingW, setLoadingW] = useState(false);
+  const [errorP, setErrorP] = useState(null);
 
   // Load provinces on mount
   useEffect(() => {
     if (!token) return;
     setLoadingP(true);
+    setErrorP(null);
     getProvinces(token).then(res => {
-      if (res.success) setProvinces(res.data);
+      if (res.success) {
+        setProvinces(res.data || []);
+      } else {
+        console.error('[AddressPicker] getProvinces failed:', res.error);
+        setErrorP(res.error || 'Không tải được danh sách tỉnh');
+      }
+      setLoadingP(false);
+    }).catch(err => {
+      console.error('[AddressPicker] getProvinces error:', err);
+      setErrorP('Lỗi kết nối API');
       setLoadingP(false);
     });
   }, [token]);
@@ -24,9 +35,10 @@ export default function AddressPicker({ token, value, onChange, disabled }) {
     if (!token || !value?.province_id) { setDistricts([]); return; }
     setLoadingD(true);
     getDistricts(token, value.province_id).then(res => {
-      if (res.success) setDistricts(res.data);
+      if (res.success) setDistricts(res.data || []);
+      else console.error('[AddressPicker] getDistricts failed:', res.error);
       setLoadingD(false);
-    });
+    }).catch(err => { console.error('[AddressPicker] getDistricts error:', err); setLoadingD(false); });
   }, [token, value?.province_id]);
 
   // Load wards when district changes
@@ -34,9 +46,10 @@ export default function AddressPicker({ token, value, onChange, disabled }) {
     if (!token || !value?.district_id) { setWards([]); return; }
     setLoadingW(true);
     getWards(token, value.district_id).then(res => {
-      if (res.success) setWards(res.data);
+      if (res.success) setWards(res.data || []);
+      else console.error('[AddressPicker] getWards failed:', res.error);
       setLoadingW(false);
-    });
+    }).catch(err => { console.error('[AddressPicker] getWards error:', err); setLoadingW(false); });
   }, [token, value?.district_id]);
 
   const handleProvinceChange = (e) => {
@@ -71,7 +84,9 @@ export default function AddressPicker({ token, value, onChange, disabled }) {
   const selectClass = "w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100";
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="space-y-1">
+      {errorP && <div className="text-xs text-red-500">{errorP}</div>}
+      <div className="grid grid-cols-3 gap-2">
       <select
         value={value?.province_id || ''}
         onChange={handleProvinceChange}
@@ -107,6 +122,7 @@ export default function AddressPicker({ token, value, onChange, disabled }) {
           <option key={w.WARDS_ID} value={w.WARDS_ID}>{w.WARDS_NAME}</option>
         ))}
       </select>
+    </div>
     </div>
   );
 }
