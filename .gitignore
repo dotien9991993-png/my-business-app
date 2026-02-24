@@ -11,3 +11,6 @@ ios/App/Pods
 android/app/src/main/assets/public
 android/.gradle
 android/app/build
+
+# Backup files
+backups/

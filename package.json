@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backup": "node scripts/backup-supabase.js",
+    "restore": "node scripts/restore-supabase.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",
