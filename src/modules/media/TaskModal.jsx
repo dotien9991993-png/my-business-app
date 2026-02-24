@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { isAdmin } from '../../utils/permissionUtils';
+import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN } from '../../utils/dateUtils';
 
 const TaskModal = ({
@@ -9,6 +10,7 @@ const TaskModal = ({
   setShowModal,
   currentUser,
   allUsers,
+  tenant,
   changeStatus,
   addComment,
   addPostLink,
@@ -29,6 +31,16 @@ const TaskModal = ({
   const [editCrew, setEditCrew] = useState([]);
   const [editActors, setEditActors] = useState([]);
 
+  // Product states
+  const [taskProducts, setTaskProducts] = useState([]);
+  const [editProducts, setEditProducts] = useState([]);
+  const [editProductSearch, setEditProductSearch] = useState('');
+  const [editProductResults, setEditProductResults] = useState([]);
+  const [showEditProductDropdown, setShowEditProductDropdown] = useState(false);
+  const [searchingEditProducts, setSearchingEditProducts] = useState(false);
+  const editProductSearchRef = useRef(null);
+  const editDebounceRef = useRef(null);
+
   const videoCategories = [
     { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },
     { id: 'video_hangngay', name: '📅 Video hàng ngày', color: 'blue' },
@@ -36,6 +48,83 @@ const TaskModal = ({
     { id: 'video_quangcao', name: '📢 Video quảng cáo', color: 'orange' },
     { id: 'video_review', name: '⭐ Video review', color: 'yellow' }
   ];
+
+  // Load product details from product_ids
+  useEffect(() => {
+    const loadProducts = async () => {
+      const ids = selectedTask?.product_ids || [];
+      if (ids.length === 0) { setTaskProducts([]); return; }
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, name, sku, sell_price, image_url, stock_quantity')
+          .in('id', ids);
+        if (error) throw error;
+        setTaskProducts(data || []);
+      } catch (err) {
+        console.error('Error loading task products:', err);
+        setTaskProducts([]);
+      }
+    };
+    loadProducts();
+  }, [selectedTask?.product_ids]);
+
+  // Close edit product dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (editProductSearchRef.current && !editProductSearchRef.current.contains(e.target)) {
+        setShowEditProductDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Search products for edit form
+  const searchEditProducts = useCallback(async (query) => {
+    if (!query || query.length < 2 || !tenant?.id) {
+      setEditProductResults([]);
+      setShowEditProductDropdown(false);
+      return;
+    }
+    setSearchingEditProducts(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, sku, sell_price, image_url')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
+        .limit(10);
+      if (error) throw error;
+      const selectedIds = editProducts.map(p => p.id);
+      setEditProductResults((data || []).filter(p => !selectedIds.includes(p.id)));
+      setShowEditProductDropdown(true);
+    } catch (err) {
+      console.error('Error searching products:', err);
+      setEditProductResults([]);
+    } finally {
+      setSearchingEditProducts(false);
+    }
+  }, [tenant, editProducts]);
+
+  const handleEditProductSearchChange = (e) => {
+    const val = e.target.value;
+    setEditProductSearch(val);
+    if (editDebounceRef.current) clearTimeout(editDebounceRef.current);
+    editDebounceRef.current = setTimeout(() => searchEditProducts(val), 300);
+  };
+
+  const selectEditProduct = (product) => {
+    setEditProducts(prev => [...prev, product]);
+    setEditProductSearch('');
+    setEditProductResults([]);
+    setShowEditProductDropdown(false);
+  };
+
+  const removeEditProduct = (productId) => {
+    setEditProducts(prev => prev.filter(p => p.id !== productId));
+  };
 
   if (!selectedTask) return null;
 
@@ -49,6 +138,7 @@ const TaskModal = ({
     setEditCategory(selectedTask.category || '');
     setEditCrew(selectedTask.crew || []);
     setEditActors(selectedTask.actors || []);
+    setEditProducts([...taskProducts]);
     setShowEditTask(true);
   };
 
@@ -82,6 +172,7 @@ const TaskModal = ({
       return;
     }
     try {
+      const editProductIds = editProducts.map(p => p.id);
       const { error } = await supabase
         .from('tasks')
         .update({
@@ -92,13 +183,15 @@ const TaskModal = ({
           category: editCategory,
           cameramen: editCrew,
           editors: [],
-          actors: editActors
+          actors: editActors,
+          product_ids: editProductIds
         })
         .eq('id', selectedTask.id);
 
       if (error) throw error;
       alert('✅ Cập nhật task thành công!');
       setShowEditTask(false);
+      setTaskProducts([...editProducts]);
       await loadTasks();
       setSelectedTask({
         ...selectedTask,
@@ -110,7 +203,8 @@ const TaskModal = ({
         crew: editCrew,
         cameramen: editCrew,
         editors: [],
-        actors: editActors
+        actors: editActors,
+        product_ids: editProductIds
       });
     } catch (error) {
       console.error('Error updating task:', error);
@@ -218,6 +312,16 @@ const TaskModal = ({
                   )}
                 </div>
               )}
+              {/* Products in header */}
+              {taskProducts.length > 0 && (
+                <div className="flex gap-2 flex-wrap mt-2">
+                  {taskProducts.map(product => (
+                    <span key={product.id} className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-400/30 backdrop-blur-sm rounded-full text-sm">
+                      📦 {product.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -300,6 +404,41 @@ const TaskModal = ({
             </div>
           </div>
 
+          {/* Product details section */}
+          {taskProducts.length > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <h4 className="font-bold text-sm mb-3 text-green-900">📦 Sản phẩm trong video</h4>
+              <div className="space-y-2">
+                {taskProducts.map(product => (
+                  <div key={product.id} className="flex items-center gap-3 bg-white rounded-lg p-3 border border-green-100">
+                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                      {product.image_url ? (
+                        <img src={product.image_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-gray-400 text-xl">📦</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm">{product.name}</div>
+                      <div className="text-xs text-gray-500 flex gap-3">
+                        {product.sku && <span>SKU: {product.sku}</span>}
+                        {product.sell_price > 0 && <span>Giá: {formatMoney(product.sell_price)}</span>}
+                        {product.stock_quantity != null && <span>Tồn: {product.stock_quantity}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Tổng tiền sản phẩm */}
+              <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                <div className="text-sm text-gray-700">📊 Tổng: <span className="font-medium">{taskProducts.length} sản phẩm</span></div>
+                <div className="text-lg font-bold text-blue-700 mt-0.5">
+                  💰 Tổng giá trị: {formatMoney(taskProducts.reduce((sum, p) => sum + (parseFloat(p.sell_price) || 0), 0))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Edit Task Form */}
           {showEditTask && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
@@ -355,6 +494,69 @@ const TaskModal = ({
                     >
                       ✕ Xóa danh mục
                     </button>
+                  )}
+                </div>
+                {/* Edit products */}
+                <div ref={editProductSearchRef} className="relative">
+                  <label className="block text-sm font-medium mb-1">📦 Sản phẩm trong video</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={editProductSearch}
+                      onChange={handleEditProductSearchChange}
+                      placeholder="Tìm sản phẩm theo tên, SKU..."
+                      className="w-full px-3 py-2 pl-9 border rounded-lg focus:ring-2 focus:ring-green-500 bg-white"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                      {searchingEditProducts ? '...' : '🔍'}
+                    </span>
+                  </div>
+                  {showEditProductDropdown && editProductResults.length > 0 && (
+                    <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {editProductResults.map(product => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => selectEditProduct(product)}
+                          className="w-full flex items-center gap-3 px-3 py-2 hover:bg-green-50 border-b last:border-b-0 text-left"
+                        >
+                          <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center overflow-hidden shrink-0">
+                            {product.image_url ? (
+                              <img src={product.image_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-gray-400 text-sm">📦</span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{product.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {product.sku && <span>SKU: {product.sku}</span>}
+                              {product.sku && product.sell_price ? ' · ' : ''}
+                              {product.sell_price ? <span>{formatMoney(product.sell_price)}</span> : ''}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {editProducts.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {editProducts.map(product => (
+                        <span
+                          key={product.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-50 border border-green-200 text-green-800 rounded-full text-xs"
+                        >
+                          📦 {product.name}
+                          <button
+                            type="button"
+                            onClick={() => removeEditProduct(product.id)}
+                            className="text-green-600 hover:text-red-600 font-bold"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
                 {/* Crew edit (Quay & Dựng) */}

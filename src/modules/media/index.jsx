@@ -32,6 +32,7 @@ export default function MediaModule() {
     taskDateFilter, setTaskDateFilter, taskCustomStartDate, setTaskCustomStartDate,
     taskCustomEndDate, setTaskCustomEndDate,
     taskFilterCrew, setTaskFilterCrew, taskFilterActor, setTaskFilterActor,
+    taskFilterProduct, setTaskFilterProduct,
     integrations, setIntegrations, automations, setAutomations, templates, createFromTemplate
   } = useData();
 
@@ -51,7 +52,7 @@ export default function MediaModule() {
     <>
       {activeTab === 'mytasks' && <MyTasksView tasks={tasks} currentUser={currentUser} setSelectedTask={setSelectedTask} setShowModal={setShowModal} />}
       {activeTab === 'dashboard' && <DashboardView currentUser={currentUser} visibleTasks={visibleTasks} reportData={reportData} setSelectedTask={setSelectedTask} setShowModal={setShowModal} allUsers={allUsers} />}
-      {activeTab === 'tasks' && canAccessTab('media', 'videos') && <TasksView visibleTasks={visibleTasks} setSelectedTask={setSelectedTask} setShowModal={setShowModal} setShowCreateTaskModal={setShowCreateTaskModal} taskFilterTeam={taskFilterTeam} setTaskFilterTeam={setTaskFilterTeam} taskFilterStatus={taskFilterStatus} setTaskFilterStatus={setTaskFilterStatus} taskFilterAssignee={taskFilterAssignee} setTaskFilterAssignee={setTaskFilterAssignee} taskFilterCategory={taskFilterCategory} setTaskFilterCategory={setTaskFilterCategory} taskDateFilter={taskDateFilter} setTaskDateFilter={setTaskDateFilter} taskCustomStartDate={taskCustomStartDate} setTaskCustomStartDate={setTaskCustomStartDate} taskCustomEndDate={taskCustomEndDate} setTaskCustomEndDate={setTaskCustomEndDate} taskFilterCrew={taskFilterCrew} setTaskFilterCrew={setTaskFilterCrew} taskFilterActor={taskFilterActor} setTaskFilterActor={setTaskFilterActor} />}
+      {activeTab === 'tasks' && canAccessTab('media', 'videos') && <TasksView visibleTasks={visibleTasks} setSelectedTask={setSelectedTask} setShowModal={setShowModal} setShowCreateTaskModal={setShowCreateTaskModal} taskFilterTeam={taskFilterTeam} setTaskFilterTeam={setTaskFilterTeam} taskFilterStatus={taskFilterStatus} setTaskFilterStatus={setTaskFilterStatus} taskFilterAssignee={taskFilterAssignee} setTaskFilterAssignee={setTaskFilterAssignee} taskFilterCategory={taskFilterCategory} setTaskFilterCategory={setTaskFilterCategory} taskDateFilter={taskDateFilter} setTaskDateFilter={setTaskDateFilter} taskCustomStartDate={taskCustomStartDate} setTaskCustomStartDate={setTaskCustomStartDate} taskCustomEndDate={taskCustomEndDate} setTaskCustomEndDate={setTaskCustomEndDate} taskFilterCrew={taskFilterCrew} setTaskFilterCrew={setTaskFilterCrew} taskFilterActor={taskFilterActor} setTaskFilterActor={setTaskFilterActor} taskFilterProduct={taskFilterProduct} setTaskFilterProduct={setTaskFilterProduct} />}
       {activeTab === 'calendar' && canAccessTab('media', 'calendar') && <CalendarView visibleTasks={visibleTasks} setSelectedTask={setSelectedTask} setShowModal={setShowModal} />}
       {activeTab === 'report' && canAccessTab('media', 'report') && <ReportView visibleTasks={visibleTasks} allUsers={allUsers} />}
       {activeTab === 'integrations' && <IntegrationsView currentUser={currentUser} integrations={integrations} setIntegrations={setIntegrations} />}

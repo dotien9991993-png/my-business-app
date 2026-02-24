@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { supabase } from '../../supabaseClient';
 import { getTodayVN } from '../../utils/dateUtils';
+import { formatMoney } from '../../utils/formatUtils';
 import { isAdmin } from '../../utils/permissionUtils';
 
-const CreateTaskModal = ({ currentUser, allUsers, setShowCreateTaskModal, createNewTask }) => {
+const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal, createNewTask }) => {
   const [title, setTitle] = useState('');
   const [platform, setPlatform] = useState(['Facebook', 'TikTok']);
   const [dueDate, setDueDate] = useState(getTodayVN());
@@ -12,6 +14,15 @@ const CreateTaskModal = ({ currentUser, allUsers, setShowCreateTaskModal, create
   const [crew, setCrew] = useState([]);
   const [actors, setActors] = useState([]);
 
+  // Product search states
+  const [productSearch, setProductSearch] = useState('');
+  const [productResults, setProductResults] = useState([]);
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [searchingProducts, setSearchingProducts] = useState(false);
+  const productSearchRef = useRef(null);
+  const debounceRef = useRef(null);
+
   const videoCategories = [
     { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },
     { id: 'video_hangngay', name: '📅 Video hàng ngày', color: 'blue' },
@@ -19,6 +30,64 @@ const CreateTaskModal = ({ currentUser, allUsers, setShowCreateTaskModal, create
     { id: 'video_quangcao', name: '📢 Video quảng cáo', color: 'orange' },
     { id: 'video_review', name: '⭐ Video review', color: 'yellow' }
   ];
+
+  // Debounced product search
+  const searchProducts = useCallback(async (query) => {
+    if (!query || query.length < 2 || !tenant?.id) {
+      setProductResults([]);
+      setShowProductDropdown(false);
+      return;
+    }
+    setSearchingProducts(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, sku, sell_price, image_url')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
+        .limit(10);
+      if (error) throw error;
+      // Filter out already selected
+      const selectedIds = selectedProducts.map(p => p.id);
+      setProductResults((data || []).filter(p => !selectedIds.includes(p.id)));
+      setShowProductDropdown(true);
+    } catch (err) {
+      console.error('Error searching products:', err);
+      setProductResults([]);
+    } finally {
+      setSearchingProducts(false);
+    }
+  }, [tenant, selectedProducts]);
+
+  const handleProductSearchChange = (e) => {
+    const val = e.target.value;
+    setProductSearch(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => searchProducts(val), 300);
+  };
+
+  const selectProduct = (product) => {
+    setSelectedProducts(prev => [...prev, product]);
+    setProductSearch('');
+    setProductResults([]);
+    setShowProductDropdown(false);
+  };
+
+  const removeProduct = (productId) => {
+    setSelectedProducts(prev => prev.filter(p => p.id !== productId));
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (productSearchRef.current && !productSearchRef.current.contains(e.target)) {
+        setShowProductDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const togglePlatform = (plat) => {
     if (platform.includes(plat)) {
@@ -135,6 +204,97 @@ const CreateTaskModal = ({ currentUser, allUsers, setShowCreateTaskModal, create
             </div>
           </div>
 
+          {/* Product search - SAU Danh mục, TRƯỚC Gán cho */}
+          <div ref={productSearchRef} className="relative">
+            <label className="block text-sm font-medium mb-2">📦 Sản phẩm trong video (Chọn nhiều)</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={productSearch}
+                onChange={handleProductSearchChange}
+                placeholder="Tìm sản phẩm theo tên, SKU..."
+                className="w-full px-4 py-2 pl-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                {searchingProducts ? '...' : '🔍'}
+              </span>
+            </div>
+
+            {/* Dropdown kết quả */}
+            {showProductDropdown && productResults.length > 0 && (
+              <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {productResults.map(product => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => selectProduct(product)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-green-50 border-b last:border-b-0 text-left transition-colors"
+                  >
+                    <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                      {product.image_url ? (
+                        <img src={product.image_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-gray-400 text-lg">📦</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{product.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {product.sku && <span>SKU: {product.sku}</span>}
+                        {product.sku && product.sell_price ? ' · ' : ''}
+                        {product.sell_price ? <span>Giá: {formatMoney(product.sell_price)}</span> : ''}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {showProductDropdown && productResults.length === 0 && productSearch.length >= 2 && !searchingProducts && (
+              <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg p-4 text-center text-gray-500 text-sm">
+                Không tìm thấy sản phẩm
+              </div>
+            )}
+
+            {/* Chip sản phẩm đã chọn */}
+            {selectedProducts.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {selectedProducts.map(product => (
+                  <span
+                    key={product.id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 border border-green-200 text-green-800 rounded-full text-sm"
+                  >
+                    <span className="w-5 h-5 rounded overflow-hidden shrink-0 bg-gray-100 flex items-center justify-center">
+                      {product.image_url ? (
+                        <img src={product.image_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-xs">📦</span>
+                      )}
+                    </span>
+                    <span className="truncate max-w-[150px]">{product.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeProduct(product.id)}
+                      className="text-green-600 hover:text-red-600 font-bold ml-0.5"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Tổng tiền sản phẩm */}
+            {selectedProducts.length > 0 && (
+              <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                <div className="text-sm text-gray-700">📊 Tổng: <span className="font-medium">{selectedProducts.length} sản phẩm</span></div>
+                <div className="text-lg font-bold text-blue-700 mt-0.5">
+                  💰 Tổng giá trị: {formatMoney(selectedProducts.reduce((sum, p) => sum + (parseFloat(p.sell_price) || 0), 0))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">
               👤 Gán cho *
@@ -246,7 +406,8 @@ const CreateTaskModal = ({ currentUser, allUsers, setShowCreateTaskModal, create
                   alert('⚠️ Vui lòng điền đầy đủ thông tin bắt buộc!');
                   return;
                 }
-                createNewTask(title, platform.join(', '), 'Trung bình', dueDate, description, assignee, videoCategory, crew, actors);
+                const productIds = selectedProducts.map(p => p.id);
+                createNewTask(title, platform.join(', '), 'Trung bình', dueDate, description, assignee, videoCategory, crew, actors, productIds);
               }}
               className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
             >

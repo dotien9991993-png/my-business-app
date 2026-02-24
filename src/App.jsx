@@ -276,8 +276,8 @@ function AppContent() {
 
       {/* Global modals */}
       <Suspense fallback={null}>
-        {showModal && <TaskModal selectedTask={selectedTask} setSelectedTask={setSelectedTask} setShowModal={setShowModal} currentUser={currentUser} allUsers={allUsers} changeStatus={changeStatus} addComment={addComment} addPostLink={addPostLink} removePostLink={removePostLink} deleteTask={deleteTask} loadTasks={loadTasks} addNotification={addNotification} />}
-        {showCreateTaskModal && <CreateTaskModal currentUser={currentUser} allUsers={allUsers} setShowCreateTaskModal={setShowCreateTaskModal} createNewTask={createNewTask} />}
+        {showModal && <TaskModal selectedTask={selectedTask} setSelectedTask={setSelectedTask} setShowModal={setShowModal} currentUser={currentUser} allUsers={allUsers} tenant={tenant} changeStatus={changeStatus} addComment={addComment} addPostLink={addPostLink} removePostLink={removePostLink} deleteTask={deleteTask} loadTasks={loadTasks} addNotification={addNotification} />}
+        {showCreateTaskModal && <CreateTaskModal currentUser={currentUser} allUsers={allUsers} tenant={tenant} setShowCreateTaskModal={setShowCreateTaskModal} createNewTask={createNewTask} />}
         {showCreateJobModal && <CreateJobModal showCreateJobModal={showCreateJobModal} setShowCreateJobModal={setShowCreateJobModal} prefillJobData={prefillJobData} currentUser={currentUser} allUsers={allUsers} createTechnicalJob={createTechnicalJob} />}
         {showJobModal && <JobDetailModal selectedJob={selectedJob} setSelectedJob={setSelectedJob} showJobModal={showJobModal} setShowJobModal={setShowJobModal} currentUser={currentUser} tenant={tenant} allUsers={allUsers} loadTechnicalJobs={loadTechnicalJobs} loadFinanceData={loadFinanceData} saveJobEditDraft={saveJobEditDraft} loadJobEditDraft={loadJobEditDraft} clearJobEditDraft={clearJobEditDraft} deleteTechnicalJob={deleteTechnicalJob} addNotification={addNotification} />}
       </Suspense>
