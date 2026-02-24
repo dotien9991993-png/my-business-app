@@ -6,6 +6,7 @@ import { logActivity } from '../../lib/activityLog';
 
 // ============ HRM ATTENDANCE VIEW ============
 // Quản lý chấm công nhân sự - Hoang Nam Audio ERP
+// Hỗ trợ nhiều ca trong 1 ngày
 
 export default function HrmAttendanceView({
   employees,
@@ -29,14 +30,11 @@ export default function HrmAttendanceView({
     return `${vn.getFullYear()}-${String(vn.getMonth() + 1).padStart(2, '0')}`;
   });
   const [filterDepartment, setFilterDepartment] = useState('all');
-  const [editModal, setEditModal] = useState(null); // { employeeId, date, record }
-  const [editForm, setEditForm] = useState({
-    check_in: '',
-    check_out: '',
-    status: 'present',
-    note: '',
-    overtime_hours: 0
-  });
+  const [editModal, setEditModal] = useState(null); // { employeeId, employeeName, date, day, records }
+  const [editShifts, setEditShifts] = useState([]); // [{ id, check_in: 'HH:MM', check_out: 'HH:MM' }]
+  const [editStatus, setEditStatus] = useState('present');
+  const [editOvertime, setEditOvertime] = useState(0);
+  const [editNote, setEditNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -65,25 +63,25 @@ export default function HrmAttendanceView({
   // ---- Ca làm việc của nhân viên hiện tại ----
   const currentShift = useMemo(() => {
     if (!currentEmployee || !workShifts || workShifts.length === 0) return null;
-    // Tìm ca theo shift_id của nhân viên, hoặc lấy ca mặc định
     if (currentEmployee.shift_id) {
       return workShifts.find(s => s.id === currentEmployee.shift_id) || workShifts[0];
     }
     return workShifts[0] || null;
   }, [currentEmployee, workShifts]);
 
-  // ---- Bản ghi chấm công hôm nay của nhân viên hiện tại ----
+  // ---- Tất cả bản ghi chấm công hôm nay của nhân viên hiện tại (multi-shift) ----
   const todayStr = getTodayVN();
-  const todayRecord = useMemo(() => {
-    if (!currentEmployee || !attendances) return null;
-    return attendances.find(a =>
-      a.employee_id === currentEmployee.id && a.date === todayStr
-    ) || null;
+  const todayRecords = useMemo(() => {
+    if (!currentEmployee || !attendances) return [];
+    return attendances
+      .filter(a => a.employee_id === currentEmployee.id && a.date === todayStr)
+      .sort((a, b) => (a.shift_number || 1) - (b.shift_number || 1));
   }, [attendances, currentEmployee, todayStr]);
 
-  // ---- Trạng thái check-in/out ----
-  const hasCheckedIn = !!todayRecord?.check_in;
-  const hasCheckedOut = !!todayRecord?.check_out;
+  // Ca đang mở (có check_in nhưng chưa check_out)
+  const openShift = useMemo(() => {
+    return todayRecords.find(r => r.check_in && !r.check_out) || null;
+  }, [todayRecords]);
 
   // ---- Format giờ từ ISO/datetime ----
   const formatTime = (dateTimeStr) => {
@@ -99,33 +97,25 @@ export default function HrmAttendanceView({
   // ---- Format giờ ngắn (HH:MM) ----
   const formatTimeShort = (timeStr) => {
     if (!timeStr) return '--:--';
-    // Nếu là time string thuần (HH:MM:SS hoặc HH:MM)
     if (timeStr.length <= 8 && timeStr.includes(':')) {
       return timeStr.substring(0, 5);
     }
     return formatTime(timeStr);
   };
 
-  // ---- Xác định trạng thái hiển thị ----
-  const getCheckStatusText = () => {
-    if (!currentEmployee) return 'Không tìm thấy hồ sơ nhân viên';
-    if (!hasCheckedIn) return 'Chưa chấm công';
-    if (hasCheckedIn && !hasCheckedOut) {
-      const isLate = todayRecord?.status === 'late';
-      const timeIn = formatTime(todayRecord.check_in);
-      return isLate
-        ? `Đi trễ - Vào lúc ${timeIn}`
-        : `Đã vào lúc ${timeIn}`;
-    }
-    if (hasCheckedOut) {
-      const isEarly = todayRecord?.status === 'early_leave';
-      const timeOut = formatTime(todayRecord.check_out);
-      return isEarly
-        ? `Về sớm - Ra lúc ${timeOut}`
-        : `Đã ra lúc ${timeOut}`;
-    }
-    return '';
+  // ---- Tính số giờ giữa 2 thời điểm ----
+  const calculateHours = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut) return 0;
+    const diff = new Date(checkOut) - new Date(checkIn);
+    return Math.round((diff / (1000 * 60 * 60)) * 10) / 10;
   };
+
+  // ---- Tổng giờ làm hôm nay ----
+  const totalTodayHours = useMemo(() => {
+    return todayRecords.reduce((sum, rec) => {
+      return sum + calculateHours(rec.check_in, rec.check_out);
+    }, 0);
+  }, [todayRecords]);
 
   // ---- Kiểm tra đi trễ ----
   const checkIfLate = (checkInTime) => {
@@ -147,18 +137,22 @@ export default function HrmAttendanceView({
     return now < shiftEnd;
   };
 
-  // ---- CHECK-IN ----
+  // ---- CHECK-IN (tạo ca mới) ----
   const handleCheckIn = async () => {
     if (!currentEmployee || !tenant) {
       showToast('Không tìm thấy hồ sơ nhân viên', 'error');
       return;
     }
-    if (hasCheckedIn) return;
+    if (openShift) {
+      showToast('Bạn đang có ca chưa check-out!', 'error');
+      return;
+    }
 
     setCheckingIn(true);
     try {
       const nowISO = getNowISOVN();
-      const isLate = checkIfLate(nowISO);
+      const shiftNum = todayRecords.length + 1;
+      const isLate = shiftNum === 1 ? checkIfLate(nowISO) : false; // Chỉ check late ở ca 1
 
       const { error } = await supabase
         .from('hrm_attendances')
@@ -166,6 +160,7 @@ export default function HrmAttendanceView({
           tenant_id: tenant.id,
           employee_id: currentEmployee.id,
           date: todayStr,
+          shift_number: shiftNum,
           check_in: nowISO,
           check_in_method: 'manual',
           status: isLate ? 'late' : 'present'
@@ -177,10 +172,10 @@ export default function HrmAttendanceView({
         tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
         module: 'hrm', action: 'create', entityType: 'attendance',
         entityName: currentEmployee?.full_name,
-        description: `Chấm công vào: ${currentEmployee?.full_name}${isLate ? ' (Đi trễ)' : ''}`
+        description: `Chấm công vào Ca ${shiftNum}: ${currentEmployee?.full_name}${isLate ? ' (Đi trễ)' : ''}`
       });
 
-      showToast(isLate ? 'Đã chấm công vào - Đi trễ!' : 'Đã chấm công vào thành công!');
+      showToast(`Check-in Ca ${shiftNum} thành công!${isLate ? ' (Đi trễ)' : ''}`);
       if (loadHrmData) loadHrmData();
     } catch (err) {
       console.error('Check-in error:', err);
@@ -190,40 +185,39 @@ export default function HrmAttendanceView({
     }
   };
 
-  // ---- CHECK-OUT ----
+  // ---- CHECK-OUT (cập nhật ca đang mở) ----
   const handleCheckOut = async () => {
-    if (!todayRecord || hasCheckedOut) return;
+    if (!openShift) return;
 
     setCheckingIn(true);
     try {
       const nowISO = getNowISOVN();
-      const isEarly = checkIfEarlyLeave(nowISO);
+      const isEarly = openShift.shift_number === 1 ? checkIfEarlyLeave(nowISO) : false;
 
       const updateData = {
         check_out: nowISO,
         check_out_method: 'manual'
       };
 
-      // Nếu về sớm, cập nhật status (trừ khi đã late)
-      if (isEarly && todayRecord.status !== 'late') {
+      if (isEarly && openShift.status !== 'late') {
         updateData.status = 'early_leave';
       }
 
       const { error } = await supabase
         .from('hrm_attendances')
         .update(updateData)
-        .eq('id', todayRecord.id);
+        .eq('id', openShift.id);
 
       if (error) throw error;
 
       logActivity({
         tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
         module: 'hrm', action: 'update', entityType: 'attendance',
-        entityId: todayRecord.id,
-        description: `Chấm công ra${isEarly ? ' (Về sớm)' : ''}`
+        entityId: openShift.id,
+        description: `Chấm công ra Ca ${openShift.shift_number || 1}${isEarly ? ' (Về sớm)' : ''}`
       });
 
-      showToast(isEarly ? 'Đã chấm công ra - Về sớm!' : 'Đã chấm công ra thành công!');
+      showToast(`Check-out Ca ${openShift.shift_number || 1} thành công!${isEarly ? ' (Về sớm)' : ''}`);
       if (loadHrmData) loadHrmData();
     } catch (err) {
       console.error('Check-out error:', err);
@@ -245,30 +239,32 @@ export default function HrmAttendanceView({
     if (filterDepartment !== 'all') {
       list = list.filter(e => e.department_id === filterDepartment);
     }
-    // Permission: level 1 chỉ xem hàng của mình trong bảng chấm công
     if (permLevel <= 1 && currentEmployee) {
       list = list.filter(e => e.id === currentEmployee.id);
     }
     return list.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
   }, [employees, filterDepartment, permLevel, currentEmployee]);
 
-  // Map chấm công theo employee_id + date
+  // Map chấm công theo employee_id + date → ARRAY (multi-shift)
   const attendanceMap = useMemo(() => {
     if (!attendances) return {};
     const map = {};
     attendances.forEach(a => {
       if (a.date && a.date.startsWith(filterMonth)) {
         const key = `${a.employee_id}_${a.date}`;
-        map[key] = a;
+        if (!map[key]) map[key] = [];
+        map[key].push(a);
       }
     });
+    // Sort mỗi array theo shift_number
+    Object.values(map).forEach(arr => arr.sort((a, b) => (a.shift_number || 1) - (b.shift_number || 1)));
     return map;
   }, [attendances, filterMonth]);
 
-  // Lấy bản ghi chấm công cho 1 ô
+  // Lấy tất cả bản ghi chấm công cho 1 ô (array)
   const getAttendanceForCell = (employeeId, day) => {
     const dateStr = `${filterMonth}-${String(day).padStart(2, '0')}`;
-    return attendanceMap[`${employeeId}_${dateStr}`] || null;
+    return attendanceMap[`${employeeId}_${dateStr}`] || [];
   };
 
   // ---- Tính tổng hợp cho từng nhân viên ----
@@ -278,12 +274,15 @@ export default function HrmAttendanceView({
     let absentDays = 0;
     let overtimeHours = 0;
     let lateDays = 0;
+    let totalWorkHours = 0;
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const record = getAttendanceForCell(employeeId, d);
-      if (!record) continue;
+      const records = getAttendanceForCell(employeeId, d);
+      if (records.length === 0) continue;
 
-      switch (record.status) {
+      // Dùng record đầu tiên (ca 1) để xác định trạng thái ngày
+      const primary = records[0];
+      switch (primary.status) {
         case 'present':
           workDays++;
           break;
@@ -305,15 +304,18 @@ export default function HrmAttendanceView({
           leaveDays++;
           break;
         case 'holiday':
-          // Nghỉ lễ không tính vắng
           break;
         default:
           break;
       }
-      overtimeHours += parseFloat(record.overtime_hours || 0);
+      // Cộng overtime + work hours từ tất cả ca
+      records.forEach(r => {
+        overtimeHours += parseFloat(r.overtime_hours || 0);
+        totalWorkHours += calculateHours(r.check_in, r.check_out);
+      });
     }
 
-    return { workDays, leaveDays, absentDays, overtimeHours, lateDays };
+    return { workDays, leaveDays, absentDays, overtimeHours, lateDays, totalWorkHours: Math.round(totalWorkHours * 10) / 10 };
   }, [daysInMonth, attendanceMap, filterMonth]);
 
   // ---- Thống kê tổng hợp ----
@@ -321,21 +323,22 @@ export default function HrmAttendanceView({
     const activeEmployees = employees?.filter(e => e.status === 'active') || [];
     const totalEmployees = activeEmployees.length;
 
-    // Đếm NV chấm công hôm nay
+    // Đếm NV chấm công hôm nay (unique employees)
     const todayAttendances = (attendances || []).filter(a => a.date === todayStr);
-    const checkedInToday = todayAttendances.length;
+    const checkedInToday = new Set(todayAttendances.map(a => a.employee_id)).size;
 
-    // Tỷ lệ đúng giờ
-    const presentToday = todayAttendances.filter(a => a.status === 'present').length;
-    const lateToday = todayAttendances.filter(a => a.status === 'late').length;
+    // Tỷ lệ đúng giờ (chỉ xét ca 1)
+    const primaryToday = todayAttendances.filter(a => !a.shift_number || a.shift_number === 1);
+    const presentToday = primaryToday.filter(a => a.status === 'present').length;
+    const lateToday = primaryToday.filter(a => a.status === 'late').length;
     const onTimeRate = (presentToday + lateToday) > 0
       ? Math.round((presentToday / (presentToday + lateToday)) * 100)
       : 100;
 
-    // NV đi trễ nhiều nhất tháng
+    // NV đi trễ nhiều nhất tháng (chỉ xét ca 1)
     const lateCountMap = {};
     (attendances || []).forEach(a => {
-      if (a.date?.startsWith(filterMonth) && a.status === 'late') {
+      if (a.date?.startsWith(filterMonth) && a.status === 'late' && (!a.shift_number || a.shift_number === 1)) {
         lateCountMap[a.employee_id] = (lateCountMap[a.employee_id] || 0) + 1;
       }
     });
@@ -363,26 +366,33 @@ export default function HrmAttendanceView({
     };
   }, [employees, attendances, todayStr, filterMonth]);
 
-  // ---- Mở modal chỉnh sửa ô chấm công ----
+  // ---- Mở modal chỉnh sửa ô chấm công (multi-shift) ----
   const openEditModal = (employeeId, day) => {
     const dateStr = `${filterMonth}-${String(day).padStart(2, '0')}`;
-    const record = getAttendanceForCell(employeeId, day);
+    const records = getAttendanceForCell(employeeId, day);
     const emp = employees?.find(e => e.id === employeeId);
 
-    setEditForm({
-      check_in: record?.check_in ? formatTimeFromISO(record.check_in) : '',
-      check_out: record?.check_out ? formatTimeFromISO(record.check_out) : '',
-      status: record?.status || 'present',
-      note: record?.note || '',
-      overtime_hours: record?.overtime_hours || 0
-    });
+    const shifts = records.length > 0
+      ? records.map(r => ({
+          id: r.id,
+          check_in: formatTimeFromISO(r.check_in) || '',
+          check_out: formatTimeFromISO(r.check_out) || '',
+        }))
+      : [{ id: null, check_in: '', check_out: '' }];
+
+    setEditShifts(shifts);
+
+    const primary = records[0];
+    setEditStatus(primary?.status || 'present');
+    setEditOvertime(primary?.overtime_hours || 0);
+    setEditNote(primary?.note || '');
 
     setEditModal({
       employeeId,
       employeeName: emp?.full_name || '',
       date: dateStr,
       day,
-      record
+      records
     });
   };
 
@@ -395,69 +405,103 @@ export default function HrmAttendanceView({
     return `${h}:${m}`;
   };
 
-  // ---- Lưu chỉnh sửa chấm công ----
+  // Tính tổng giờ trong edit modal
+  const editTotalHours = useMemo(() => {
+    return editShifts.reduce((sum, s) => {
+      if (s.check_in && s.check_out && s.check_out > s.check_in) {
+        const [h1, m1] = s.check_in.split(':').map(Number);
+        const [h2, m2] = s.check_out.split(':').map(Number);
+        return sum + (h2 - h1) + (m2 - m1) / 60;
+      }
+      return sum;
+    }, 0);
+  }, [editShifts]);
+
+  // ---- Lưu chỉnh sửa chấm công (multi-shift) ----
   const handleSaveEdit = async () => {
     if (!editModal || !tenant) return;
+
+    // Validate
+    const validShifts = editShifts.filter(s => s.check_in || s.check_out);
+    for (let i = 0; i < validShifts.length; i++) {
+      const s = validShifts[i];
+      if (s.check_in && s.check_out && s.check_out <= s.check_in) {
+        showToast(`Ca ${i + 1}: Giờ ra phải sau giờ vào!`, 'error');
+        return;
+      }
+    }
+    // Check overlap
+    for (let i = 0; i < validShifts.length; i++) {
+      for (let j = i + 1; j < validShifts.length; j++) {
+        const a = validShifts[i];
+        const b = validShifts[j];
+        if (a.check_in && a.check_out && b.check_in && b.check_out) {
+          if (a.check_in < b.check_out && b.check_in < a.check_out) {
+            showToast(`Ca ${i + 1} và Ca ${j + 1} bị trùng giờ!`, 'error');
+            return;
+          }
+        }
+      }
+    }
+
     setSaving(true);
-
     try {
-      const { employeeId, date, record } = editModal;
-
-      // Chuyển HH:MM thành ISO datetime
+      const { employeeId, date } = editModal;
       const buildDateTime = (timeStr) => {
         if (!timeStr) return null;
         return `${date}T${timeStr}:00+07:00`;
       };
 
-      const checkInISO = buildDateTime(editForm.check_in);
-      const checkOutISO = buildDateTime(editForm.check_out);
-
-      // Tính giờ làm
-      let workHours = 0;
-      if (checkInISO && checkOutISO) {
-        const diff = new Date(checkOutISO) - new Date(checkInISO);
-        workHours = Math.round((diff / (1000 * 60 * 60)) * 100) / 100;
-        if (workHours < 0) workHours = 0;
-      }
-
-      const payload = {
-        tenant_id: tenant.id,
-        employee_id: employeeId,
-        date: date,
-        check_in: checkInISO,
-        check_out: checkOutISO,
-        status: editForm.status,
-        note: editForm.note || null,
-        overtime_hours: parseFloat(editForm.overtime_hours) || 0
-      };
-
-      if (record?.id) {
-        // Cập nhật bản ghi
+      // Xóa tất cả bản ghi cũ cho ngày này
+      const existingIds = editModal.records.map(r => r.id).filter(Boolean);
+      if (existingIds.length > 0) {
         const { error } = await supabase
           .from('hrm_attendances')
-          .update(payload)
-          .eq('id', record.id);
+          .delete()
+          .in('id', existingIds);
         if (error) throw error;
-        logActivity({
-          tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
-          module: 'hrm', action: 'update', entityType: 'attendance',
-          entityId: record.id,
-          description: `Chỉnh sửa chấm công ngày ${date} cho NV ${employeeId}`
-        });
-      } else {
-        // Tạo mới
-        payload.check_in_method = 'manual';
-        payload.check_out_method = 'manual';
-        const { error } = await supabase
-          .from('hrm_attendances')
-          .insert(payload);
-        if (error) throw error;
-        logActivity({
-          tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
-          module: 'hrm', action: 'create', entityType: 'attendance',
-          description: `Tạo chấm công thủ công ngày ${date} cho NV ${employeeId}`
-        });
       }
+
+      // Insert lại tất cả ca hợp lệ
+      if (validShifts.length > 0) {
+        // Sort theo check_in
+        validShifts.sort((a, b) => (a.check_in || '').localeCompare(b.check_in || ''));
+
+        const inserts = validShifts.map((s, i) => ({
+          tenant_id: tenant.id,
+          employee_id: employeeId,
+          date: date,
+          shift_number: i + 1,
+          check_in: buildDateTime(s.check_in),
+          check_out: buildDateTime(s.check_out),
+          check_in_method: 'manual',
+          check_out_method: s.check_out ? 'manual' : null,
+          status: i === 0 ? editStatus : 'present',
+          overtime_hours: i === 0 ? (parseFloat(editOvertime) || 0) : 0,
+          note: i === 0 ? (editNote || null) : null,
+        }));
+
+        const { error } = await supabase.from('hrm_attendances').insert(inserts);
+        if (error) throw error;
+      } else if (['absent', 'annual_leave', 'sick', 'holiday', 'half_day'].includes(editStatus)) {
+        // Không có ca nhưng có trạng thái nghỉ → tạo 1 record không có giờ
+        const { error } = await supabase.from('hrm_attendances').insert({
+          tenant_id: tenant.id,
+          employee_id: employeeId,
+          date: date,
+          shift_number: 1,
+          status: editStatus,
+          overtime_hours: parseFloat(editOvertime) || 0,
+          note: editNote || null,
+        });
+        if (error) throw error;
+      }
+
+      logActivity({
+        tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
+        module: 'hrm', action: 'update', entityType: 'attendance',
+        description: `Chỉnh sửa chấm công ngày ${date} cho NV ${editModal.employeeName} (${validShifts.length} ca)`
+      });
 
       showToast('Đã lưu chấm công thành công!');
       setEditModal(null);
@@ -470,24 +514,24 @@ export default function HrmAttendanceView({
     }
   };
 
-  // ---- Xóa bản ghi chấm công ----
+  // ---- Xóa tất cả bản ghi chấm công cho ngày ----
   const handleDeleteAttendance = async () => {
-    if (!editModal?.record?.id) return;
-    if (!confirm('Bạn có chắc muốn xóa bản ghi chấm công này?')) return;
+    const existingIds = editModal?.records?.map(r => r.id).filter(Boolean) || [];
+    if (existingIds.length === 0) return;
+    if (!confirm('Bạn có chắc muốn xóa tất cả bản ghi chấm công ngày này?')) return;
 
     setSaving(true);
     try {
       const { error } = await supabase
         .from('hrm_attendances')
         .delete()
-        .eq('id', editModal.record.id);
+        .in('id', existingIds);
       if (error) throw error;
 
       logActivity({
         tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
         module: 'hrm', action: 'delete', entityType: 'attendance',
-        entityId: editModal.record.id,
-        description: `Xóa bản ghi chấm công ngày ${editModal.date}`
+        description: `Xóa chấm công ngày ${editModal.date} cho NV ${editModal.employeeName}`
       });
 
       showToast('Đã xóa bản ghi chấm công');
@@ -509,7 +553,6 @@ export default function HrmAttendanceView({
     return names[d.getDay()];
   };
 
-  // Kiểm tra ngày chủ nhật
   const isSunday = (day) => {
     const dateStr = `${filterMonth}-${String(day).padStart(2, '0')}`;
     const d = new Date(dateStr + 'T00:00:00+07:00');
@@ -550,7 +593,7 @@ export default function HrmAttendanceView({
         </div>
       )}
 
-      {/* ===== A. CHẤM CÔNG HÔM NAY ===== */}
+      {/* ===== A. CHẤM CÔNG HÔM NAY (MULTI-SHIFT) ===== */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-lg font-bold text-gray-800 mb-4">
           Chấm công hôm nay - {new Date(todayStr + 'T00:00:00+07:00').toLocaleDateString('vi-VN', {
@@ -558,7 +601,7 @@ export default function HrmAttendanceView({
           })}
         </h2>
 
-        <div className="flex flex-col md:flex-row items-center gap-6">
+        <div className="flex flex-col md:flex-row items-start gap-6">
           {/* Đồng hồ */}
           <div className="text-center">
             <div className="text-4xl md:text-5xl font-mono font-bold text-green-700">
@@ -576,88 +619,102 @@ export default function HrmAttendanceView({
             )}
           </div>
 
-          {/* Nút chấm công - level 1+ cho self check-in */}
-          <div className="flex flex-col items-center gap-2">
-            {permLevel >= 1 && !hasCheckedIn ? (
-              <button
-                onClick={handleCheckIn}
-                disabled={checkingIn || !currentEmployee}
-                className="px-8 py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400
-                  text-white text-xl font-bold rounded-xl shadow-lg
-                  transform hover:scale-105 transition-all duration-200
-                  disabled:transform-none disabled:cursor-not-allowed"
-              >
-                {checkingIn ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Đang xử lý...
-                  </span>
-                ) : (
-                  'CHECK-IN'
-                )}
-              </button>
-            ) : permLevel >= 1 && !hasCheckedOut ? (
-              <button
-                onClick={handleCheckOut}
-                disabled={checkingIn}
-                className="px-8 py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400
-                  text-white text-xl font-bold rounded-xl shadow-lg
-                  transform hover:scale-105 transition-all duration-200
-                  disabled:transform-none disabled:cursor-not-allowed"
-              >
-                {checkingIn ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Đang xử lý...
-                  </span>
-                ) : (
-                  'CHECK-OUT'
-                )}
-              </button>
-            ) : (
-              <div className="px-8 py-4 bg-gray-100 text-gray-600 text-xl font-bold rounded-xl border-2 border-dashed border-gray-300">
-                Hoàn thành
-              </div>
-            )}
+          {/* Nút chấm công */}
+          {permLevel >= 1 && (
+            <div className="flex flex-col items-center gap-2">
+              {openShift ? (
+                <button
+                  onClick={handleCheckOut}
+                  disabled={checkingIn}
+                  className="px-8 py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400
+                    text-white text-lg font-bold rounded-xl shadow-lg
+                    transform hover:scale-105 transition-all duration-200
+                    disabled:transform-none disabled:cursor-not-allowed"
+                >
+                  {checkingIn ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Đang xử lý...
+                    </span>
+                  ) : (
+                    `CHECK-OUT Ca ${openShift.shift_number || 1}`
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleCheckIn}
+                  disabled={checkingIn || !currentEmployee}
+                  className="px-8 py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400
+                    text-white text-lg font-bold rounded-xl shadow-lg
+                    transform hover:scale-105 transition-all duration-200
+                    disabled:transform-none disabled:cursor-not-allowed"
+                >
+                  {checkingIn ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Đang xử lý...
+                    </span>
+                  ) : todayRecords.length === 0 ? (
+                    'CHECK-IN'
+                  ) : (
+                    `+ Thêm Ca ${todayRecords.length + 1}`
+                  )}
+                </button>
+              )}
 
-            {/* Trạng thái */}
-            <div className={`text-sm font-medium ${
-              !currentEmployee ? 'text-red-500' :
-              !hasCheckedIn ? 'text-gray-500' :
-              todayRecord?.status === 'late' ? 'text-orange-600' :
-              todayRecord?.status === 'early_leave' ? 'text-yellow-600' :
-              hasCheckedOut ? 'text-green-600' : 'text-blue-600'
-            }`}>
-              {getCheckStatusText()}
+              {/* Trạng thái */}
+              <div className={`text-sm font-medium ${
+                !currentEmployee ? 'text-red-500' :
+                openShift ? 'text-blue-600' :
+                todayRecords.length === 0 ? 'text-gray-500' : 'text-green-600'
+              }`}>
+                {!currentEmployee ? 'Không tìm thấy hồ sơ nhân viên' :
+                 openShift ? `Đang làm Ca ${openShift.shift_number || 1}...` :
+                 todayRecords.length === 0 ? 'Chưa chấm công' :
+                 `Đã hoàn thành ${todayRecords.length} ca`}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Thông tin check-in/out */}
-          {hasCheckedIn && (
-            <div className="flex gap-4 text-sm">
-              <div className="bg-green-50 rounded-lg px-4 py-2 text-center">
-                <div className="text-gray-500">Giờ vào</div>
-                <div className="font-bold text-green-700">{formatTime(todayRecord.check_in)}</div>
-              </div>
-              {hasCheckedOut && (
-                <>
-                  <div className="bg-orange-50 rounded-lg px-4 py-2 text-center">
-                    <div className="text-gray-500">Giờ ra</div>
-                    <div className="font-bold text-orange-600">{formatTime(todayRecord.check_out)}</div>
-                  </div>
-                  <div className="bg-blue-50 rounded-lg px-4 py-2 text-center">
-                    <div className="text-gray-500">Tổng giờ</div>
-                    <div className="font-bold text-blue-700">
-                      {todayRecord.work_hours ? `${Math.round(todayRecord.work_hours * 10) / 10}h` : '--'}
+          {/* Danh sách các ca hôm nay */}
+          {todayRecords.length > 0 && (
+            <div className="flex-1 w-full md:w-auto">
+              <div className="space-y-2">
+                {todayRecords.map((rec, i) => {
+                  const hours = calculateHours(rec.check_in, rec.check_out);
+                  return (
+                    <div key={rec.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-2 text-sm">
+                      <span className="font-bold text-gray-600 w-10">Ca {i + 1}:</span>
+                      <div className="bg-green-50 rounded px-2 py-1 border border-green-200">
+                        <span className="text-green-700 font-bold">{formatTime(rec.check_in)}</span>
+                      </div>
+                      <span className="text-gray-400">→</span>
+                      {rec.check_out ? (
+                        <>
+                          <div className="bg-orange-50 rounded px-2 py-1 border border-orange-200">
+                            <span className="text-orange-600 font-bold">{formatTime(rec.check_out)}</span>
+                          </div>
+                          <span className="text-blue-700 font-bold ml-auto">= {hours}h</span>
+                        </>
+                      ) : (
+                        <span className="text-blue-500 font-medium animate-pulse ml-auto">Đang làm...</span>
+                      )}
                     </div>
-                  </div>
-                </>
+                  );
+                })}
+              </div>
+              {/* Tổng giờ */}
+              {todayRecords.some(r => r.check_out) && (
+                <div className="mt-2 flex items-center gap-2 text-sm">
+                  <span className="text-gray-500">Tổng giờ làm:</span>
+                  <span className="font-bold text-blue-700 text-base">{Math.round(totalTodayHours * 10) / 10}h</span>
+                </div>
               )}
             </div>
           )}
@@ -666,7 +723,6 @@ export default function HrmAttendanceView({
 
       {/* ===== C. THỐNG KÊ ===== */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Tổng NV chấm công hôm nay */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500">Chấm công hôm nay</div>
           <div className="text-2xl font-bold text-green-700 mt-1">
@@ -676,7 +732,6 @@ export default function HrmAttendanceView({
           <div className="text-xs text-gray-400 mt-1">nhân viên</div>
         </div>
 
-        {/* Tỷ lệ đúng giờ */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500">Tỷ lệ đúng giờ</div>
           <div className="text-2xl font-bold text-blue-600 mt-1">
@@ -685,7 +740,6 @@ export default function HrmAttendanceView({
           <div className="text-xs text-gray-400 mt-1">hôm nay</div>
         </div>
 
-        {/* NV đi trễ nhiều nhất */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500">Đi trễ nhiều nhất</div>
           <div className="text-lg font-bold text-orange-600 mt-1 truncate">
@@ -696,7 +750,6 @@ export default function HrmAttendanceView({
           </div>
         </div>
 
-        {/* Tổng giờ tăng ca */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="text-sm text-gray-500">Tổng giờ tăng ca</div>
           <div className="text-2xl font-bold text-purple-600 mt-1">
@@ -715,7 +768,6 @@ export default function HrmAttendanceView({
               Bảng chấm công tháng
             </h2>
             <div className="flex flex-wrap items-center gap-3">
-              {/* Chọn tháng */}
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-600">Tháng:</label>
                 <input
@@ -725,7 +777,6 @@ export default function HrmAttendanceView({
                   className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
-              {/* Chọn phòng ban */}
               <div className="flex items-center gap-2">
                 <label className="text-sm text-gray-600">Phòng ban:</label>
                 <select
@@ -803,7 +854,6 @@ export default function HrmAttendanceView({
                   const summary = getEmployeeSummary(emp.id);
                   return (
                     <tr key={emp.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                      {/* Tên nhân viên */}
                       <td className="sticky left-0 z-10 px-3 py-1.5 border-b border-r border-gray-200 font-medium text-gray-800 truncate max-w-[140px]"
                         style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }}
                         title={emp.full_name}
@@ -814,12 +864,12 @@ export default function HrmAttendanceView({
                         )}
                       </td>
 
-                      {/* Các ô ngày */}
                       {dayColumns.map(day => {
-                        const record = getAttendanceForCell(emp.id, day);
-                        const status = record?.status;
-                        const statusInfo = status ? ATTENDANCE_STATUSES[status] : null;
+                        const records = getAttendanceForCell(emp.id, day);
+                        const primary = records[0];
+                        const statusInfo = primary?.status ? ATTENDANCE_STATUSES[primary.status] : null;
                         const sunday = isSunday(day);
+                        const shiftCount = records.length;
 
                         return (
                           <td
@@ -827,14 +877,21 @@ export default function HrmAttendanceView({
                             onClick={() => { if (userCanEdit) openEditModal(emp.id, day); }}
                             className={`px-0.5 py-1 text-center border-b border-gray-100 transition-colors
                               ${userCanEdit ? 'cursor-pointer hover:bg-green-50' : ''}
-                              ${sunday && !record ? 'bg-red-50/50' : ''}`}
+                              ${sunday && shiftCount === 0 ? 'bg-red-50/50' : ''}`}
                             title={statusInfo
-                              ? `${emp.full_name} - Ngày ${day}: ${statusInfo.label}${record?.note ? ' - ' + record.note : ''}`
+                              ? `${emp.full_name} - Ngày ${day}: ${statusInfo.label}${shiftCount > 1 ? ` (${shiftCount} ca)` : ''}${primary?.note ? ' - ' + primary.note : ''}`
                               : `${emp.full_name} - Ngày ${day}: Chưa có dữ liệu`
                             }
                           >
-                            {statusInfo ? (
-                              <span className="text-sm leading-none">{statusInfo.icon}</span>
+                            {shiftCount > 0 ? (
+                              <div className="relative inline-block">
+                                <span className="text-sm leading-none">{statusInfo?.icon || '✅'}</span>
+                                {shiftCount > 1 && (
+                                  <span className="absolute -top-1.5 -right-2.5 bg-blue-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none">
+                                    {shiftCount}
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-gray-300">-</span>
                             )}
@@ -842,7 +899,6 @@ export default function HrmAttendanceView({
                         );
                       })}
 
-                      {/* Cột tổng hợp */}
                       <td className="px-2 py-1.5 text-center border-b border-l border-gray-200 font-bold text-green-700 bg-green-50/50">
                         {summary.workDays}
                       </td>
@@ -876,21 +932,23 @@ export default function HrmAttendanceView({
               <span className="text-gray-300">-</span>
               <span>Chưa có dữ liệu</span>
             </span>
+            <span className="flex items-center gap-1">
+              <span className="bg-blue-500 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 inline-flex items-center justify-center">2</span>
+              <span>Nhiều ca</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ===== MODAL CHỈNH SỬA CHẤM CÔNG ===== */}
+      {/* ===== MODAL CHỈNH SỬA CHẤM CÔNG (MULTI-SHIFT) ===== */}
       {editModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={() => setEditModal(null)}
         >
-          {/* Overlay */}
           <div className="absolute inset-0 bg-black/40" />
 
-          {/* Modal content */}
           <div
-            className="relative bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+            className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
@@ -911,87 +969,138 @@ export default function HrmAttendanceView({
               </button>
             </div>
 
-            {/* Form */}
+            {/* Danh sách ca */}
             <div className="p-4 space-y-4">
-              {/* Giờ vào */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giờ vào</label>
-                <input
-                  type="time"
-                  value={editForm.check_in}
-                  onChange={e => setEditForm(prev => ({ ...prev, check_in: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                    focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
+              <div className="space-y-3">
+                {editShifts.map((shift, i) => {
+                  // Tính giờ ca
+                  let shiftHours = 0;
+                  if (shift.check_in && shift.check_out && shift.check_out > shift.check_in) {
+                    const [h1, m1] = shift.check_in.split(':').map(Number);
+                    const [h2, m2] = shift.check_out.split(':').map(Number);
+                    shiftHours = Math.round(((h2 - h1) + (m2 - m1) / 60) * 10) / 10;
+                  }
+                  return (
+                    <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-200">
+                      <span className="font-bold text-gray-600 text-sm w-10 shrink-0">Ca {i + 1}:</span>
+                      <input
+                        type="time"
+                        value={shift.check_in}
+                        onChange={e => {
+                          const updated = [...editShifts];
+                          updated[i] = { ...updated[i], check_in: e.target.value };
+                          setEditShifts(updated);
+                        }}
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-[100px]
+                          focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      />
+                      <span className="text-gray-400">→</span>
+                      <input
+                        type="time"
+                        value={shift.check_out}
+                        onChange={e => {
+                          const updated = [...editShifts];
+                          updated[i] = { ...updated[i], check_out: e.target.value };
+                          setEditShifts(updated);
+                        }}
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-[100px]
+                          focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      />
+                      {shiftHours > 0 && (
+                        <span className="text-blue-700 font-bold text-sm ml-auto">= {shiftHours}h</span>
+                      )}
+                      {editShifts.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setEditShifts(editShifts.filter((_, j) => j !== i))}
+                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded shrink-0"
+                          title="Xóa ca"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Giờ ra */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giờ ra</label>
-                <input
-                  type="time"
-                  value={editForm.check_out}
-                  onChange={e => setEditForm(prev => ({ ...prev, check_out: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                    focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
-              </div>
+              {/* Nút thêm ca */}
+              <button
+                type="button"
+                onClick={() => setEditShifts([...editShifts, { id: null, check_in: '', check_out: '' }])}
+                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500
+                  hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+              >
+                + Thêm ca
+              </button>
 
-              {/* Trạng thái */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
-                <select
-                  value={editForm.status}
-                  onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                    focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  {Object.entries(ATTENDANCE_STATUSES).map(([key, val]) => (
-                    <option key={key} value={key}>{val.icon} {val.label}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Tổng giờ */}
+              {editTotalHours > 0 && (
+                <div className="flex items-center justify-between bg-blue-50 rounded-lg px-4 py-2.5 border border-blue-200">
+                  <span className="text-sm text-blue-700 font-medium">Tổng giờ làm:</span>
+                  <span className="text-lg font-bold text-blue-700">{Math.round(editTotalHours * 10) / 10}h</span>
+                </div>
+              )}
 
-              {/* Giờ tăng ca */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giờ tăng ca</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={editForm.overtime_hours}
-                  onChange={e => setEditForm(prev => ({ ...prev, overtime_hours: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                    focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="0"
-                />
-              </div>
+              <div className="border-t pt-4 space-y-4">
+                {/* Trạng thái */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
+                  <select
+                    value={editStatus}
+                    onChange={e => setEditStatus(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
+                      focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  >
+                    {Object.entries(ATTENDANCE_STATUSES).map(([key, val]) => (
+                      <option key={key} value={key}>{val.icon} {val.label}</option>
+                    ))}
+                  </select>
+                </div>
 
-              {/* Ghi chú */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
-                <textarea
-                  value={editForm.note}
-                  onChange={e => setEditForm(prev => ({ ...prev, note: e.target.value }))}
-                  rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                    focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
-                  placeholder="Lý do đi trễ, về sớm, vắng..."
-                />
+                {/* Giờ tăng ca */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Giờ tăng ca</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={editOvertime}
+                    onChange={e => setEditOvertime(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
+                      focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="0"
+                  />
+                </div>
+
+                {/* Ghi chú */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
+                  <textarea
+                    value={editNote}
+                    onChange={e => setEditNote(e.target.value)}
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
+                      focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
+                    placeholder="Lý do đi trễ, về sớm, vắng..."
+                  />
+                </div>
               </div>
             </div>
 
             {/* Actions */}
             <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
               <div>
-                {userCanEdit && editModal.record?.id && (
+                {userCanEdit && editModal.records?.length > 0 && (
                   <button
                     onClick={handleDeleteAttendance}
                     disabled={saving}
                     className="px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Xóa
+                    Xóa tất cả
                   </button>
                 )}
               </div>
