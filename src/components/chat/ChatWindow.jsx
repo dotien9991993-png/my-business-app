@@ -103,6 +103,7 @@ export default function ChatWindow({
   const imageInputRef = useRef(null);
   const initialLoadRef = useRef(true);
   const sendingRef = useRef(false);
+  const composingRef = useRef(false);
   const searchTimerRef = useRef(null);
 
   // Room display info
@@ -366,6 +367,15 @@ export default function ChatWindow({
     }
   };
 
+  // Force clear input: state + DOM + cancel IME composition
+  const clearInput = useCallback(() => {
+    setNewMessage('');
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
+    composingRef.current = false;
+  }, []);
+
   // Send message (with double-submit guard)
   const sendMessage = useCallback(async (content, messageType = 'text', fileData = null) => {
     if (sendingRef.current) return;
@@ -395,8 +405,8 @@ export default function ChatWindow({
       msgData.file_size = fileData.size;
     }
 
-    // Clear input immediately
-    setNewMessage('');
+    // Clear input immediately (force clear DOM to handle Vietnamese IME)
+    clearInput();
     setReplyTo(null);
     setPendingAttachments([]);
     setMentionedUsers([]);
@@ -448,7 +458,7 @@ export default function ChatWindow({
       sendingRef.current = false;
       setSending(false);
     }
-  }, [room.id, room.tenant_id, currentUser, replyTo, pendingAttachments, mentionedUsers, activeMembers, onRoomUpdated]);
+  }, [room.id, room.tenant_id, currentUser, replyTo, pendingAttachments, mentionedUsers, activeMembers, onRoomUpdated, clearInput]);
 
   // Handle input change (with @mention detection)
   const handleInputChange = (e) => {
@@ -479,14 +489,14 @@ export default function ChatWindow({
   const handleSelectMention = (member) => {
     const before = newMessage.substring(0, mentionStartIndex);
     const after = newMessage.substring(inputRef.current?.selectionStart || mentionStartIndex);
-    const mentionText = member.isAll ? '@Tat ca ' : `@${member.user_name} `;
+    const mentionText = member.isAll ? '@Tất cả ' : `@${member.user_name} `;
     setNewMessage(before + mentionText + after);
     setShowMentionPopup(false);
     setMentionSearch('');
 
     // Track mentioned user
     if (member.isAll) {
-      setMentionedUsers([{ user_id: 'all', user_name: 'Tat ca' }]);
+      setMentionedUsers([{ user_id: 'all', user_name: 'Tất cả' }]);
     } else {
       setMentionedUsers(prev => {
         if (prev.some(u => u.user_id === member.user_id)) return prev;
@@ -497,13 +507,15 @@ export default function ChatWindow({
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  // Handle Enter key
+  // Handle Enter key (block during IME composition for Vietnamese input)
   const handleKeyDown = (e) => {
     if (e.key === 'Escape' && showMentionPopup) {
       setShowMentionPopup(false);
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey) {
+      // Skip if IME is composing (Vietnamese, Chinese, Japanese input)
+      if (e.nativeEvent?.isComposing || composingRef.current) return;
       e.preventDefault();
       if (showMentionPopup) {
         setShowMentionPopup(false);
@@ -602,7 +614,7 @@ export default function ChatWindow({
 
     const imagesToSend = [...pendingImages];
     const caption = newMessage.trim();
-    setNewMessage('');
+    clearInput();
     setPendingImages([]);
 
     try {
@@ -930,7 +942,7 @@ export default function ChatWindow({
         <button
           onClick={() => { setSearchMode(!searchMode); setSearchQuery(''); setSearchResults([]); }}
           className="text-white/80 hover:text-white p-1"
-          title="Tim kiem tin nhan"
+          title="Tìm kiếm tin nhắn"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1012,7 +1024,7 @@ export default function ChatWindow({
               value={searchQuery}
               onChange={e => handleSearchInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Escape') { setSearchMode(false); setSearchQuery(''); setSearchResults([]); } }}
-              placeholder="Tim kiem tin nhan..."
+              placeholder="Tìm kiếm tin nhắn..."
               className="flex-1 bg-transparent text-sm focus:outline-none"
               autoFocus
             />
@@ -1050,7 +1062,7 @@ export default function ChatWindow({
           )}
           {searchQuery && !searchLoading && searchResults.length === 0 && (
             <div className="px-3 py-3 text-xs text-gray-400 text-center border-t">
-              Khong tim thay ket qua
+              Không tìm thấy kết quả
             </div>
           )}
         </div>
@@ -1232,6 +1244,12 @@ export default function ChatWindow({
             value={newMessage}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(e) => {
+              composingRef.current = false;
+              // Sync final composed value to state (Vietnamese IME fix)
+              setNewMessage(e.target.value);
+            }}
             onFocus={() => {
               // On mobile, ensure input stays visible when keyboard opens
               if (window.innerWidth < 768) {
@@ -1241,7 +1259,7 @@ export default function ChatWindow({
                 }, 300);
               }
             }}
-            placeholder="Nhap tin nhan... (@ten de tag)"
+            placeholder="Nhập tin nhắn... (@tên để tag)"
             rows={1}
             className="w-full px-3 py-1.5 bg-white border rounded-2xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500 max-h-24"
             style={{ minHeight: '36px' }}

@@ -8,9 +8,9 @@ export default function MentionPopup({ members, search, onSelect, position }) {
     return m.user_name?.toLowerCase().includes(search.toLowerCase());
   });
 
-  // Add "Tat ca" option at top
+  // Add "Tất cả" option at top
   const options = [
-    { user_id: 'all', user_name: 'Tat ca', isAll: true },
+    { user_id: 'all', user_name: 'Tất cả', isAll: true },
     ...filtered
   ];
 
@@ -46,13 +46,13 @@ export default function MentionPopup({ members, search, onSelect, position }) {
             {member.isAll ? '@' : (member.user_name || '?').charAt(0).toUpperCase()}
           </span>
           <span className={`truncate ${member.isAll ? 'font-semibold text-green-700' : 'text-gray-700'}`}>
-            {member.isAll ? '@Tat ca' : member.user_name}
+            {member.isAll ? '@Tất cả' : member.user_name}
           </span>
         </button>
       ))}
       {filtered.length === 0 && search && (
         <div className="px-3 py-2 text-xs text-gray-400 text-center">
-          Khong tim thay
+          Không tìm thấy
         </div>
       )}
     </div>

@@ -61,6 +61,7 @@ export default function ZaloChatWindow({
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const composingRef = useRef(false);
 
   // Load messages
   const loadMessages = useCallback(async () => {
@@ -164,6 +165,8 @@ export default function ZaloChatWindow({
     if (!text || !conversation?.id) return;
 
     setInputText('');
+    if (inputRef.current) inputRef.current.value = '';
+    composingRef.current = false;
 
     try {
       await sendZaloReply(
@@ -692,9 +695,15 @@ export default function ZaloChatWindow({
               onChange={e => setInputText(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.nativeEvent?.isComposing || composingRef.current) return;
                   e.preventDefault();
                   handleSend();
                 }
+              }}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={(e) => {
+                composingRef.current = false;
+                setInputText(e.target.value);
               }}
               placeholder="Nhập tin nhắn..."
               rows={1}

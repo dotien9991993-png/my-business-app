@@ -30,7 +30,7 @@ const ImagePreview = ({ url, onClose }) => (
 const renderContentWithMentions = (content) => {
   if (!content) return null;
   // Match @Name patterns (name can be Vietnamese with spaces, up to reasonable length)
-  const parts = content.split(/(@(?:Tat ca|[^\s@]{1,30}(?:\s[^\s@]{1,30})*))/g);
+  const parts = content.split(/(@(?:Tất cả|Tat ca|[^\s@]{1,30}(?:\s[^\s@]{1,30})*))/g);
   return parts.map((part, i) => {
     if (part.startsWith('@')) {
       return (
@@ -331,7 +331,7 @@ export default function ChatMessage({
             <div className={`text-[10px] mt-0.5 flex items-center gap-1 ${
               isOwn ? 'text-green-200 justify-end' : 'text-gray-400 justify-start'
             }`}>
-              {message.is_edited && <span>da sua ·</span>}
+              {message.is_edited && <span>đã sửa ·</span>}
               <span>{formatMessageTime(message.created_at)}</span>
               <ReadReceipt readBy={readBy} isOwn={isOwn} isDirectChat={isDirectChat} />
             </div>

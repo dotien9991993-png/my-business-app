@@ -45,7 +45,7 @@ export default function MessageContextMenu({
             onClick={() => { onReaction(message); onClose(); }}
             className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
           >
-            😀 Phan hoi
+            😀 Phản hồi
           </button>
         )}
 
