@@ -317,7 +317,7 @@ const TaskModal = ({
                 <div className="flex gap-2 flex-wrap mt-2">
                   {taskProducts.map(product => (
                     <span key={product.id} className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-400/30 backdrop-blur-sm rounded-full text-sm">
-                      📦 {product.name}
+                      📦 {product.sku || (product.name.length > 15 ? product.name.slice(0, 15) + '...' : product.name)}
                     </span>
                   ))}
                 </div>
