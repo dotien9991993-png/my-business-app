@@ -1,0 +1,27 @@
+{
+  "appId": "vn.hoangnamaudio.app",
+  "appName": "Hoàng Nam Audio",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#16a34a",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#16a34a"
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}

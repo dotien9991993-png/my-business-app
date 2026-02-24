@@ -4,3 +4,10 @@ dist
 .env.local
 .env.*.local
 .DS_Store
+
+# Capacitor native builds (generated, rebuild with `npx cap sync`)
+ios/App/App/public
+ios/App/Pods
+android/app/src/main/assets/public
+android/.gradle
+android/app/build

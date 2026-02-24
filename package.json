@@ -10,6 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/browser": "^8.0.1",
+    "@capacitor/camera": "^8.0.1",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/haptics": "^8.0.1",
+    "@capacitor/ios": "^8.1.0",
+    "@capacitor/keyboard": "^8.0.1",
+    "@capacitor/push-notifications": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.1",
     "@supabase/supabase-js": "^2.89.0",
     "bcryptjs": "^3.0.3",
     "html5-qrcode": "^2.3.8",
