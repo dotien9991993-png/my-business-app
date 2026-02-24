@@ -75,11 +75,11 @@ const TasksView = ({
       try {
         const { data, error } = await supabase
           .from('products')
-          .select('id, name, sell_price')
+          .select('id, name, sku, sell_price')
           .in('id', allProductIds);
         if (error) throw error;
         const map = {};
-        (data || []).forEach(p => { map[p.id] = { name: p.name, sell_price: p.sell_price }; });
+        (data || []).forEach(p => { map[p.id] = { name: p.name, sku: p.sku, sell_price: p.sell_price }; });
         setProductMap(map);
       } catch (err) {
         console.error('Error loading product names:', err);
@@ -662,7 +662,7 @@ const TasksView = ({
               <div className="flex gap-1.5 flex-wrap">
                 {task.product_ids.map(pid => (
                   <span key={pid} className="px-2 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded-full text-xs">
-                    📦 {productMap[pid]?.name || 'Sản phẩm'}
+                    📦 {productMap[pid]?.sku || (productMap[pid]?.name ? (productMap[pid].name.length > 15 ? productMap[pid].name.slice(0, 15) + '...' : productMap[pid].name) : 'SP')}
                   </span>
                 ))}
               </div>
