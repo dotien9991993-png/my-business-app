@@ -31,6 +31,11 @@ const TaskModal = ({
   const [editCrew, setEditCrew] = useState([]);
   const [editActors, setEditActors] = useState([]);
 
+  // Link validation
+  const [showLinkWarning, setShowLinkWarning] = useState(false);
+  const [missingLinks, setMissingLinks] = useState([]);
+  const linksRef = useRef(null);
+
   // Product states
   const [taskProducts, setTaskProducts] = useState([]);
   const [editProducts, setEditProducts] = useState([]);
@@ -365,6 +370,23 @@ const TaskModal = ({
                     <button
                       disabled={done}
                       onClick={async () => {
+                        // Kiểm tra link khi bấm Hoàn thành
+                        if (step.status === 'Hoàn Thành') {
+                          const taskPlatforms = (selectedTask.platform || '').split(', ').filter(Boolean);
+                          const existingLinks = selectedTask.postLinks || [];
+                          if (taskPlatforms.length > 0) {
+                            const missing = taskPlatforms.filter(plat => !existingLinks.find(l => l.type === plat));
+                            if (missing.length > 0) {
+                              setMissingLinks(taskPlatforms.map(plat => ({
+                                platform: plat,
+                                hasLink: !!existingLinks.find(l => l.type === plat),
+                              })));
+                              setShowLinkWarning(true);
+                              return;
+                            }
+                          }
+                        }
+
                         const now = new Date().toISOString();
                         const updateData = { status: step.status };
                         const localUpdate = { status: step.status };
@@ -405,7 +427,7 @@ const TaskModal = ({
           </div>
 
           {/* Links per Platform — đưa lên trước SP */}
-          <div>
+          <div ref={linksRef}>
             <h4 className="text-lg font-bold mb-3">🔗 Links Theo Platform</h4>
             {(() => {
               const platformIcons = { 'Facebook': '📘', 'Instagram': '📸', 'TikTok': '🎵', 'Blog': '📝', 'Ads': '📢', 'Email': '📧', 'YouTube': '📺' };
@@ -864,6 +886,52 @@ const TaskModal = ({
           </div>
         </div>
       </div>
+
+      {/* Link Warning Modal */}
+      {showLinkWarning && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-4">
+              <h3 className="text-lg font-bold text-yellow-800">⚠️ Chưa thể hoàn thành!</h3>
+              <p className="text-sm text-yellow-700 mt-1">Vui lòng điền đủ link cho các platform đã chọn:</p>
+            </div>
+            <div className="px-6 py-4 space-y-2">
+              {missingLinks.map(item => (
+                <div key={item.platform} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border ${
+                  item.hasLink ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+                }`}>
+                  <span className="text-lg">{item.hasLink ? '✅' : '❌'}</span>
+                  <span className={`font-medium text-sm ${item.hasLink ? 'text-green-700' : 'text-red-700'}`}>
+                    {item.platform}
+                  </span>
+                  <span className={`ml-auto text-xs ${item.hasLink ? 'text-green-600' : 'text-red-600'}`}>
+                    {item.hasLink ? 'Đã có link' : 'Chưa có link'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex gap-3">
+              <button
+                onClick={() => setShowLinkWarning(false)}
+                className="flex-1 px-4 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium text-sm"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={() => {
+                  setShowLinkWarning(false);
+                  setTimeout(() => {
+                    linksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }, 100);
+                }}
+                className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm"
+              >
+                🔗 Đi điền link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
