@@ -1,0 +1,14 @@
+-- Thêm các cột còn thiếu cho bảng tenants (CompanySettings)
+-- Chạy trên Supabase SQL Editor
+
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS slogan TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS website TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS tax_code TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS bank_name TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS bank_account TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS bank_holder TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_footer TEXT;
