@@ -5,6 +5,7 @@ import { getTenantSlug } from '../utils/tenantUtils';
 import { useHashRouter } from '../hooks/useHashRouter';
 import { isAdmin } from '../utils/permissionUtils';
 import { logActivity } from '../lib/activityLog';
+import { sanitizeInput, validateEmail, validatePhone, validatePassword } from '../utils/validation';
 
 // Helper: strip sensitive fields before saving to localStorage
 const safeUserForStorage = (user) => {
@@ -277,12 +278,19 @@ export function AppProvider({ children }) {
   // ---- Auth handlers ----
   const handleLogin = useCallback(async (email, inputPassword) => {
     try {
+      const cleanEmail = sanitizeInput(email).toLowerCase();
+      const emailCheck = validateEmail(cleanEmail);
+      if (!emailCheck.valid) {
+        alert(emailCheck.message);
+        return;
+      }
+
       // Query by email only (not password) to support both hashed and plaintext
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('tenant_id', tenant.id)
-        .eq('email', email)
+        .eq('email', cleanEmail)
         .single();
 
       if (error || !data) {
@@ -358,10 +366,22 @@ export function AppProvider({ children }) {
       alert('❌ Vui lòng điền đầy đủ thông tin bắt buộc!');
       return false;
     }
-    if (password.length < 6) {
-      alert('❌ Mật khẩu phải có ít nhất 6 ký tự!');
-      return false;
+
+    const cleanEmail = sanitizeInput(email).toLowerCase();
+    const cleanName = sanitizeInput(name);
+    const cleanPhone = sanitizeInput(phone || '');
+
+    const emailCheck = validateEmail(cleanEmail);
+    if (!emailCheck.valid) { alert('❌ ' + emailCheck.message); return false; }
+
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) { alert('❌ ' + pwCheck.message); return false; }
+
+    if (cleanPhone) {
+      const phoneCheck = validatePhone(cleanPhone);
+      if (!phoneCheck.valid) { alert('❌ ' + phoneCheck.message); return false; }
     }
+
     try {
       const { count } = await supabase
         .from('users')
@@ -377,7 +397,7 @@ export function AppProvider({ children }) {
         .from('users')
         .select('email')
         .eq('tenant_id', tenant.id)
-        .eq('email', email)
+        .eq('email', cleanEmail)
         .single();
 
       if (existing) {
@@ -389,7 +409,7 @@ export function AppProvider({ children }) {
       const { error } = await supabase
         .from('users')
         .insert([{
-          tenant_id: tenant.id, name, email, password: hashedPassword, phone,
+          tenant_id: tenant.id, name: cleanName, email: cleanEmail, password: hashedPassword, phone: cleanPhone,
           team, role, status: 'pending', is_active: true, password_hashed: true
         }]);
 
@@ -404,7 +424,7 @@ export function AppProvider({ children }) {
             user_id: admin.id,
             type: 'new_registration',
             title: 'Tài khoản mới chờ duyệt',
-            message: `${name} (${email}) vừa đăng ký tài khoản - Team ${team}`,
+            message: `${cleanName} (${cleanEmail}) vừa đăng ký tài khoản - Team ${team}`,
             icon: '👤',
             is_read: false
           }));
@@ -479,8 +499,9 @@ export function AppProvider({ children }) {
 
   // ---- Change password ----
   const changePassword = useCallback(async (userId, oldPassword, newPassword) => {
-    if (!newPassword || newPassword.length < 6) {
-      alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
+    const pwCheck = validatePassword(newPassword);
+    if (!pwCheck.valid) {
+      alert(pwCheck.message);
       return false;
     }
     try {

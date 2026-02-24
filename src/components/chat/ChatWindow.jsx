@@ -1232,6 +1232,15 @@ export default function ChatWindow({
             value={newMessage}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onFocus={() => {
+              // On mobile, ensure input stays visible when keyboard opens
+              if (window.innerWidth < 768) {
+                setTimeout(() => {
+                  inputRef.current?.closest('.flex.flex-col.h-full')
+                    ?.scrollTo?.({ top: inputRef.current.closest('.flex.flex-col.h-full')?.scrollHeight, behavior: 'smooth' });
+                }, 300);
+              }
+            }}
             placeholder="Nhap tin nhan... (@ten de tag)"
             rows={1}
             className="w-full px-3 py-1.5 bg-white border rounded-2xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500 max-h-24"

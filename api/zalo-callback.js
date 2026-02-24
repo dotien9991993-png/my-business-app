@@ -28,6 +28,15 @@ export default async function handler(req, res) {
     );
   }
 
+  // Validate state/tenantId format (UUID)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(tenantId)) {
+    return res.redirect(
+      302,
+      `${APP_URL}?zalo_error=${encodeURIComponent('Mã tenant không hợp lệ')}#settings`,
+    );
+  }
+
   const APP_ID = process.env.ZALO_APP_ID;
   const SECRET_KEY = process.env.ZALO_SECRET_KEY;
   const REDIRECT_URI =

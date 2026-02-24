@@ -328,6 +328,7 @@ function AppContent() {
           onClose={() => setShowAttendancePopup(false)}
         />
       )}
+
     </div>
   );
 }

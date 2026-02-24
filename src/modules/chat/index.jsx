@@ -25,6 +25,43 @@ export default function ChatModule() {
   const loadingRef = useRef(false);
   const activeRoomRef = useRef(null);
   activeRoomRef.current = activeRoom;
+  const chatContainerRef = useRef(null);
+
+  // Dynamic height: accounts for header, tabs, bottom bar, and mobile keyboard
+  useEffect(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+
+    const updateHeight = () => {
+      const vv = window.visualViewport;
+      const viewportHeight = vv ? vv.height : window.innerHeight;
+      const rect = el.getBoundingClientRect();
+      const topOffset = vv ? (rect.top - vv.offsetTop) : rect.top;
+      const isMobile = window.innerWidth < 768;
+      const keyboardVisible = vv && (window.innerHeight - vv.height > 150);
+      // On mobile without keyboard: subtract MobileBottomTabs height (~64px)
+      // On mobile with keyboard: bottom tabs hidden behind keyboard, no subtraction
+      const bottomPad = isMobile && !keyboardVisible ? 64 : 0;
+      el.style.height = `${Math.max(viewportHeight - Math.max(topOffset, 0) - bottomPad, 300)}px`;
+    };
+
+    updateHeight();
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', updateHeight);
+      vv.addEventListener('scroll', updateHeight);
+    }
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      if (vv) {
+        vv.removeEventListener('resize', updateHeight);
+        vv.removeEventListener('scroll', updateHeight);
+      }
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, [chatTab]);
 
   const roomIdsKey = useMemo(() => rooms.map(r => r.id).sort().join(','), [rooms]);
 
@@ -323,7 +360,7 @@ export default function ChatModule() {
   if (!currentUser || !tenant) return null;
 
   return (
-    <div className="bg-white md:rounded-xl md:shadow-sm md:border md:mx-4 md:mt-2 flex flex-col" style={{ height: 'calc(100vh - 160px)', minHeight: '400px' }}>
+    <div ref={chatContainerRef} className="bg-white md:rounded-xl md:shadow-sm md:border md:mx-4 md:mt-2 flex flex-col" style={{ minHeight: '300px' }}>
       {/* Tab switcher */}
       <div className="flex items-center border-b bg-gray-50 md:rounded-t-xl px-2 flex-shrink-0">
         {CHAT_TABS.map(tab => (

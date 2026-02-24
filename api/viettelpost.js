@@ -8,16 +8,62 @@
 
 const BASE_URL = 'https://partner.viettelpost.vn/v2';
 
+const ALLOWED_ORIGINS = [
+  'https://in.hoangnamaudio.vn',
+  'https://hoangnamaudio.vn',
+  'http://localhost:5173'
+];
+
+// Rate limiting đơn giản (Map-based, 30 req/min/IP)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60 * 1000;
+const RATE_LIMIT_MAX = 30;
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now - entry.start > RATE_LIMIT_WINDOW) {
+    rateLimitMap.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) return false;
+  return true;
+}
+
+function getCorsOrigin(req) {
+  const origin = req.headers.origin || '';
+  if (ALLOWED_ORIGINS.includes(origin)
+    || /^https:\/\/[a-z0-9-]+\.hoangnamaudio\.vn$/.test(origin)
+    || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) {
+    return origin;
+  }
+  return ALLOWED_ORIGINS[0];
+}
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const corsOrigin = getCorsOrigin(req);
+  res.setHeader('Access-Control-Allow-Origin', corsOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Rate limit check
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Quá nhiều yêu cầu. Vui lòng thử lại sau.' });
+  }
+
+  // Validate request body
+  if (!req.body || typeof req.body !== 'object') {
+    return res.status(400).json({ error: 'Invalid request body' });
+  }
+
   try {
-    const { action, token, ...params } = req.body || {};
+    const { action, token, ...params } = req.body;
 
     if (!action) {
       return res.status(400).json({ error: 'Missing action' });
@@ -70,10 +116,11 @@ export default async function handler(req, res) {
     try {
       const data = JSON.parse(text);
       return res.status(200).json(data);
-    } catch (e) {
+    } catch (_e) {
       return res.status(200).json({ raw: text, error: 'Invalid JSON from VTP' });
     }
   } catch (error) {
-    return res.status(500).json({ error: error.message, stack: error.stack });
+    console.error('VTP proxy error:', error);
+    return res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại sau.' });
   }
 }
