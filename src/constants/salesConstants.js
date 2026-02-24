@@ -81,6 +81,8 @@ export const codStatuses = {
 export const orderSources = {
   manual: { label: 'Thủ công', icon: '✍️' },
   zalo: { label: 'Zalo', icon: '💬' },
+  facebook: { label: 'Facebook', icon: '📘' },
   haravan: { label: 'Haravan', icon: '🛍️' },
   web: { label: 'Website', icon: '🌐' },
+  shop: { label: 'Tại shop', icon: '🏪' },
 };

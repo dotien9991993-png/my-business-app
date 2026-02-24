@@ -13,7 +13,7 @@ import { logActivity } from '../../lib/activityLog';
 import { sendOrderConfirmation, sendShippingNotification } from '../../utils/zaloAutomation';
 
 export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
-  const { pendingOpenRecord, setPendingOpenRecord } = useApp();
+  const { pendingOpenRecord, setPendingOpenRecord, allUsers } = useApp();
   const permLevel = getPermissionLevel('sales');
   const effectiveShippingProviders = dynamicShippingProviders || shippingProviders;
   const vtpConfig = (shippingConfigs || []).find(c => c.provider === 'viettel_post' && c.is_active && c.api_token);
@@ -34,6 +34,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [paymentAmount, setPaymentAmount] = useState('');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterPayment, setFilterPayment] = useState('all');
+  const [filterCreatedBy, setFilterCreatedBy] = useState('all');
+  const [filterSource, setFilterSource] = useState('all');
+  const [filterShipping, setFilterShipping] = useState('all');
   const [showHaravanImport, setShowHaravanImport] = useState(false);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -44,9 +48,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   // Server-side pagination state
   const [serverOrders, setServerOrders] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [statusCounts, setStatusCounts] = useState({ total: 0, new: 0, processing: 0, completed: 0 });
+  const [statusCounts, setStatusCounts] = useState({ total: 0, waiting_confirm: 0, not_shipped: 0, shipping: 0, completed: 0 });
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [searchInput, setSearchInput] = useState('');
+  const [pageItemsMap, setPageItemsMap] = useState({});
 
   // Debounce search input → search (400ms)
   useEffect(() => {
@@ -112,6 +117,20 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         if (permLevel === 1) query = query.eq('created_by', currentUser.name);
         if (filterStatus !== 'all') query = query.eq('status', filterStatus);
         if (filterType !== 'all') query = query.eq('order_type', filterType);
+        if (filterPayment !== 'all') query = query.eq('payment_status', filterPayment);
+        if (filterCreatedBy !== 'all') query = query.eq('created_by', filterCreatedBy);
+        if (filterSource !== 'all') query = query.eq('order_source', filterSource);
+        if (filterShipping === 'not_shipped') {
+          query = query.in('status', ['confirmed', 'packing']).is('tracking_number', null);
+        } else if (filterShipping === 'shipped') {
+          query = query.not('tracking_number', 'is', null);
+        } else if (filterShipping === 'shipping') {
+          query = query.eq('status', 'shipping');
+        } else if (filterShipping === 'delivered') {
+          query = query.eq('status', 'delivered');
+        } else if (filterShipping === 'returning') {
+          query = query.eq('status', 'returned');
+        }
         if (filterStartDate) query = query.gte('created_at', filterStartDate);
         if (filterEndDate) query = query.lte('created_at', filterEndDate + 'T23:59:59');
         if (search.trim()) {
@@ -122,14 +141,16 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       };
 
       const addUserFilter = (q) => permLevel === 1 ? q.eq('created_by', currentUser.name) : q;
-      const [dataRes, newRes, procRes, compRes, totalRes] = await Promise.all([
+      const [dataRes, waitConfirmRes, notShippedRes, shippingRes, compRes, totalRes] = await Promise.all([
         applyFilters(supabase.from('orders').select('*', { count: 'exact' }))
           .order(sortBy, { ascending: sortOrder === 'asc' })
           .range(from, to),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
           .eq('tenant_id', tenant.id).eq('status', 'new')),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id).in('status', ['confirmed', 'packing', 'shipping', 'delivered'])),
+          .eq('tenant_id', tenant.id).in('status', ['confirmed', 'packing']).is('tracking_number', null)),
+        addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenant.id).eq('status', 'shipping')),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
           .eq('tenant_id', tenant.id).eq('status', 'completed')),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
@@ -140,8 +161,9 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       setTotalCount(dataRes.count || 0);
       setStatusCounts({
         total: totalRes.count || 0,
-        new: newRes.count || 0,
-        processing: procRes.count || 0,
+        waiting_confirm: waitConfirmRes.count || 0,
+        not_shipped: notShippedRes.count || 0,
+        shipping: shippingRes.count || 0,
         completed: compRes.count || 0,
       });
     } catch (err) {
@@ -149,11 +171,46 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     } finally {
       setLoadingOrders(false);
     }
-  }, [tenant?.id, page, filterStatus, filterType, filterStartDate, filterEndDate, search, sortBy, sortOrder, permLevel, currentUser.name]);
+  }, [tenant?.id, page, filterStatus, filterType, filterPayment, filterCreatedBy, filterSource, filterShipping, filterStartDate, filterEndDate, search, sortBy, sortOrder, permLevel, currentUser.name]);
 
   useEffect(() => {
     loadPagedOrders();
   }, [loadPagedOrders]);
+
+  // Batch-load order items for visible page (product preview on cards)
+  useEffect(() => {
+    if (serverOrders.length === 0) { setPageItemsMap({}); return; }
+    const orderIds = serverOrders.map(o => o.id);
+    supabase.from('order_items').select('order_id, product_name, quantity')
+      .in('order_id', orderIds)
+      .then(({ data }) => {
+        const map = {};
+        (data || []).forEach(item => {
+          if (!map[item.order_id]) map[item.order_id] = [];
+          map[item.order_id].push(item);
+        });
+        setPageItemsMap(map);
+      });
+  }, [serverOrders]);
+
+  // Shipping status label helper
+  const getShippingLabel = (o) => {
+    if (['new', 'completed', 'cancelled'].includes(o.status)) return null;
+    if (o.status === 'returned') return { icon: '↩️', text: 'Đang hoàn', color: 'text-orange-600' };
+    if (o.status === 'delivered') return { icon: '✅', text: 'Đã giao', color: 'text-cyan-600' };
+    if (o.status === 'shipping') return { icon: '🚚', text: 'Đang vận chuyển', color: 'text-purple-600' };
+    if (o.tracking_number) return { icon: '📤', text: 'Đã đẩy đơn', color: 'text-blue-600' };
+    return { icon: '⏳', text: 'Chưa đẩy đơn', color: 'text-amber-600' };
+  };
+
+  // Items preview text helper
+  const getItemsPreview = (orderId) => {
+    const items = pageItemsMap[orderId];
+    if (!items || items.length === 0) return '';
+    const first2 = items.slice(0, 2).map(i => `${i.product_name} x${i.quantity}`);
+    const rest = items.length - 2;
+    return first2.join(', ') + (rest > 0 ? ` và ${rest} SP khác` : '');
+  };
 
   // ---- Create form state ----
   const [orderType, setOrderType] = useState('online');
@@ -989,6 +1046,14 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
     let query = supabase.from('orders').select('*').eq('tenant_id', tenant.id);
     if (filterStatus !== 'all') query = query.eq('status', filterStatus);
     if (filterType !== 'all') query = query.eq('order_type', filterType);
+    if (filterPayment !== 'all') query = query.eq('payment_status', filterPayment);
+    if (filterCreatedBy !== 'all') query = query.eq('created_by', filterCreatedBy);
+    if (filterSource !== 'all') query = query.eq('order_source', filterSource);
+    if (filterShipping === 'not_shipped') { query = query.in('status', ['confirmed', 'packing']).is('tracking_number', null); }
+    else if (filterShipping === 'shipped') { query = query.not('tracking_number', 'is', null); }
+    else if (filterShipping === 'shipping') { query = query.eq('status', 'shipping'); }
+    else if (filterShipping === 'delivered') { query = query.eq('status', 'delivered'); }
+    else if (filterShipping === 'returning') { query = query.eq('status', 'returned'); }
     if (filterStartDate) query = query.gte('created_at', filterStartDate);
     if (filterEndDate) query = query.lte('created_at', filterEndDate + 'T23:59:59');
     if (search.trim()) {
@@ -1044,87 +1109,143 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         </div>
       </div>
 
-      {/* Stats (server-side counts) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {/* ===== Stats (5 clickable cards) ===== */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         {[
-          { label: 'Tổng', value: statusCounts.total, color: 'bg-gray-50 text-gray-700' },
-          { label: 'Mới', value: statusCounts.new, color: 'bg-yellow-50 text-yellow-700' },
-          { label: 'Đang xử lý', value: statusCounts.processing, color: 'bg-blue-50 text-blue-700' },
-          { label: 'Hoàn thành', value: statusCounts.completed, color: 'bg-green-50 text-green-700' },
+          { key: 'total', label: 'Tổng', value: statusCounts.total, color: 'bg-gray-50 text-gray-700 border-gray-200', active: filterStatus === 'all' && filterShipping === 'all' },
+          { key: 'waiting_confirm', label: 'Chờ XN', value: statusCounts.waiting_confirm, color: 'bg-yellow-50 text-yellow-700 border-yellow-200', active: filterStatus === 'new' },
+          { key: 'not_shipped', label: 'Chưa đẩy đơn', value: statusCounts.not_shipped, color: 'bg-amber-50 text-amber-700 border-amber-200', active: filterShipping === 'not_shipped' },
+          { key: 'shipping', label: 'Đang giao', value: statusCounts.shipping, color: 'bg-purple-50 text-purple-700 border-purple-200', active: filterStatus === 'shipping' },
+          { key: 'completed', label: 'Hoàn thành', value: statusCounts.completed, color: 'bg-green-50 text-green-700 border-green-200', active: filterStatus === 'completed' },
         ].map(s => (
-          <div key={s.label} className={`${s.color} p-2.5 rounded-lg text-center`}>
+          <button key={s.key} onClick={() => {
+            setFilterStatus('all'); setFilterShipping('all');
+            if (s.key === 'waiting_confirm') setFilterStatus('new');
+            else if (s.key === 'not_shipped') setFilterShipping('not_shipped');
+            else if (s.key === 'shipping') setFilterStatus('shipping');
+            else if (s.key === 'completed') setFilterStatus('completed');
+            setPage(1);
+          }}
+            className={`flex-shrink-0 min-w-[80px] p-2 rounded-lg text-center border transition ${s.active ? s.color + ' ring-2 ring-offset-1 ring-green-500' : s.color + ' opacity-70 hover:opacity-100'}`}>
             <div className="text-lg font-bold">{s.value.toLocaleString('vi-VN')}</div>
-            <div className="text-xs">{s.label}</div>
-          </div>
+            <div className="text-[10px] sm:text-xs whitespace-nowrap">{s.label}</div>
+          </button>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="border rounded-lg px-3 py-1.5 text-sm">
-          <option value="all">Tất cả trạng thái</option>
-          {Object.entries(orderStatuses).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-        </select>
-        <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="border rounded-lg px-3 py-1.5 text-sm">
-          <option value="all">Tất cả loại</option>
-          {Object.entries(orderTypes).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-        </select>
-        <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Tìm mã đơn, tên KH..."
-          className="border rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[180px]" />
-      </div>
-      <div className="flex flex-wrap gap-2 items-center">
-        <input type="date" value={filterStartDate} onChange={e => { setFilterStartDate(e.target.value); setPage(1); }} className="border rounded-lg px-3 py-1.5 text-sm" />
-        <span className="text-gray-400 text-sm">→</span>
-        <input type="date" value={filterEndDate} onChange={e => { setFilterEndDate(e.target.value); setPage(1); }} className="border rounded-lg px-3 py-1.5 text-sm" />
-        <select value={`${sortBy}-${sortOrder}`} onChange={e => { const [by, ord] = e.target.value.split('-'); setSortBy(by); setSortOrder(ord); setPage(1); }}
-          className="border rounded-lg px-3 py-1.5 text-sm">
-          <option value="created_at-desc">Mới nhất</option>
-          <option value="created_at-asc">Cũ nhất</option>
-          <option value="total_amount-desc">Giá trị cao</option>
-          <option value="total_amount-asc">Giá trị thấp</option>
-        </select>
-        {hasPermission('sales', 2) && <button onClick={exportOrdersCSV} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-600" title="Xuất CSV">📥 CSV</button>}
+      {/* ===== Filters ===== */}
+      <div className="space-y-2 bg-gray-50 rounded-xl p-3">
+        {/* Row 1: Trạng thái, Vận chuyển, Thanh toán, NV tạo */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="all">Trạng thái: Tất cả</option>
+            {Object.entries(orderStatuses).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+          </select>
+          <select value={filterShipping} onChange={e => { setFilterShipping(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="all">Vận chuyển: Tất cả</option>
+            <option value="not_shipped">⏳ Chưa đẩy đơn</option>
+            <option value="shipped">📤 Đã đẩy đơn</option>
+            <option value="shipping">🚚 Đang vận chuyển</option>
+            <option value="delivered">✅ Đã giao</option>
+            <option value="returning">↩️ Đang hoàn</option>
+          </select>
+          <select value={filterPayment} onChange={e => { setFilterPayment(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="all">Thanh toán: Tất cả</option>
+            <option value="unpaid">💰 Chưa thanh toán</option>
+            <option value="partial">💳 TT 1 phần</option>
+            <option value="paid">✅ Đã thanh toán</option>
+          </select>
+          <select value={filterCreatedBy} onChange={e => { setFilterCreatedBy(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="all">NV tạo: Tất cả</option>
+            {(allUsers || []).filter(u => u.is_active !== false).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+          </select>
+        </div>
+        {/* Row 2: Loại đơn, Nguồn đơn, Tìm kiếm */}
+        <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_2fr] gap-2">
+          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="all">Loại: Tất cả</option>
+            {Object.entries(orderTypes).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+          </select>
+          <select value={filterSource} onChange={e => { setFilterSource(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="all">Nguồn: Tất cả</option>
+            {Object.entries(orderSources).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+          </select>
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="🔍 Tìm mã đơn, tên KH, SĐT..."
+            className="border rounded-lg px-3 py-1.5 text-xs sm:text-sm bg-white col-span-2 sm:col-span-1" />
+        </div>
+        {/* Row 3: Ngày, Sắp xếp, CSV */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <input type="date" value={filterStartDate} onChange={e => { setFilterStartDate(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white" />
+          <span className="text-gray-400 text-xs">→</span>
+          <input type="date" value={filterEndDate} onChange={e => { setFilterEndDate(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white" />
+          <select value={`${sortBy}-${sortOrder}`} onChange={e => { const [by, ord] = e.target.value.split('-'); setSortBy(by); setSortOrder(ord); setPage(1); }}
+            className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="created_at-desc">Mới nhất</option>
+            <option value="created_at-asc">Cũ nhất</option>
+            <option value="total_amount-desc">Giá trị cao</option>
+            <option value="total_amount-asc">Giá trị thấp</option>
+          </select>
+          {hasPermission('sales', 2) && <button onClick={exportOrdersCSV} className="px-3 py-1.5 bg-white hover:bg-gray-100 border rounded-lg text-xs sm:text-sm text-gray-600" title="Xuất CSV">📥 CSV</button>}
+          {(filterStatus !== 'all' || filterType !== 'all' || filterPayment !== 'all' || filterCreatedBy !== 'all' || filterSource !== 'all' || filterShipping !== 'all' || filterStartDate || filterEndDate) && (
+            <button onClick={() => { setFilterStatus('all'); setFilterType('all'); setFilterPayment('all'); setFilterCreatedBy('all'); setFilterSource('all'); setFilterShipping('all'); setFilterStartDate(''); setFilterEndDate(''); setPage(1); }}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-xs sm:text-sm text-red-600">Xoá lọc</button>
+          )}
+        </div>
       </div>
 
-      {/* Order List */}
+      {/* ===== Order List ===== */}
       <div className="space-y-2">
         {loadingOrders ? (
           <div className="text-center py-12 text-gray-400"><div className="text-2xl mb-2 animate-spin inline-block">⏳</div><p>Đang tải đơn hàng...</p></div>
         ) : serverOrders.length === 0 ? (
           <div className="text-center py-12 text-gray-400"><div className="text-4xl mb-2">🛒</div><p>Chưa có đơn hàng</p></div>
-        ) : serverOrders.map(o => (
-          <div key={o.id} onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); setEditMode(false); setShowPaymentInput(false); setShowDetailModal(true); }}
-            className="bg-white rounded-xl border p-3 md:p-4 hover:shadow-md cursor-pointer transition-shadow">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm">{o.order_number}</span>
+        ) : serverOrders.map(o => {
+          const shipLabel = getShippingLabel(o);
+          const itemsText = getItemsPreview(o.id);
+          return (
+            <div key={o.id} onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); setEditMode(false); setShowPaymentInput(false); setShowDetailModal(true); }}
+              className="bg-white rounded-xl border p-3 md:p-4 hover:shadow-md cursor-pointer transition-shadow space-y-1">
+              {/* Line 1: Mã đơn, loại, trạng thái, tổng tiền */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                  <span className="font-semibold text-sm">{o.order_number}</span>
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${o.order_type === 'pos' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
-                    {orderTypes[o.order_type]?.label || o.order_type}
+                    {orderTypes[o.order_type]?.icon} {orderTypes[o.order_type]?.label || o.order_type}
                   </span>
                   <StatusBadge status={o.status} />
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {o.customer_name && <span>{o.customer_name}</span>}
-                  {o.customer_phone && <span> • {o.customer_phone}</span>}
-                  <span className="ml-2">{new Date(o.created_at).toLocaleDateString('vi-VN')}</span>
-                </div>
+                <div className="font-bold text-green-700 text-sm whitespace-nowrap">{formatMoney(o.total_amount)}</div>
               </div>
-              <div className="text-right ml-3">
-                <div className="font-bold text-green-700">{formatMoney(o.total_amount)}</div>
-                <div className={`text-xs ${o.payment_status === 'paid' ? 'text-green-500' : 'text-red-500'}`}>
-                  {paymentStatuses[o.payment_status]?.label || o.payment_status}
+              {/* Line 2: KH, SĐT, ngày, thanh toán */}
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <div className="truncate">
+                  {o.customer_name && <span>👤 {o.customer_name}</span>}
+                  {o.customer_phone && <span className="hidden sm:inline"> · 📞 {o.customer_phone}</span>}
+                  <span className="ml-1.5">· 📅 {new Date(o.created_at).toLocaleDateString('vi-VN')}</span>
                 </div>
+                <span className={`whitespace-nowrap ml-2 font-medium ${o.payment_status === 'paid' ? 'text-green-600' : o.payment_status === 'partial' ? 'text-amber-600' : 'text-red-500'}`}>
+                  {paymentStatuses[o.payment_status]?.label || o.payment_status}
+                </span>
+              </div>
+              {/* Line 3 (desktop): Địa chỉ */}
+              {o.shipping_address && (
+                <div className="text-xs text-gray-400 truncate hidden sm:block">📍 {o.shipping_address}</div>
+              )}
+              {/* Line 4 (desktop): VC status + NV tạo */}
+              <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
+                {shipLabel && <span className={shipLabel.color}>{shipLabel.icon} {shipLabel.text}</span>}
+                {o.created_by && <span>👨‍💼 NV: {o.created_by}</span>}
+                {itemsText && <span className="text-gray-400 truncate">📦 {itemsText}</span>}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-xs text-gray-500">{totalCount.toLocaleString('vi-VN')} đơn • Trang {page}/{totalPages}</div>
+          <div className="text-xs text-gray-500">{totalCount.toLocaleString('vi-VN')} đơn · Trang {page}/{totalPages}</div>
           <div className="flex gap-1">
             <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}
               className={`px-3 py-1.5 rounded-lg text-sm ${page <= 1 ? 'text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>←</button>
