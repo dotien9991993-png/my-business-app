@@ -331,6 +331,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     try {
       const totalWeight = orderItems.reduce((sum, i) => sum + (i.quantity || 1) * 500, 0);
       const codAmount = selectedOrder.payment_status === 'paid' ? 0 : (selectedOrder.total_amount - (selectedOrder.paid_amount || 0));
+      const svcCode = selectedOrder.shipping_service || 'VCN';
       const result = await vtpApi.createOrder(vtpToken, {
         partnerOrderNumber: selectedOrder.order_number,
         senderName: sender.name, senderPhone: sender.phone, senderAddress: sender.address,
@@ -340,24 +341,27 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         receiverAddress: selectedOrder.shipping_address || '',
         receiverProvince: meta.province_id, receiverDistrict: meta.district_id, receiverWard: meta.ward_id || 0,
         productName: orderItems.map(i => i.product_name).join(', ').slice(0, 200) || 'Hàng hóa',
+        productDescription: orderItems.map(i => `${i.product_name} x${i.quantity}`).join(', ').slice(0, 200),
         productQuantity: orderItems.reduce((s, i) => s + i.quantity, 0),
         productWeight: totalWeight, productPrice: selectedOrder.total_amount,
-        codAmount, orderNote: selectedOrder.note || '',
+        codAmount, orderService: svcCode, orderNote: selectedOrder.note || '',
         items: orderItems
       });
       if (result.success && result.data) {
         const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || '';
-        const newMeta = { ...meta, vtp_order_code: vtpCode };
+        const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: svcCode };
         await supabase.from('orders').update({
           tracking_number: vtpCode,
           shipping_metadata: newMeta,
+          shipping_provider: 'Viettel Post',
+          shipping_service: svcCode,
           status: 'shipping',
           updated_at: getNowISOVN()
         }).eq('id', selectedOrder.id);
-        setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, status: 'shipping' }));
+        setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping' }));
         setEditTracking(vtpCode);
         showToast('Đã gửi đơn Viettel Post!');
-        await loadSalesData();
+        await Promise.all([loadSalesData(), loadPagedOrders()]);
       } else {
         alert('Lỗi tạo đơn VTP: ' + (result.error || 'Không xác định'));
       }
@@ -1108,21 +1112,24 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
           receiverAddress: o.shipping_address || '',
           receiverProvince: meta.province_id, receiverDistrict: meta.district_id, receiverWard: meta.ward_id || 0,
           productName: oItems.map(it => it.product_name).join(', ').slice(0, 200) || 'Hàng hóa',
+          productDescription: oItems.map(it => `${it.product_name} x${it.quantity}`).join(', ').slice(0, 200),
           productQuantity: oItems.reduce((s, it) => s + it.quantity, 0),
           productWeight: totalW, productPrice: o.total_amount,
           codAmount: codAmt, orderService: bulkVtpService,
+          orderPayment: isCod ? 3 : 1,
           orderNote: o.note || '',
           items: oItems
         });
 
         if (result.success && result.data) {
           const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || '';
-          const newMeta = { ...meta, vtp_order_code: vtpCode };
+          const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: bulkVtpService };
           await supabase.from('orders').update({
             tracking_number: vtpCode,
             shipping_metadata: newMeta,
             status: 'shipping',
             shipping_provider: 'Viettel Post',
+            shipping_service: bulkVtpService,
             updated_at: getNowISOVN()
           }).eq('id', o.id);
           results.push({ order: o, success: true, vtpCode });
@@ -1756,43 +1763,69 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               {/* Shipping (online) */}
               {selectedOrder.order_type === 'online' && (
                 <div className="bg-purple-50 rounded-lg p-3 space-y-2">
-                  <div className="text-sm font-medium text-purple-700">Vận chuyển</div>
-                  <div className="text-sm flex items-center gap-1 flex-wrap">
-                    {selectedOrder.shipping_provider && <span>{selectedOrder.shipping_provider}</span>}
-                    {selectedOrder.shipping_service && (
-                      <span className="px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded text-xs">{shippingServices[selectedOrder.shipping_service]?.label || selectedOrder.shipping_service}</span>
-                    )}
-                    {selectedOrder.shipping_fee > 0 && <span> • Ship: {formatMoney(selectedOrder.shipping_fee)} ({shippingPayers[selectedOrder.shipping_payer] || ''})</span>}
-                    {selectedOrder.total_weight > 0 && <span> • {selectedOrder.total_weight}g</span>}
+                  <div className="text-sm font-medium text-purple-700 flex items-center gap-1.5">
+                    🚚 Vận chuyển
+                    {selectedOrder.shipping_provider && <span className="text-xs font-normal text-purple-500">- {selectedOrder.shipping_provider}</span>}
                   </div>
-                  {/* VTP tracking status */}
-                  {selectedOrder.shipping_metadata?.vtp_order_code && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                        VTP: {selectedOrder.shipping_metadata.vtp_order_code}
-                      </span>
-                      {selectedOrder.shipping_metadata.vtp_status && (
-                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                          {selectedOrder.shipping_metadata.vtp_status}
-                        </span>
+
+                  {/* Thông tin cơ bản */}
+                  {(selectedOrder.shipping_service || selectedOrder.shipping_fee > 0 || selectedOrder.total_weight > 0) && (
+                    <div className="text-sm flex items-center gap-1 flex-wrap text-gray-600">
+                      {selectedOrder.shipping_service && (
+                        <span className="px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded text-xs">{shippingServices[selectedOrder.shipping_service]?.label || selectedOrder.shipping_service}</span>
                       )}
-                      <button onClick={handleRefreshVtpTracking} className="text-xs text-blue-600 hover:underline">🔄 Cập nhật</button>
+                      {selectedOrder.shipping_fee > 0 && <span>Ship: {formatMoney(selectedOrder.shipping_fee)} ({shippingPayers[selectedOrder.shipping_payer] || ''})</span>}
+                      {selectedOrder.total_weight > 0 && <span>{selectedOrder.total_weight}g</span>}
                     </div>
                   )}
-                  {/* VTP send button */}
-                  {hasPermission('sales', 2) && selectedOrder.shipping_provider === 'Viettel Post' && vtpToken &&
-                   ['confirmed', 'packing'].includes(selectedOrder.status) &&
-                   !selectedOrder.shipping_metadata?.vtp_order_code && (
-                    <button onClick={handleSendVtp} disabled={sendingVtp}
-                      className={`w-full py-2 rounded-lg text-sm font-medium text-white ${sendingVtp ? 'bg-gray-400' : 'bg-red-600 hover:bg-red-700'}`}>
-                      {sendingVtp ? 'Đang gửi...' : '📦 Gửi Viettel Post'}
-                    </button>
+
+                  {/* Đã có mã vận đơn VTP */}
+                  {selectedOrder.shipping_metadata?.vtp_order_code ? (
+                    <div className="space-y-2">
+                      <div className="bg-white rounded-lg p-2.5 border border-purple-200 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Mã vận đơn:</span>
+                          <span className="text-sm font-bold text-purple-700">{selectedOrder.shipping_metadata.vtp_order_code}</span>
+                        </div>
+                        {selectedOrder.shipping_metadata.vtp_status && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Trạng thái:</span>
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                              {selectedOrder.shipping_metadata.vtp_status}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => window.open(`https://viettelpost.vn/tra-cuu-buu-pham?code=${selectedOrder.shipping_metadata.vtp_order_code}`, '_blank')}
+                          className="flex-1 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1">
+                          📍 Xem hành trình
+                        </button>
+                        <button onClick={handleRefreshVtpTracking}
+                          className="flex-1 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-medium flex items-center justify-center gap-1">
+                          🔄 Cập nhật TT
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Chưa có mã vận đơn */
+                    <div className="space-y-2">
+                      {/* VTP send button */}
+                      {hasPermission('sales', 2) && vtpToken &&
+                       ['confirmed', 'packing'].includes(selectedOrder.status) &&
+                       selectedOrder.shipping_metadata?.province_id && (
+                        <button onClick={handleSendVtp} disabled={sendingVtp}
+                          className={`w-full py-2 rounded-lg text-sm font-medium text-white ${sendingVtp ? 'bg-gray-400' : 'bg-red-600 hover:bg-red-700'}`}>
+                          {sendingVtp ? 'Đang gửi...' : '📦 Gửi Viettel Post'}
+                        </button>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <input value={editTracking} onChange={e => setEditTracking(e.target.value)} placeholder="Mã vận đơn..."
+                          className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+                        <button onClick={saveTracking} className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium">Lưu</button>
+                      </div>
+                    </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <input value={editTracking} onChange={e => setEditTracking(e.target.value)} placeholder="Mã vận đơn..."
-                      className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
-                    <button onClick={saveTracking} className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium">Lưu</button>
-                  </div>
                 </div>
               )}
 

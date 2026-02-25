@@ -97,14 +97,24 @@ export async function createOrder(token, {
   receiverProvince, receiverDistrict, receiverWard,
   productName, productDescription, productQuantity,
   productWeight, productPrice,
-  codAmount, orderService = 'VCN', orderNote = '',
+  codAmount, orderService = 'VCN', orderPayment, orderNote = '',
   items = []
 }) {
+  // Format delivery date as dd/mm/yyyy
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const deliveryDate = `${dd}/${mm}/${yyyy}`;
+
+  // ORDER_PAYMENT: 1=không thu tiền, 3=thu COD
+  const payment = orderPayment != null ? orderPayment : (codAmount > 0 ? 3 : 1);
+
   const body = {
     ORDER_NUMBER: partnerOrderNumber,
     GROUPADDRESS_ID: 0,
     CUS_ID: 0,
-    DELIVERY_DATE: '',
+    DELIVERY_DATE: deliveryDate,
     SENDER_FULLNAME: senderName,
     SENDER_ADDRESS: senderAddress,
     SENDER_PHONE: senderPhone,
@@ -124,7 +134,7 @@ export async function createOrder(token, {
     RECEIVER_LATITUDE: 0,
     RECEIVER_LONGITUDE: 0,
     PRODUCT_NAME: productName,
-    PRODUCT_DESCRIPTION: productDescription || '',
+    PRODUCT_DESCRIPTION: productDescription || productName || '',
     PRODUCT_QUANTITY: productQuantity || 1,
     PRODUCT_PRICE: productPrice || 0,
     PRODUCT_WEIGHT: productWeight,        // grams
@@ -132,13 +142,13 @@ export async function createOrder(token, {
     PRODUCT_HEIGHT: 0,
     PRODUCT_LENGTH: 0,
     PRODUCT_TYPE: 'HH',
-    ORDER_PAYMENT: 3,                     // 3 = receiver pays COD
+    ORDER_PAYMENT: payment,
     ORDER_SERVICE: orderService,
     ORDER_SERVICE_ADD: '',
     ORDER_VOUCHER: '',
     ORDER_NOTE: orderNote,
     MONEY_COLLECTION: codAmount || 0,
-    MONEY_TOTALFEE: 0,
+    MONEY_TOTALFREIGHT: 0,
     MONEY_FEECOD: 0,
     MONEY_FEEVAS: 0,
     MONEY_FEEINSURANCE: 0,
@@ -153,7 +163,10 @@ export async function createOrder(token, {
       PRODUCT_QUANTITY: item.quantity || 1
     }))
   };
-  return vtpProxy('create_order', token, { body });
+  console.log('[VTP] createOrder request:', JSON.stringify(body, null, 2));
+  const result = await vtpProxy('create_order', token, { body });
+  console.log('[VTP] createOrder response:', JSON.stringify(result, null, 2));
+  return result;
 }
 
 // ---- Get order detail / tracking ----
