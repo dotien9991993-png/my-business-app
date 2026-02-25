@@ -192,6 +192,19 @@ export async function createOrder(token, {
   console.log('[VTP] createOrder request:', JSON.stringify(body, null, 2));
   const result = await vtpProxy('create_order', token, { body });
   console.log('[VTP] createOrder response:', JSON.stringify(result, null, 2));
+
+  // Parse ORDER_NUMBER từ nhiều format VTP có thể trả về
+  if (result.success && result.data) {
+    let d = result.data;
+    // VTP có thể trả array: [{ ORDER_NUMBER: "..." }]
+    if (Array.isArray(d) && d.length > 0) d = d[0];
+    // Normalize: tìm ORDER_NUMBER từ nhiều field
+    const orderNum = d.ORDER_NUMBER || d.order_number || d.ORDER_CODE || d.order_code || '';
+    if (orderNum) {
+      result.data = { ...d, ORDER_NUMBER: orderNum };
+    }
+  }
+
   return result;
 }
 

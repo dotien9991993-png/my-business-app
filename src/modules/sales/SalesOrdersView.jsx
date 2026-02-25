@@ -347,11 +347,13 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         codAmount, orderService: svcCode, orderNote: selectedOrder.note || '',
         items: orderItems
       });
+      // DEBUG TẠM: hiện full response để debug
+      alert('[DEBUG VTP] Response:\n' + JSON.stringify(result, null, 2).substring(0, 800));
+
       if (result.success && result.data) {
-        const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || result.data.ORDER_STATUSTEXT || '';
+        const vtpCode = result.data.ORDER_NUMBER || '';
         if (!vtpCode) {
-          console.warn('[VTP] Tạo đơn thành công nhưng không có mã vận đơn:', result.data);
-          alert('VTP trả về thành công nhưng không có mã vận đơn. Kiểm tra lại trên partner.viettelpost.vn');
+          alert('[DEBUG] data không có ORDER_NUMBER:\n' + JSON.stringify(result.data, null, 2).substring(0, 600));
           return;
         }
         const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: svcCode };
