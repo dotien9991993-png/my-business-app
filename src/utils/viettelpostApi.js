@@ -168,6 +168,28 @@ export async function getServices(token) {
   return vtpProxy('get_services', token);
 }
 
+// ---- Get price for all services (getPriceAll) ----
+
+export async function getPriceAll(token, {
+  senderProvince, senderDistrict,
+  receiverProvince, receiverDistrict,
+  productWeight, productPrice, codAmount,
+  productType = 'HH'
+}) {
+  const body = {
+    SENDER_PROVINCE: senderProvince,
+    SENDER_DISTRICT: senderDistrict,
+    RECEIVER_PROVINCE: receiverProvince,
+    RECEIVER_DISTRICT: receiverDistrict,
+    PRODUCT_TYPE: productType,
+    PRODUCT_WEIGHT: productWeight,
+    PRODUCT_PRICE: productPrice,
+    MONEY_COLLECTION: codAmount || 0,
+    TYPE: 1
+  };
+  return vtpProxy('get_price_all', token, { body });
+}
+
 // ---- Login ----
 
 export async function loginVtp(username, password) {

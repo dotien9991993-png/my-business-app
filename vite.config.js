@@ -45,6 +45,9 @@ function vtpDevProxy() {
         } else if (action === 'get_services') {
           url = VTP_BASE + '/categories/listService'; method = 'POST';
           fetchBody = JSON.stringify({});
+        } else if (action === 'get_price_all') {
+          url = VTP_BASE + '/order/getPriceAll'; method = 'POST';
+          fetchBody = JSON.stringify(params.data || params.body);
         } else {
           res.writeHead(400); res.end(JSON.stringify({ error: 'Invalid action: ' + action })); return;
         }

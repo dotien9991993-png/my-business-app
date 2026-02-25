@@ -103,6 +103,10 @@ export default async function handler(req, res) {
       url = BASE_URL + '/categories/listService';
       method = 'POST';
       body = JSON.stringify({});
+    } else if (action === 'get_price_all') {
+      url = BASE_URL + '/order/getPriceAll';
+      method = 'POST';
+      body = JSON.stringify(params.data || params.body);
     } else {
       return res.status(400).json({ error: 'Invalid action: ' + action });
     }

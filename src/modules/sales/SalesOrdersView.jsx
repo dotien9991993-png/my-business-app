@@ -52,6 +52,8 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [bulkVtpPayer, setBulkVtpPayer] = useState('receiver');
   const [bulkVtpCod, setBulkVtpCod] = useState('cod');
   const [bulkVtpProgress, setBulkVtpProgress] = useState(null); // { current, total, results: [] }
+  const [vtpServicesList, setVtpServicesList] = useState([]); // real services from API
+  const [loadingVtpServices, setLoadingVtpServices] = useState(false);
 
   // Server-side pagination state
   const [serverOrders, setServerOrders] = useState([]);
@@ -1013,15 +1015,52 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
   const checkedTotal = checkedOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
 
   // ---- Bulk VTP: validate + push ----
-  const handleBulkVtpOpen = () => {
+  const handleBulkVtpOpen = async () => {
     if (!vtpToken) return alert('Vui lòng kết nối Viettel Post trong Cài đặt > Vận chuyển');
     const sender = getSettingValue ? getSettingValue('shipping', 'vtp_sender_address', null) : null;
     if (!sender?.province_id) return alert('Chưa cấu hình địa chỉ lấy hàng VTP trong Cài đặt > Vận chuyển');
     setBulkVtpProgress(null);
-    setBulkVtpService('VCN');
+    setBulkVtpService('');
     setBulkVtpPayer('receiver');
     setBulkVtpCod('cod');
+    setVtpServicesList([]);
+    setLoadingVtpServices(true);
     setShowBulkVtpModal(true);
+
+    // Lấy đơn đầu tiên có đủ thông tin để tính phí mẫu
+    const sampleOrder = checkedOrders.find(o => {
+      const meta = o.shipping_metadata || {};
+      return meta.province_id && meta.district_id;
+    });
+    const receiverProvince = sampleOrder?.shipping_metadata?.province_id || sender.province_id;
+    const receiverDistrict = sampleOrder?.shipping_metadata?.district_id || sender.district_id;
+
+    try {
+      const result = await vtpApi.getPriceAll(vtpToken, {
+        senderProvince: sender.province_id,
+        senderDistrict: sender.district_id,
+        receiverProvince,
+        receiverDistrict,
+        productWeight: 500,
+        productPrice: sampleOrder?.total_amount || 500000,
+        codAmount: sampleOrder?.total_amount || 500000,
+      });
+      if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+        setVtpServicesList(result.data);
+        // Auto-select first service
+        const first = result.data[0];
+        setBulkVtpService(first.MA_DV_CHINH || 'VCN');
+      } else {
+        // Fallback: dùng danh sách hardcode
+        setVtpServicesList([]);
+        setBulkVtpService('VCN');
+      }
+    } catch (err) {
+      console.error('[VTP] getPriceAll error:', err);
+      setVtpServicesList([]);
+      setBulkVtpService('VCN');
+    }
+    setLoadingVtpServices(false);
   };
 
   const getBulkValidation = () => {
@@ -1946,14 +1985,46 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 ) : (
                   /* Config form */
                   <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-medium text-gray-600 mb-1 block">Dịch vụ vận chuyển</label>
+                    {/* Dịch vụ vận chuyển - radio list */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-2 block">Dịch vụ vận chuyển</label>
+                      {loadingVtpServices ? (
+                        <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                          <svg className="animate-spin h-4 w-4 text-blue-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                          <span className="text-sm text-gray-500">Đang tải dịch vụ...</span>
+                        </div>
+                      ) : vtpServicesList.length > 0 ? (
+                        <div className="border rounded-lg divide-y max-h-52 overflow-y-auto">
+                          {vtpServicesList.map(svc => (
+                            <label key={svc.MA_DV_CHINH} className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-blue-50 transition-colors ${bulkVtpService === svc.MA_DV_CHINH ? 'bg-blue-50' : ''}`}>
+                              <input type="radio" name="bulkService" value={svc.MA_DV_CHINH}
+                                checked={bulkVtpService === svc.MA_DV_CHINH}
+                                onChange={e => setBulkVtpService(e.target.value)}
+                                className="w-4 h-4 text-blue-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-800">{svc.MA_DV_CHINH}</span>
+                                  <span className="text-sm text-gray-600">- {svc.TEN_DICHVU}</span>
+                                </div>
+                                {svc.THOI_GIAN && <div className="text-xs text-gray-400">{svc.THOI_GIAN}</div>}
+                              </div>
+                              <span className="text-sm font-semibold text-green-700 whitespace-nowrap">{formatMoney(svc.GIA_CUOC)}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        /* Fallback: dropdown hardcode */
                         <select value={bulkVtpService} onChange={e => setBulkVtpService(e.target.value)}
                           className="w-full border rounded-lg px-3 py-2 text-sm">
                           {Object.entries(shippingServices).map(([k, v]) => <option key={k} value={k}>{v.label} ({v.desc})</option>)}
                         </select>
-                      </div>
+                      )}
+                      {vtpServicesList.length > 0 && (
+                        <p className="text-xs text-gray-400 mt-1.5 italic">* Phí ship mẫu tính cho đơn đầu tiên. Phí thực tế mỗi đơn có thể khác nhau.</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium text-gray-600 mb-1 block">Người trả ship</label>
                         <select value={bulkVtpPayer} onChange={e => setBulkVtpPayer(e.target.value)}
@@ -1962,18 +2033,18 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                           <option value="shop">Shop trả</option>
                         </select>
                       </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">Hình thức thanh toán</label>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                          <input type="radio" name="bulkCod" value="cod" checked={bulkVtpCod === 'cod'} onChange={e => setBulkVtpCod(e.target.value)} />
-                          COD (thu hộ)
-                        </label>
-                        <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                          <input type="radio" name="bulkCod" value="paid" checked={bulkVtpCod === 'paid'} onChange={e => setBulkVtpCod(e.target.value)} />
-                          Đã thanh toán
-                        </label>
+                      <div>
+                        <label className="text-xs font-medium text-gray-600 mb-1 block">Hình thức thanh toán</label>
+                        <div className="flex gap-4 mt-1.5">
+                          <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                            <input type="radio" name="bulkCod" value="cod" checked={bulkVtpCod === 'cod'} onChange={e => setBulkVtpCod(e.target.value)} />
+                            COD (thu hộ)
+                          </label>
+                          <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                            <input type="radio" name="bulkCod" value="paid" checked={bulkVtpCod === 'paid'} onChange={e => setBulkVtpCod(e.target.value)} />
+                            Đã thanh toán
+                          </label>
+                        </div>
                       </div>
                     </div>
 
@@ -2008,8 +2079,8 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
 
                     <div className="flex gap-2 pt-2">
                       <button onClick={() => setShowBulkVtpModal(false)} className="flex-1 py-2.5 bg-gray-200 rounded-lg font-medium text-sm">Hủy</button>
-                      <button onClick={handleBulkVtpPush} disabled={valid.length === 0}
-                        className={`flex-1 py-2.5 rounded-lg font-medium text-sm text-white ${valid.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                      <button onClick={handleBulkVtpPush} disabled={valid.length === 0 || !bulkVtpService || loadingVtpServices}
+                        className={`flex-1 py-2.5 rounded-lg font-medium text-sm text-white ${valid.length === 0 || !bulkVtpService || loadingVtpServices ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
                         🚚 Đẩy {valid.length} đơn hợp lệ
                       </button>
                     </div>
