@@ -35,11 +35,35 @@ function vtpDevProxy() {
           url = VTP_BASE + '/order/getPrice'; method = 'POST';
           fetchBody = JSON.stringify(params.data || params.body);
         } else if (action === 'create_order') {
-          url = VTP_BASE + '/order/createOrder'; method = 'POST';
+          // Handle createOrder riêng với debug + empty response handling
           const orderBody = params.data || params.body;
-          console.log('[VTP DEV createOrder] Token:', token ? `${token.slice(0, 10)}...` : 'MISSING');
+          const vtpUrl = VTP_BASE + '/order/createOrder';
+          console.log('[VTP DEV createOrder] URL:', vtpUrl);
+          console.log('[VTP DEV createOrder] Token:', token ? `${token.slice(0, 30)}...` : 'MISSING');
           console.log('[VTP DEV createOrder] Body:', JSON.stringify(orderBody, null, 2));
-          fetchBody = JSON.stringify(orderBody);
+          try {
+            const vtpResp = await fetch(vtpUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Token': token || '' },
+              body: JSON.stringify(orderBody)
+            });
+            const rawText = await vtpResp.text();
+            console.log('[VTP DEV createOrder] Response status:', vtpResp.status);
+            console.log('[VTP DEV createOrder] Response:', rawText.slice(0, 2000));
+            res.setHeader('Content-Type', 'application/json');
+            if (!rawText || rawText.trim() === '') {
+              res.writeHead(200);
+              res.end(JSON.stringify({ error: true, status: vtpResp.status, message: `VTP trả về response rỗng (HTTP ${vtpResp.status}). Token có thể hết hạn.` }));
+            } else {
+              res.writeHead(200);
+              res.end(rawText);
+            }
+          } catch (err) {
+            res.setHeader('Content-Type', 'application/json');
+            res.writeHead(200);
+            res.end(JSON.stringify({ error: true, message: 'Lỗi kết nối VTP: ' + err.message }));
+          }
+          return;
         } else if (action === 'get_order_detail') {
           url = VTP_BASE + '/order/getTracking?ORDER_NUMBER=' + (params.orderNumber || params.orderId);
         } else if (action === 'login') {
@@ -60,10 +84,6 @@ function vtpDevProxy() {
           if (fetchBody) opts.body = fetchBody;
           const resp = await fetch(url, opts);
           const text = await resp.text();
-          if (action === 'create_order') {
-            console.log('[VTP DEV createOrder] Response status:', resp.status);
-            console.log('[VTP DEV createOrder] Response:', text.slice(0, 2000));
-          }
           res.setHeader('Content-Type', 'application/json');
           res.writeHead(200);
           res.end(text);
