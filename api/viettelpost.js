@@ -90,7 +90,7 @@ export default async function handler(req, res) {
       body = JSON.stringify(params.data || params.body);
     } else if (action === 'createOrder' || action === 'create_order') {
       // === HANDLE createOrder RIÊNG để debug chi tiết ===
-      const orderBody = params.data || params.body;
+      const orderBody = params.orderData || params.data || params.body;
       const vtpUrl = BASE_URL + '/order/createOrder';
       const vtpBody = JSON.stringify(orderBody);
 

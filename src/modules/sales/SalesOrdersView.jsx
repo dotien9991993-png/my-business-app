@@ -347,16 +347,13 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         codAmount, orderService: svcCode, orderNote: selectedOrder.note || '',
         items: orderItems
       };
-      // DEBUG TẠM: hiện body trước khi gửi VTP
-      alert('[DEBUG] orderData gửi VTP:\n' + JSON.stringify(orderData, null, 2).substring(0, 1500));
       const result = await vtpApi.createOrder(vtpToken, orderData);
-      // DEBUG TẠM: hiện full response
-      alert('[DEBUG VTP] Response:\n' + JSON.stringify(result, null, 2).substring(0, 800));
 
       if (result.success && result.data) {
         const vtpCode = result.data.ORDER_NUMBER || '';
         if (!vtpCode) {
-          alert('[DEBUG] data không có ORDER_NUMBER:\n' + JSON.stringify(result.data, null, 2).substring(0, 600));
+          console.warn('[VTP] Không có ORDER_NUMBER trong response:', result.data);
+          alert('VTP không trả về mã vận đơn. Kiểm tra lại thông tin đơn hàng.');
           return;
         }
         const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: svcCode };

@@ -36,7 +36,7 @@ function vtpDevProxy() {
           fetchBody = JSON.stringify(params.data || params.body);
         } else if (action === 'create_order') {
           // Handle createOrder riêng với debug + empty response handling
-          const orderBody = params.data || params.body;
+          const orderBody = params.orderData || params.data || params.body;
           const vtpUrl = VTP_BASE + '/order/createOrder';
           console.log('[VTP DEV createOrder] URL:', vtpUrl);
           console.log('[VTP DEV createOrder] Token:', token ? `${token.slice(0, 30)}...` : 'MISSING');

@@ -96,17 +96,7 @@ export async function calculateFee(token, {
 
 // ---- Create shipping order ----
 
-export async function createOrder(token, {
-  partnerOrderNumber,
-  senderName, senderPhone, senderAddress,
-  senderProvince, senderDistrict, senderWard,
-  receiverName, receiverPhone, receiverAddress,
-  receiverProvince, receiverDistrict, receiverWard,
-  productName, productDescription, productQuantity,
-  productWeight, productPrice,
-  codAmount, orderService = 'VCN', orderPayment, orderNote = '',
-  items = []
-}) {
+export async function createOrder(token, orderData) {
   // Format delivery date as dd/mm/yyyy
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, '0');
@@ -114,50 +104,52 @@ export async function createOrder(token, {
   const yyyy = now.getFullYear();
   const deliveryDate = `${dd}/${mm}/${yyyy}`;
 
-  // ORDER_PAYMENT: 1=không thu tiền, 3=thu COD
-  const payment = orderPayment != null ? orderPayment : (codAmount > 0 ? 3 : 1);
-
   // PRODUCT_WEIGHT: VTP reject nếu = 0, tối thiểu 200g
-  const safeWeight = Math.max(productWeight || 0, 200);
+  const safeWeight = Math.max(orderData.productWeight || 0, 200);
 
+  // ORDER_PAYMENT: 1=không thu tiền, 3=thu COD
+  const codAmt = orderData.codAmount || 0;
+  const payment = orderData.orderPayment != null ? orderData.orderPayment : (codAmt > 0 ? 3 : 1);
+
+  // Build VTP UPPER_SNAKE_CASE body
   const body = {
-    ORDER_NUMBER: partnerOrderNumber,
+    ORDER_NUMBER: orderData.partnerOrderNumber || '',
     GROUPADDRESS_ID: 0,
     CUS_ID: 0,
     DELIVERY_DATE: deliveryDate,
-    SENDER_FULLNAME: senderName,
-    SENDER_ADDRESS: senderAddress,
-    SENDER_PHONE: senderPhone,
+    SENDER_FULLNAME: orderData.senderName || '',
+    SENDER_ADDRESS: orderData.senderAddress || '',
+    SENDER_PHONE: orderData.senderPhone || '',
     SENDER_EMAIL: '',
-    SENDER_WARD: senderWard,
-    SENDER_DISTRICT: senderDistrict,
-    SENDER_PROVINCE: senderProvince,
+    SENDER_WARD: orderData.senderWard || 0,
+    SENDER_DISTRICT: orderData.senderDistrict || 0,
+    SENDER_PROVINCE: orderData.senderProvince || 0,
     SENDER_LATITUDE: 0,
     SENDER_LONGITUDE: 0,
-    RECEIVER_FULLNAME: receiverName,
-    RECEIVER_ADDRESS: receiverAddress,
-    RECEIVER_PHONE: receiverPhone,
+    RECEIVER_FULLNAME: orderData.receiverName || '',
+    RECEIVER_ADDRESS: orderData.receiverAddress || '',
+    RECEIVER_PHONE: orderData.receiverPhone || '',
     RECEIVER_EMAIL: '',
-    RECEIVER_WARD: receiverWard,
-    RECEIVER_DISTRICT: receiverDistrict,
-    RECEIVER_PROVINCE: receiverProvince,
+    RECEIVER_WARD: orderData.receiverWard || 0,
+    RECEIVER_DISTRICT: orderData.receiverDistrict || 0,
+    RECEIVER_PROVINCE: orderData.receiverProvince || 0,
     RECEIVER_LATITUDE: 0,
     RECEIVER_LONGITUDE: 0,
-    PRODUCT_NAME: productName,
-    PRODUCT_DESCRIPTION: productDescription || productName || '',
-    PRODUCT_QUANTITY: productQuantity || 1,
-    PRODUCT_PRICE: productPrice || 0,
-    PRODUCT_WEIGHT: safeWeight,            // grams (min 200g)
+    PRODUCT_NAME: orderData.productName || 'Hàng hóa',
+    PRODUCT_DESCRIPTION: orderData.productDescription || orderData.productName || '',
+    PRODUCT_QUANTITY: orderData.productQuantity || 1,
+    PRODUCT_PRICE: orderData.productPrice || 0,
+    PRODUCT_WEIGHT: safeWeight,
     PRODUCT_WIDTH: 0,
     PRODUCT_HEIGHT: 0,
     PRODUCT_LENGTH: 0,
     PRODUCT_TYPE: 'HH',
     ORDER_PAYMENT: payment,
-    ORDER_SERVICE: orderService,
+    ORDER_SERVICE: orderData.orderService || 'VCN',
     ORDER_SERVICE_ADD: '',
     ORDER_VOUCHER: '',
-    ORDER_NOTE: orderNote,
-    MONEY_COLLECTION: codAmount || 0,
+    ORDER_NOTE: orderData.orderNote || '',
+    MONEY_COLLECTION: codAmt,
     MONEY_TOTALFREIGHT: 0,
     MONEY_FEECOD: 0,
     MONEY_FEEVAS: 0,
@@ -165,15 +157,16 @@ export async function createOrder(token, {
     MONEY_FEE: 0,
     MONEY_FEEOTHER: 0,
     MONEY_TOTALVAT: 0,
-    MONEY_TOTAL: codAmount || 0,
-    LIST_ITEM: items.map(item => ({
-      PRODUCT_NAME: item.product_name || item.name,
+    MONEY_TOTAL: codAmt,
+    LIST_ITEM: (orderData.items || []).map(item => ({
+      PRODUCT_NAME: item.product_name || item.name || '',
       PRODUCT_PRICE: item.unit_price || item.price || 0,
-      PRODUCT_WEIGHT: item.weight || Math.max(Math.round(safeWeight / (productQuantity || 1)), 100),
+      PRODUCT_WEIGHT: item.weight || Math.max(Math.round(safeWeight / (orderData.productQuantity || 1)), 100),
       PRODUCT_QUANTITY: item.quantity || 1
     }))
   };
-  // Validate required fields trước khi gửi
+
+  // Validate required fields
   const missing = [];
   if (!body.SENDER_PHONE) missing.push('SENDER_PHONE');
   if (!body.SENDER_PROVINCE) missing.push('SENDER_PROVINCE');
@@ -189,16 +182,14 @@ export async function createOrder(token, {
     return { success: false, data: null, error: err };
   }
 
-  console.log('[VTP] createOrder request:', JSON.stringify(body, null, 2));
-  const result = await vtpProxy('create_order', token, { body });
+  console.log('[VTP] createOrder body:', JSON.stringify(body, null, 2));
+  const result = await vtpProxy('create_order', token, { orderData: body });
   console.log('[VTP] createOrder response:', JSON.stringify(result, null, 2));
 
   // Parse ORDER_NUMBER từ nhiều format VTP có thể trả về
   if (result.success && result.data) {
     let d = result.data;
-    // VTP có thể trả array: [{ ORDER_NUMBER: "..." }]
     if (Array.isArray(d) && d.length > 0) d = d[0];
-    // Normalize: tìm ORDER_NUMBER từ nhiều field
     const orderNum = d.ORDER_NUMBER || d.order_number || d.ORDER_CODE || d.order_code || '';
     if (orderNum) {
       result.data = { ...d, ORDER_NUMBER: orderNum };
