@@ -332,7 +332,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       const totalWeight = orderItems.reduce((sum, i) => sum + (i.quantity || 1) * 500, 0);
       const codAmount = selectedOrder.payment_status === 'paid' ? 0 : (selectedOrder.total_amount - (selectedOrder.paid_amount || 0));
       const svcCode = selectedOrder.shipping_service || 'VCN';
-      const result = await vtpApi.createOrder(vtpToken, {
+      const orderData = {
         partnerOrderNumber: selectedOrder.order_number,
         senderName: sender.name, senderPhone: sender.phone, senderAddress: sender.address,
         senderProvince: sender.province_id, senderDistrict: sender.district_id, senderWard: sender.ward_id || 0,
@@ -346,8 +346,11 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         productWeight: totalWeight, productPrice: selectedOrder.total_amount,
         codAmount, orderService: svcCode, orderNote: selectedOrder.note || '',
         items: orderItems
-      });
-      // DEBUG TẠM: hiện full response để debug
+      };
+      // DEBUG TẠM: hiện body trước khi gửi VTP
+      alert('[DEBUG] orderData gửi VTP:\n' + JSON.stringify(orderData, null, 2).substring(0, 1500));
+      const result = await vtpApi.createOrder(vtpToken, orderData);
+      // DEBUG TẠM: hiện full response
       alert('[DEBUG VTP] Response:\n' + JSON.stringify(result, null, 2).substring(0, 800));
 
       if (result.success && result.data) {
