@@ -22,11 +22,18 @@ async function vtpProxy(action, token, params = {}) {
       return { success: false, data: null, error: `HTTP ${resp.status}: ${text.slice(0, 200)}` };
     }
     const json = await resp.json();
-    // VTP returns { status: 200, data: [...] } or { error: true, message: '...' }
-    if (json.error === true || json.status === 400 || json.status === 401) {
-      return { success: false, data: null, error: json.message || 'Lỗi không xác định' };
+
+    // VTP response format: { status: 200, error: false, message: "Success", data: ... }
+    // Error format: { status: -108, error: true, message: "..." } hoặc { status: 400/401/500, ... }
+    // Check success: status phải là 200 VÀ error không phải true
+    if (json.error === true || (json.status != null && json.status !== 200)) {
+      const msg = json.message || json.error_message || JSON.stringify(json).slice(0, 300);
+      console.warn('[VTP] API error:', action, msg);
+      return { success: false, data: null, error: msg };
     }
-    return { success: true, data: json.data || json, error: null };
+
+    // Nếu có json.data → trả data, nếu không có status field (raw response) → trả json
+    return { success: true, data: json.data != null ? json.data : json, error: null };
   } catch (err) {
     return { success: false, data: null, error: err.message || 'Không thể kết nối Viettel Post' };
   }
@@ -166,6 +173,22 @@ export async function createOrder(token, {
       PRODUCT_QUANTITY: item.quantity || 1
     }))
   };
+  // Validate required fields trước khi gửi
+  const missing = [];
+  if (!body.SENDER_PHONE) missing.push('SENDER_PHONE');
+  if (!body.SENDER_PROVINCE) missing.push('SENDER_PROVINCE');
+  if (!body.SENDER_DISTRICT) missing.push('SENDER_DISTRICT');
+  if (!body.RECEIVER_PHONE) missing.push('RECEIVER_PHONE');
+  if (!body.RECEIVER_PROVINCE) missing.push('RECEIVER_PROVINCE');
+  if (!body.RECEIVER_DISTRICT) missing.push('RECEIVER_DISTRICT');
+  if (!body.RECEIVER_ADDRESS) missing.push('RECEIVER_ADDRESS');
+  if (!body.PRODUCT_NAME) missing.push('PRODUCT_NAME');
+  if (missing.length > 0) {
+    const err = `Thiếu thông tin bắt buộc: ${missing.join(', ')}`;
+    console.error('[VTP] createOrder validation failed:', err);
+    return { success: false, data: null, error: err };
+  }
+
   console.log('[VTP] createOrder request:', JSON.stringify(body, null, 2));
   const result = await vtpProxy('create_order', token, { body });
   console.log('[VTP] createOrder response:', JSON.stringify(result, null, 2));

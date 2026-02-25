@@ -348,7 +348,12 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         items: orderItems
       });
       if (result.success && result.data) {
-        const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || '';
+        const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || result.data.ORDER_STATUSTEXT || '';
+        if (!vtpCode) {
+          console.warn('[VTP] Tạo đơn thành công nhưng không có mã vận đơn:', result.data);
+          alert('VTP trả về thành công nhưng không có mã vận đơn. Kiểm tra lại trên partner.viettelpost.vn');
+          return;
+        }
         const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: svcCode };
         await supabase.from('orders').update({
           tracking_number: vtpCode,
@@ -360,12 +365,13 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         }).eq('id', selectedOrder.id);
         setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping' }));
         setEditTracking(vtpCode);
-        showToast('Đã gửi đơn Viettel Post!');
+        showToast('Đã gửi đơn Viettel Post: ' + vtpCode);
         await Promise.all([loadSalesData(), loadPagedOrders()]);
       } else {
-        alert('Lỗi tạo đơn VTP: ' + (result.error || 'Không xác định'));
+        console.error('[VTP] Lỗi tạo đơn:', result.error);
+        alert('Lỗi tạo đơn VTP:\n' + (result.error || 'Không xác định'));
       }
-    } catch (err) { alert('Lỗi: ' + err.message); }
+    } catch (err) { console.error('[VTP] Exception:', err); alert('Lỗi: ' + err.message); }
     finally { setSendingVtp(false); }
   };
 
@@ -1122,17 +1128,21 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         });
 
         if (result.success && result.data) {
-          const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || '';
-          const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: bulkVtpService };
-          await supabase.from('orders').update({
-            tracking_number: vtpCode,
-            shipping_metadata: newMeta,
-            status: 'shipping',
-            shipping_provider: 'Viettel Post',
-            shipping_service: bulkVtpService,
-            updated_at: getNowISOVN()
-          }).eq('id', o.id);
-          results.push({ order: o, success: true, vtpCode });
+          const vtpCode = result.data.ORDER_NUMBER || result.data.order_code || result.data.ORDER_STATUSTEXT || '';
+          if (!vtpCode) {
+            results.push({ order: o, success: false, error: 'VTP không trả về mã vận đơn' });
+          } else {
+            const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: bulkVtpService };
+            await supabase.from('orders').update({
+              tracking_number: vtpCode,
+              shipping_metadata: newMeta,
+              status: 'shipping',
+              shipping_provider: 'Viettel Post',
+              shipping_service: bulkVtpService,
+              updated_at: getNowISOVN()
+            }).eq('id', o.id);
+            results.push({ order: o, success: true, vtpCode });
+          }
         } else {
           results.push({ order: o, success: false, error: result.error || 'Lỗi không xác định' });
         }
