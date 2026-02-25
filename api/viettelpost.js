@@ -91,7 +91,10 @@ export default async function handler(req, res) {
     } else if (action === 'createOrder' || action === 'create_order') {
       url = BASE_URL + '/order/createOrder';
       method = 'POST';
-      body = JSON.stringify(params.data || params.body);
+      const orderBody = params.data || params.body;
+      console.log('[VTP createOrder] Token present:', !!token, 'Token length:', token?.length);
+      console.log('[VTP createOrder] Request body:', JSON.stringify(orderBody, null, 2));
+      body = JSON.stringify(orderBody);
     } else if (action === 'getTracking' || action === 'get_order_detail') {
       const id = params.orderNumber || params.orderId;
       url = BASE_URL + '/order/getTracking?ORDER_NUMBER=' + id;
@@ -116,6 +119,12 @@ export default async function handler(req, res) {
 
     const response = await fetch(url, fetchOptions);
     const text = await response.text();
+
+    // Debug log cho createOrder
+    if (action === 'createOrder' || action === 'create_order') {
+      console.log('[VTP createOrder] Response status:', response.status);
+      console.log('[VTP createOrder] Response body:', text.slice(0, 2000));
+    }
 
     try {
       const data = JSON.parse(text);

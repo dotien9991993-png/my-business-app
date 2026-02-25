@@ -36,7 +36,10 @@ function vtpDevProxy() {
           fetchBody = JSON.stringify(params.data || params.body);
         } else if (action === 'create_order') {
           url = VTP_BASE + '/order/createOrder'; method = 'POST';
-          fetchBody = JSON.stringify(params.data || params.body);
+          const orderBody = params.data || params.body;
+          console.log('[VTP DEV createOrder] Token:', token ? `${token.slice(0, 10)}...` : 'MISSING');
+          console.log('[VTP DEV createOrder] Body:', JSON.stringify(orderBody, null, 2));
+          fetchBody = JSON.stringify(orderBody);
         } else if (action === 'get_order_detail') {
           url = VTP_BASE + '/order/getTracking?ORDER_NUMBER=' + (params.orderNumber || params.orderId);
         } else if (action === 'login') {
@@ -57,6 +60,10 @@ function vtpDevProxy() {
           if (fetchBody) opts.body = fetchBody;
           const resp = await fetch(url, opts);
           const text = await resp.text();
+          if (action === 'create_order') {
+            console.log('[VTP DEV createOrder] Response status:', resp.status);
+            console.log('[VTP DEV createOrder] Response:', text.slice(0, 2000));
+          }
           res.setHeader('Content-Type', 'application/json');
           res.writeHead(200);
           res.end(text);

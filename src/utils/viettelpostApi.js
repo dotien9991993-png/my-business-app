@@ -110,6 +110,9 @@ export async function createOrder(token, {
   // ORDER_PAYMENT: 1=không thu tiền, 3=thu COD
   const payment = orderPayment != null ? orderPayment : (codAmount > 0 ? 3 : 1);
 
+  // PRODUCT_WEIGHT: VTP reject nếu = 0, tối thiểu 200g
+  const safeWeight = Math.max(productWeight || 0, 200);
+
   const body = {
     ORDER_NUMBER: partnerOrderNumber,
     GROUPADDRESS_ID: 0,
@@ -137,7 +140,7 @@ export async function createOrder(token, {
     PRODUCT_DESCRIPTION: productDescription || productName || '',
     PRODUCT_QUANTITY: productQuantity || 1,
     PRODUCT_PRICE: productPrice || 0,
-    PRODUCT_WEIGHT: productWeight,        // grams
+    PRODUCT_WEIGHT: safeWeight,            // grams (min 200g)
     PRODUCT_WIDTH: 0,
     PRODUCT_HEIGHT: 0,
     PRODUCT_LENGTH: 0,
@@ -159,7 +162,7 @@ export async function createOrder(token, {
     LIST_ITEM: items.map(item => ({
       PRODUCT_NAME: item.product_name || item.name,
       PRODUCT_PRICE: item.unit_price || item.price || 0,
-      PRODUCT_WEIGHT: item.weight || Math.round(productWeight / (productQuantity || 1)),
+      PRODUCT_WEIGHT: item.weight || Math.max(Math.round(safeWeight / (productQuantity || 1)), 100),
       PRODUCT_QUANTITY: item.quantity || 1
     }))
   };
