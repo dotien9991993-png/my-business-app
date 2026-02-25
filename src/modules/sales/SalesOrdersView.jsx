@@ -1322,6 +1322,20 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         </div>
       </div>
 
+      {/* ===== Select All + Count ===== */}
+      {!loadingOrders && serverOrders.length > 0 && selectableOnPage.length > 0 && (
+        <div className="flex items-center justify-between bg-gray-50 border rounded-lg px-3 py-2">
+          <label className="flex items-center gap-2 cursor-pointer text-sm">
+            <input type="checkbox" checked={allPageSelected} onChange={toggleAllPage}
+              className="w-4 h-4 rounded border-gray-300 text-green-600" />
+            <span className="text-gray-700">
+              {allPageSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${selectableOnPage.length} đơn có thể đẩy)`}
+            </span>
+          </label>
+          <span className="text-xs text-gray-500">Hiện {serverOrders.length} / {totalCount.toLocaleString('vi-VN')}</span>
+        </div>
+      )}
+
       {/* ===== Order List ===== */}
       <div className="space-y-2">
         {loadingOrders ? (
