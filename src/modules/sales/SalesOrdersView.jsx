@@ -332,46 +332,43 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       const totalWeight = orderItems.reduce((sum, i) => sum + (i.quantity || 1) * 500, 0);
       const codAmount = selectedOrder.payment_status === 'paid' ? 0 : (selectedOrder.total_amount - (selectedOrder.paid_amount || 0));
       const svcCode = selectedOrder.shipping_service || 'VCN';
-      const orderData = {
+      const result = await vtpApi.createOrder(vtpToken, {
         partnerOrderNumber: selectedOrder.order_number,
         senderName: sender.name, senderPhone: sender.phone, senderAddress: sender.address,
-        senderProvince: sender.province_id, senderDistrict: sender.district_id, senderWard: sender.ward_id || 0,
+        senderProvince: Number(sender.province_id), senderDistrict: Number(sender.district_id), senderWard: Number(sender.ward_id || 0),
         receiverName: selectedOrder.customer_name || 'Khách hàng',
         receiverPhone: selectedOrder.customer_phone || '',
         receiverAddress: selectedOrder.shipping_address || '',
-        receiverProvince: meta.province_id, receiverDistrict: meta.district_id, receiverWard: meta.ward_id || 0,
+        receiverProvince: Number(meta.province_id), receiverDistrict: Number(meta.district_id), receiverWard: Number(meta.ward_id || 0),
         productName: orderItems.map(i => i.product_name).join(', ').slice(0, 200) || 'Hàng hóa',
         productDescription: orderItems.map(i => `${i.product_name} x${i.quantity}`).join(', ').slice(0, 200),
         productQuantity: orderItems.reduce((s, i) => s + i.quantity, 0),
         productWeight: totalWeight, productPrice: selectedOrder.total_amount,
         codAmount, orderService: svcCode, orderNote: selectedOrder.note || '',
         items: orderItems
-      };
-      const result = await vtpApi.createOrder(vtpToken, orderData);
+      });
 
       if (result.success && result.data) {
         const vtpCode = result.data.ORDER_NUMBER || '';
         if (!vtpCode) {
-          console.warn('[VTP] Không có ORDER_NUMBER trong response:', result.data);
+          console.warn('[VTP] Không có ORDER_NUMBER:', result.data);
           alert('VTP không trả về mã vận đơn. Kiểm tra lại thông tin đơn hàng.');
           return;
         }
         const newMeta = { ...meta, vtp_order_code: vtpCode, vtp_service: svcCode };
         await supabase.from('orders').update({
-          tracking_number: vtpCode,
-          shipping_metadata: newMeta,
-          shipping_provider: 'Viettel Post',
-          shipping_service: svcCode,
-          status: 'shipping',
-          updated_at: getNowISOVN()
+          tracking_number: vtpCode, shipping_metadata: newMeta,
+          shipping_provider: 'Viettel Post', shipping_service: svcCode,
+          status: 'shipping', updated_at: getNowISOVN()
         }).eq('id', selectedOrder.id);
         setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping' }));
         setEditTracking(vtpCode);
         showToast('Đã gửi đơn Viettel Post: ' + vtpCode);
         await Promise.all([loadSalesData(), loadPagedOrders()]);
       } else {
-        console.error('[VTP] Lỗi tạo đơn:', result.error);
-        alert('Lỗi tạo đơn VTP:\n' + (result.error || 'Không xác định'));
+        const errMsg = result.error || 'Không xác định';
+        console.error('[VTP] Lỗi tạo đơn:', errMsg);
+        alert('Lỗi tạo đơn VTP:\n' + errMsg + (errMsg.includes('hết hạn') ? '\n\nVui lòng vào Cài đặt > Vận chuyển → Kết nối lại VTP.' : ''));
       }
     } catch (err) { console.error('[VTP] Exception:', err); alert('Lỗi: ' + err.message); }
     finally { setSendingVtp(false); }
@@ -1114,11 +1111,11 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         const result = await vtpApi.createOrder(vtpToken, {
           partnerOrderNumber: o.order_number,
           senderName: sender.name, senderPhone: sender.phone, senderAddress: sender.address,
-          senderProvince: sender.province_id, senderDistrict: sender.district_id, senderWard: sender.ward_id || 0,
+          senderProvince: Number(sender.province_id), senderDistrict: Number(sender.district_id), senderWard: Number(sender.ward_id || 0),
           receiverName: o.customer_name || 'Khách hàng',
           receiverPhone: o.customer_phone || '',
           receiverAddress: o.shipping_address || '',
-          receiverProvince: meta.province_id, receiverDistrict: meta.district_id, receiverWard: meta.ward_id || 0,
+          receiverProvince: Number(meta.province_id), receiverDistrict: Number(meta.district_id), receiverWard: Number(meta.ward_id || 0),
           productName: oItems.map(it => it.product_name).join(', ').slice(0, 200) || 'Hàng hóa',
           productDescription: oItems.map(it => `${it.product_name} x${it.quantity}`).join(', ').slice(0, 200),
           productQuantity: oItems.reduce((s, it) => s + it.quantity, 0),

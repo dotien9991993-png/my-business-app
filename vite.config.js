@@ -34,22 +34,20 @@ function vtpDevProxy() {
         } else if (action === 'calculate_fee') {
           url = VTP_BASE + '/order/getPrice'; method = 'POST';
           fetchBody = JSON.stringify(params.data || params.body);
-        } else if (action === 'create_order') {
-          // Handle createOrder riêng với debug + empty response handling
-          const orderBody = params.orderData || params.data || params.body;
+        } else if (action === 'createOrder' || action === 'create_order') {
+          const orderBody = params.orderData;
+          if (!orderBody) { res.writeHead(400); res.end(JSON.stringify({ error: true, message: 'Missing orderData' })); return; }
           const vtpUrl = VTP_BASE + '/order/createOrder';
-          console.log('[VTP DEV createOrder] URL:', vtpUrl);
-          console.log('[VTP DEV createOrder] Token:', token ? `${token.slice(0, 30)}...` : 'MISSING');
-          console.log('[VTP DEV createOrder] Body:', JSON.stringify(orderBody, null, 2));
+          console.log('[VTP DEV createOrder] Token length:', token?.length);
+          console.log('[VTP DEV createOrder] Body:', JSON.stringify(orderBody).substring(0, 2000));
           try {
             const vtpResp = await fetch(vtpUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Token': token || '' },
+              headers: { 'Content-Type': 'application/json', 'Token': token },
               body: JSON.stringify(orderBody)
             });
             const rawText = await vtpResp.text();
-            console.log('[VTP DEV createOrder] Response status:', vtpResp.status);
-            console.log('[VTP DEV createOrder] Response:', rawText.slice(0, 2000));
+            console.log('[VTP DEV createOrder] Status:', vtpResp.status, 'Response:', rawText.slice(0, 2000));
             res.setHeader('Content-Type', 'application/json');
             if (!rawText || rawText.trim() === '') {
               res.writeHead(200);

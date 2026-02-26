@@ -89,38 +89,32 @@ export default async function handler(req, res) {
       method = 'POST';
       body = JSON.stringify(params.data || params.body);
     } else if (action === 'createOrder' || action === 'create_order') {
-      // === HANDLE createOrder RIÊNG để debug chi tiết ===
-      const orderBody = params.orderData || params.data || params.body;
-      const vtpUrl = BASE_URL + '/order/createOrder';
-      const vtpBody = JSON.stringify(orderBody);
+      const orderBody = params.orderData;
+      if (!orderBody) {
+        return res.status(400).json({ error: true, message: 'Missing orderData' });
+      }
 
+      const vtpUrl = BASE_URL + '/order/createOrder';
       console.log('[VTP createOrder] URL:', vtpUrl);
-      console.log('[VTP createOrder] Token present:', !!token, 'Token length:', token?.length);
-      console.log('[VTP createOrder] Token preview:', token ? token.substring(0, 30) + '...' : 'EMPTY');
-      console.log('[VTP createOrder] Body length:', vtpBody.length);
-      console.log('[VTP createOrder] Body:', vtpBody.substring(0, 2000));
+      console.log('[VTP createOrder] Token length:', token?.length);
+      console.log('[VTP createOrder] Body:', JSON.stringify(orderBody).substring(0, 2000));
 
       try {
         const vtpResp = await fetch(vtpUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Token': token || ''
-          },
-          body: vtpBody
+          headers: { 'Content-Type': 'application/json', 'Token': token },
+          body: JSON.stringify(orderBody)
         });
 
         const rawText = await vtpResp.text();
-        console.log('[VTP createOrder] Response status:', vtpResp.status);
-        console.log('[VTP createOrder] Response headers:', JSON.stringify(Object.fromEntries(vtpResp.headers)));
-        console.log('[VTP createOrder] Response text:', rawText.substring(0, 2000));
+        console.log('[VTP createOrder] Status:', vtpResp.status);
+        console.log('[VTP createOrder] Response:', rawText.substring(0, 2000));
 
-        // Handle empty response
         if (!rawText || rawText.trim() === '') {
           return res.status(200).json({
             error: true,
             status: vtpResp.status,
-            message: `VTP trả về response rỗng (HTTP ${vtpResp.status}). Token có thể hết hạn hoặc body sai format.`
+            message: `VTP trả về response rỗng (HTTP ${vtpResp.status}). Token có thể hết hạn.`
           });
         }
 
@@ -130,16 +124,12 @@ export default async function handler(req, res) {
         } catch (_e) {
           return res.status(200).json({
             error: true,
-            message: 'VTP response không phải JSON',
-            raw: rawText.substring(0, 500)
+            message: 'VTP response không phải JSON: ' + rawText.substring(0, 500)
           });
         }
       } catch (fetchErr) {
         console.error('[VTP createOrder] Fetch error:', fetchErr);
-        return res.status(200).json({
-          error: true,
-          message: 'Lỗi kết nối VTP: ' + fetchErr.message
-        });
+        return res.status(200).json({ error: true, message: 'Lỗi kết nối VTP: ' + fetchErr.message });
       }
     } else if (action === 'getTracking' || action === 'get_order_detail') {
       const id = params.orderNumber || params.orderId;

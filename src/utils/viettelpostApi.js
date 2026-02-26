@@ -96,59 +96,50 @@ export async function calculateFee(token, {
 
 // ---- Create shipping order ----
 
-export async function createOrder(token, orderData) {
+export async function createOrder(token, params) {
   // Format delivery date as dd/mm/yyyy
   const now = new Date();
-  const dd = String(now.getDate()).padStart(2, '0');
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy = now.getFullYear();
-  const deliveryDate = `${dd}/${mm}/${yyyy}`;
+  const deliveryDate = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
-  // PRODUCT_WEIGHT: VTP reject nếu = 0, tối thiểu 200g
-  const safeWeight = Math.max(orderData.productWeight || 0, 200);
+  // Ensure Number for IDs, String for text
+  const safeWeight = Math.max(Number(params.productWeight || 0), 200);
+  const codAmt = Number(params.codAmount || 0);
+  const payment = params.orderPayment != null ? Number(params.orderPayment) : (codAmt > 0 ? 3 : 1);
 
-  // ORDER_PAYMENT: 1=không thu tiền, 3=thu COD
-  const codAmt = orderData.codAmount || 0;
-  const payment = orderData.orderPayment != null ? orderData.orderPayment : (codAmt > 0 ? 3 : 1);
-
-  // Build VTP UPPER_SNAKE_CASE body
-  const body = {
-    ORDER_NUMBER: orderData.partnerOrderNumber || '',
+  // Build VTP body — all fields UPPER_SNAKE_CASE, correct types
+  const orderData = {
+    ORDER_NUMBER: String(params.partnerOrderNumber || ''),
     GROUPADDRESS_ID: 0,
     CUS_ID: 0,
     DELIVERY_DATE: deliveryDate,
-    SENDER_FULLNAME: orderData.senderName || '',
-    SENDER_ADDRESS: orderData.senderAddress || '',
-    SENDER_PHONE: orderData.senderPhone || '',
+    SENDER_FULLNAME: String(params.senderName || ''),
+    SENDER_ADDRESS: String(params.senderAddress || ''),
+    SENDER_PHONE: String(params.senderPhone || ''),
     SENDER_EMAIL: '',
-    SENDER_WARD: orderData.senderWard || 0,
-    SENDER_DISTRICT: orderData.senderDistrict || 0,
-    SENDER_PROVINCE: orderData.senderProvince || 0,
-    SENDER_LATITUDE: 0,
-    SENDER_LONGITUDE: 0,
-    RECEIVER_FULLNAME: orderData.receiverName || '',
-    RECEIVER_ADDRESS: orderData.receiverAddress || '',
-    RECEIVER_PHONE: orderData.receiverPhone || '',
+    SENDER_WARD: Number(params.senderWard || 0),
+    SENDER_DISTRICT: Number(params.senderDistrict || 0),
+    SENDER_PROVINCE: Number(params.senderProvince || 0),
+    RECEIVER_FULLNAME: String(params.receiverName || ''),
+    RECEIVER_ADDRESS: String(params.receiverAddress || ''),
+    RECEIVER_PHONE: String(params.receiverPhone || ''),
     RECEIVER_EMAIL: '',
-    RECEIVER_WARD: orderData.receiverWard || 0,
-    RECEIVER_DISTRICT: orderData.receiverDistrict || 0,
-    RECEIVER_PROVINCE: orderData.receiverProvince || 0,
-    RECEIVER_LATITUDE: 0,
-    RECEIVER_LONGITUDE: 0,
-    PRODUCT_NAME: orderData.productName || 'Hàng hóa',
-    PRODUCT_DESCRIPTION: orderData.productDescription || orderData.productName || '',
-    PRODUCT_QUANTITY: orderData.productQuantity || 1,
-    PRODUCT_PRICE: orderData.productPrice || 0,
+    RECEIVER_WARD: Number(params.receiverWard || 0),
+    RECEIVER_DISTRICT: Number(params.receiverDistrict || 0),
+    RECEIVER_PROVINCE: Number(params.receiverProvince || 0),
+    PRODUCT_NAME: String(params.productName || 'Hàng hóa'),
+    PRODUCT_DESCRIPTION: String(params.productDescription || params.productName || 'Hàng hóa'),
+    PRODUCT_QUANTITY: Number(params.productQuantity || 1),
+    PRODUCT_PRICE: Number(params.productPrice || 0),
     PRODUCT_WEIGHT: safeWeight,
-    PRODUCT_WIDTH: 0,
-    PRODUCT_HEIGHT: 0,
-    PRODUCT_LENGTH: 0,
+    PRODUCT_LENGTH: Number(params.productLength || 30),
+    PRODUCT_WIDTH: Number(params.productWidth || 30),
+    PRODUCT_HEIGHT: Number(params.productHeight || 30),
     PRODUCT_TYPE: 'HH',
     ORDER_PAYMENT: payment,
-    ORDER_SERVICE: orderData.orderService || 'VCN',
+    ORDER_SERVICE: String(params.orderService || 'VCN'),
     ORDER_SERVICE_ADD: '',
     ORDER_VOUCHER: '',
-    ORDER_NOTE: orderData.orderNote || '',
+    ORDER_NOTE: String(params.orderNote || ''),
     MONEY_COLLECTION: codAmt,
     MONEY_TOTALFREIGHT: 0,
     MONEY_FEECOD: 0,
@@ -158,32 +149,45 @@ export async function createOrder(token, orderData) {
     MONEY_FEEOTHER: 0,
     MONEY_TOTALVAT: 0,
     MONEY_TOTAL: codAmt,
-    LIST_ITEM: (orderData.items || []).map(item => ({
-      PRODUCT_NAME: item.product_name || item.name || '',
-      PRODUCT_PRICE: item.unit_price || item.price || 0,
-      PRODUCT_WEIGHT: item.weight || Math.max(Math.round(safeWeight / (orderData.productQuantity || 1)), 100),
-      PRODUCT_QUANTITY: item.quantity || 1
-    }))
+    LIST_ITEM: []
   };
+
+  // Build LIST_ITEM
+  const items = params.items || [];
+  if (items.length > 0) {
+    orderData.LIST_ITEM = items.map(item => ({
+      PRODUCT_NAME: String(item.product_name || item.name || 'Hàng hóa'),
+      PRODUCT_PRICE: Number(item.unit_price || item.price || 0),
+      PRODUCT_WEIGHT: Math.max(Number(item.weight || Math.round(safeWeight / (params.productQuantity || 1))), 100),
+      PRODUCT_QUANTITY: Number(item.quantity || 1)
+    }));
+  } else {
+    // Fallback: 1 item từ thông tin chung
+    orderData.LIST_ITEM = [{
+      PRODUCT_NAME: orderData.PRODUCT_NAME,
+      PRODUCT_PRICE: orderData.PRODUCT_PRICE,
+      PRODUCT_WEIGHT: orderData.PRODUCT_WEIGHT,
+      PRODUCT_QUANTITY: orderData.PRODUCT_QUANTITY
+    }];
+  }
 
   // Validate required fields
   const missing = [];
-  if (!body.SENDER_PHONE) missing.push('SENDER_PHONE');
-  if (!body.SENDER_PROVINCE) missing.push('SENDER_PROVINCE');
-  if (!body.SENDER_DISTRICT) missing.push('SENDER_DISTRICT');
-  if (!body.RECEIVER_PHONE) missing.push('RECEIVER_PHONE');
-  if (!body.RECEIVER_PROVINCE) missing.push('RECEIVER_PROVINCE');
-  if (!body.RECEIVER_DISTRICT) missing.push('RECEIVER_DISTRICT');
-  if (!body.RECEIVER_ADDRESS) missing.push('RECEIVER_ADDRESS');
-  if (!body.PRODUCT_NAME) missing.push('PRODUCT_NAME');
+  if (!orderData.SENDER_PHONE) missing.push('SENDER_PHONE');
+  if (!orderData.SENDER_PROVINCE) missing.push('SENDER_PROVINCE');
+  if (!orderData.SENDER_DISTRICT) missing.push('SENDER_DISTRICT');
+  if (!orderData.RECEIVER_PHONE) missing.push('RECEIVER_PHONE');
+  if (!orderData.RECEIVER_PROVINCE) missing.push('RECEIVER_PROVINCE');
+  if (!orderData.RECEIVER_DISTRICT) missing.push('RECEIVER_DISTRICT');
+  if (!orderData.RECEIVER_ADDRESS) missing.push('RECEIVER_ADDRESS');
   if (missing.length > 0) {
     const err = `Thiếu thông tin bắt buộc: ${missing.join(', ')}`;
     console.error('[VTP] createOrder validation failed:', err);
     return { success: false, data: null, error: err };
   }
 
-  console.log('[VTP] createOrder body:', JSON.stringify(body, null, 2));
-  const result = await vtpProxy('create_order', token, { orderData: body });
+  console.log('[VTP] createOrder body:', JSON.stringify(orderData, null, 2));
+  const result = await vtpProxy('createOrder', token, { orderData });
   console.log('[VTP] createOrder response:', JSON.stringify(result, null, 2));
 
   // Parse ORDER_NUMBER từ nhiều format VTP có thể trả về
