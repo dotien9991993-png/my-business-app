@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { isAdmin } from '../../utils/permissionUtils';
 import { formatMoney } from '../../utils/formatUtils';
-import { getNowISOVN } from '../../utils/dateUtils';
+import { getNowISOVN, getVietnamDate } from '../../utils/dateUtils';
+import EkipSelector from './EkipSelector';
 
 const TaskModal = ({
   selectedTask,
@@ -295,8 +296,12 @@ const TaskModal = ({
                 <span className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm">
                   🏢 {selectedTask.team}
                 </span>
-                <span className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm">
-                  📅 {selectedTask.dueDate}
+                <span className={`px-3 py-1 backdrop-blur-sm rounded-full text-sm ${
+                  selectedTask.dueDate && new Date(selectedTask.dueDate) < getVietnamDate() && selectedTask.status !== 'Hoàn Thành'
+                    ? 'bg-red-500/40 font-bold' : 'bg-white/20'
+                }`}>
+                  {selectedTask.dueDate && new Date(selectedTask.dueDate) < getVietnamDate() && selectedTask.status !== 'Hoàn Thành' ? '⚠️' : '📅'} {formatDateTime(selectedTask.dueDate)}
+                  {selectedTask.dueDate && new Date(selectedTask.dueDate) < getVietnamDate() && selectedTask.status !== 'Hoàn Thành' && ' (Quá hạn)'}
                 </span>
                 <span className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm">
                   📱 {selectedTask.platform}
@@ -346,6 +351,14 @@ const TaskModal = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Mô tả */}
+          {selectedTask.description && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <h4 className="font-bold text-sm mb-2 text-gray-700">📝 Mô tả</h4>
+              <p className="text-gray-600 text-sm whitespace-pre-wrap">{selectedTask.description}</p>
+            </div>
+          )}
+
           {/* Production Timeline - Clickable */}
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border border-blue-200">
             <h4 className="font-bold text-sm mb-3 text-blue-900">📐 Tiến Trình Sản Xuất <span className="font-normal text-gray-500">(bấm để cập nhật)</span></h4>
@@ -651,6 +664,12 @@ const TaskModal = ({
                     </div>
                   )}
                 </div>
+                {/* Ekip selector */}
+                <EkipSelector
+                  tenant={tenant}
+                  allUsers={allUsers}
+                  onApplyEkip={({ crew: c, actors: a }) => { setEditCrew(c); setEditActors(a); }}
+                />
                 {/* Crew edit (Quay & Dựng) */}
                 <div>
                   <label className="block text-sm font-medium mb-1">🎬 Quay & Dựng</label>
@@ -692,7 +711,7 @@ const TaskModal = ({
                 <div>
                   <label className="block text-sm font-medium mb-1">Deadline *</label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={editDueDate}
                     onChange={(e) => setEditDueDate(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"

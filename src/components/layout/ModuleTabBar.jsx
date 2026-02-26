@@ -133,7 +133,8 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'tasks', l: '🎬 Video', tabKey: 'videos' },
             { id: 'calendar', l: '📅 Lịch', tabKey: 'calendar' },
             { id: 'report', l: '📈 Báo Cáo', tabKey: 'report' },
-            { id: 'performance', l: '📊 Hiệu Suất' }
+            { id: 'performance', l: '📊 Hiệu Suất' },
+            { id: 'ekips', l: '👥 Ekip' }
           ] : activeModule === 'warehouse' ? [
             { id: 'inventory', l: '📦 Tồn Kho', tabKey: 'inventory' },
             { id: 'import', l: '📥 Nhập', tabKey: 'import' },
@@ -226,6 +227,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'calendar', l: '📅 Lịch' },
             { id: 'report', l: '📈 Báo Cáo' },
             { id: 'performance', l: '📊 Hiệu Suất' },
+            { id: 'ekips', l: '👥 Ekip' },
             { id: 'automation', l: '⚙️ Automation' },
             { id: 'users', l: '👥 Users' }
           ] : activeModule === 'warehouse' ? [

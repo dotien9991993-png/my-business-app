@@ -1,13 +1,25 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
-import { getTodayVN } from '../../utils/dateUtils';
+import { getVietnamDate } from '../../utils/dateUtils';
 import { formatMoney } from '../../utils/formatUtils';
 import { isAdmin } from '../../utils/permissionUtils';
+import EkipSelector from './EkipSelector';
+
+const getDefaultDeadline = () => {
+  const now = getVietnamDate();
+  const deadline = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const y = deadline.getFullYear();
+  const m = String(deadline.getMonth() + 1).padStart(2, '0');
+  const d = String(deadline.getDate()).padStart(2, '0');
+  const h = String(deadline.getHours()).padStart(2, '0');
+  const min = String(deadline.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d}T${h}:${min}`;
+};
 
 const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal, createNewTask }) => {
   const [title, setTitle] = useState('');
   const [platform, setPlatform] = useState(['Facebook', 'TikTok']);
-  const [dueDate, setDueDate] = useState(getTodayVN());
+  const [dueDate, setDueDate] = useState(getDefaultDeadline());
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState(currentUser.name);
   const [videoCategory, setVideoCategory] = useState('');
@@ -314,6 +326,13 @@ const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal
             </select>
           </div>
 
+          {/* Ekip selector */}
+          <EkipSelector
+            tenant={tenant}
+            allUsers={allUsers}
+            onApplyEkip={({ crew: c, actors: a }) => { setCrew(c); setActors(a); }}
+          />
+
           {/* Crew selection (Quay & Dựng) */}
           <div>
             <label className="block text-sm font-medium mb-2">🎬 Quay & Dựng (Chọn nhiều)</label>
@@ -373,7 +392,7 @@ const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal
           <div>
             <label className="block text-sm font-medium mb-2">Deadline *</label>
             <input
-              type="date"
+              type="datetime-local"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"

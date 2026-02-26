@@ -11,6 +11,7 @@ import PerformanceView from './PerformanceView';
 import UserManagementView from './UserManagementView';
 import IntegrationsView from '../../components/shared/IntegrationsView';
 import AutomationView from '../../components/shared/AutomationView';
+import EkipManagementView from './EkipManagementView';
 
 const NoAccess = () => (
   <div className="p-6">
@@ -59,6 +60,7 @@ export default function MediaModule() {
       {activeTab === 'automation' && <AutomationView currentUser={currentUser} automations={automations} setAutomations={setAutomations} templates={templates} createFromTemplate={createFromTemplate} />}
       {activeTab === 'users' && <UserManagementView currentUser={currentUser} allUsers={allUsers} changeUserRole={changeUserRole} deleteUser={deleteUser} loadUsers={loadUsers} />}
       {activeTab === 'performance' && <PerformanceView tasks={tasks} visibleTasks={visibleTasks} currentUser={currentUser} allUsers={allUsers} />}
+      {activeTab === 'ekips' && <EkipManagementView />}
       {((activeTab === 'tasks' && !canAccessTab('media', 'videos')) ||
         (activeTab === 'calendar' && !canAccessTab('media', 'calendar')) ||
         (activeTab === 'report' && !canAccessTab('media', 'report'))) && <NoAccess />}

@@ -207,7 +207,8 @@ const Sidebar = ({
             { id: 'tasks', l: '🎬 Video', tabKey: 'videos' },
             { id: 'calendar', l: '📅 Lịch', tabKey: 'calendar' },
             { id: 'report', l: '📈 Báo Cáo', tabKey: 'report' },
-            { id: 'performance', l: '📊 Hiệu Suất' }
+            { id: 'performance', l: '📊 Hiệu Suất' },
+            { id: 'ekips', l: '👥 Ekip' }
           ] : activeModule === 'warehouse' ? [
             { id: 'inventory', l: '📦 Tồn Kho', tabKey: 'inventory' },
             { id: 'import', l: '📥 Nhập Kho', tabKey: 'import' },
