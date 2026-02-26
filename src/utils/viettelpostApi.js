@@ -186,9 +186,33 @@ export async function createOrder(token, params) {
     return { success: false, data: null, error: err };
   }
 
-  console.log('[VTP] createOrder body:', JSON.stringify(orderData, null, 2));
+  // === DEBUG TẠM: gọi trực tiếp VTP không qua proxy để test ===
+  const VTP_URL = 'https://partner.viettelpost.vn/v2/order/createOrder';
+  const debugInfo = [
+    `TOKEN: ${token ? token.substring(0, 30) + '... (len=' + token.length + ')' : 'MISSING!'}`,
+    `SENDER: ${orderData.SENDER_FULLNAME} | ${orderData.SENDER_PHONE}`,
+    `SENDER ADDR: P${orderData.SENDER_PROVINCE}/D${orderData.SENDER_DISTRICT}/W${orderData.SENDER_WARD}`,
+    `RECEIVER: ${orderData.RECEIVER_FULLNAME} | ${orderData.RECEIVER_PHONE}`,
+    `RECEIVER ADDR: P${orderData.RECEIVER_PROVINCE}/D${orderData.RECEIVER_DISTRICT}/W${orderData.RECEIVER_WARD}`,
+    `PRODUCT: ${orderData.PRODUCT_NAME} | ${orderData.PRODUCT_WEIGHT}g | ${orderData.PRODUCT_PRICE}đ`,
+    `SERVICE: ${orderData.ORDER_SERVICE} | PAYMENT: ${orderData.ORDER_PAYMENT}`,
+    `COD: ${orderData.MONEY_COLLECTION} | TOTAL: ${orderData.MONEY_TOTAL}`,
+    `LIST_ITEM count: ${orderData.LIST_ITEM.length}`
+  ];
+  console.log('[VTP] createOrder DEBUG:\n' + debugInfo.join('\n'));
+  console.log('[VTP] createOrder FULL body:', JSON.stringify(orderData));
+
+  // Gọi qua proxy
   const result = await vtpProxy('createOrder', token, { orderData });
-  console.log('[VTP] createOrder response:', JSON.stringify(result, null, 2));
+
+  // DEBUG TẠM: hiện kết quả đầy đủ
+  const resultStr = JSON.stringify(result, null, 2);
+  alert(
+    '=== VTP DEBUG ===\n' +
+    debugInfo.join('\n') +
+    '\n\n=== RESPONSE ===\n' +
+    resultStr.substring(0, 1200)
+  );
 
   // Parse ORDER_NUMBER từ nhiều format VTP có thể trả về
   if (result.success && result.data) {
