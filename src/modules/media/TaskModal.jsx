@@ -4,6 +4,7 @@ import { isAdmin } from '../../utils/permissionUtils';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN, getVietnamDate } from '../../utils/dateUtils';
 import EkipSelector from './EkipSelector';
+import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs } from '../../services/socialStatsService';
 
 const TaskModal = ({
   selectedTask,
@@ -46,6 +47,53 @@ const TaskModal = ({
   const [searchingEditProducts, setSearchingEditProducts] = useState(false);
   const editProductSearchRef = useRef(null);
   const editDebounceRef = useRef(null);
+
+  // Social stats
+  const [pageConfigs, setPageConfigs] = useState([]);
+  const [loadingStatsIndex, setLoadingStatsIndex] = useState(null);
+
+  useEffect(() => {
+    if (tenant?.id) {
+      loadPageConfigs(tenant.id).then(setPageConfigs);
+    }
+  }, [tenant?.id]);
+
+  const handleFetchStats = async (link, linkIndex) => {
+    const platform = detectPlatform(link.url);
+    if (!platform) return alert('Link này không phải Facebook hoặc TikTok');
+
+    setLoadingStatsIndex(linkIndex);
+    try {
+      const result = await fetchStatsForLink(link.url, pageConfigs, tenant.id);
+
+      if (result.note && !result.stats?.views) {
+        // TikTok oEmbed không có stats — cho nhập thủ công
+        alert(result.note);
+        setLoadingStatsIndex(null);
+        return;
+      }
+
+      const existingLinks = selectedTask.postLinks || [];
+      const updatedLinks = await saveStatsToTask(selectedTask.id, linkIndex, result.stats, existingLinks);
+      setSelectedTask(prev => ({ ...prev, postLinks: updatedLinks }));
+    } catch (err) {
+      alert('❌ ' + err.message);
+    }
+    setLoadingStatsIndex(null);
+  };
+
+  const handleManualStats = async (linkIndex, stats) => {
+    try {
+      const existingLinks = selectedTask.postLinks || [];
+      const updatedLinks = await saveStatsToTask(selectedTask.id, linkIndex, {
+        ...stats,
+        updated_at: new Date().toISOString(),
+      }, existingLinks);
+      setSelectedTask(prev => ({ ...prev, postLinks: updatedLinks }));
+    } catch (err) {
+      alert('❌ Lỗi lưu stats: ' + err.message);
+    }
+  };
 
   const videoCategories = [
     { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },
@@ -463,12 +511,84 @@ const TaskModal = ({
                           {link && <span className="text-xs text-gray-500">• {link.addedBy} • {link.addedAt}</span>}
                         </div>
                         {link ? (
-                          <div className="flex items-center gap-2">
-                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all flex-1">{link.url}</a>
-                            <button onClick={() => { navigator.clipboard.writeText(link.url); alert('✅ Đã copy!'); }} className="px-2 py-1 bg-white rounded text-xs hover:bg-gray-100 shrink-0">📋</button>
-                            {(currentUser.name === link.addedBy || currentUser.role === 'Manager' || isAdmin(currentUser)) && (
-                              <button onClick={() => { if (window.confirm('Xóa link này?')) removePostLink(selectedTask.id, existingLinks.indexOf(link)); }} className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs hover:bg-red-200 shrink-0">🗑️</button>
-                            )}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all flex-1">{link.url}</a>
+                              <button onClick={() => { navigator.clipboard.writeText(link.url); alert('✅ Đã copy!'); }} className="px-2 py-1 bg-white rounded text-xs hover:bg-gray-100 shrink-0">📋</button>
+                              {(currentUser.name === link.addedBy || currentUser.role === 'Manager' || isAdmin(currentUser)) && (
+                                <button onClick={() => { if (window.confirm('Xóa link này?')) removePostLink(selectedTask.id, existingLinks.indexOf(link)); }} className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs hover:bg-red-200 shrink-0">🗑️</button>
+                              )}
+                            </div>
+                            {/* Social Stats */}
+                            {detectPlatform(link.url) && (() => {
+                              const li = existingLinks.indexOf(link);
+                              const s = link.stats;
+                              const isLoading = loadingStatsIndex === li;
+                              const isFb = detectPlatform(link.url) === 'facebook';
+                              const isTikTok = detectPlatform(link.url) === 'tiktok';
+                              return (
+                                <div className="mt-2 p-2 bg-white/70 rounded-lg border border-gray-200">
+                                  {s && (s.views !== null || s.likes !== null) ? (
+                                    <div>
+                                      <div className="flex flex-wrap gap-3 text-xs">
+                                        {s.views !== null && <span title="Views">👁 <b>{Number(s.views).toLocaleString('vi-VN')}</b></span>}
+                                        {s.likes !== null && <span title="Likes">❤️ <b>{Number(s.likes).toLocaleString('vi-VN')}</b></span>}
+                                        {s.shares !== null && <span title="Shares">🔁 <b>{Number(s.shares).toLocaleString('vi-VN')}</b></span>}
+                                        {s.comments !== null && <span title="Comments">💬 <b>{Number(s.comments).toLocaleString('vi-VN')}</b></span>}
+                                      </div>
+                                      <div className="flex items-center justify-between mt-1.5">
+                                        <span className="text-[10px] text-gray-400">
+                                          Cập nhật: {s.updated_at ? new Date(s.updated_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
+                                        </span>
+                                        <button
+                                          onClick={() => isFb ? handleFetchStats(link, li) : null}
+                                          disabled={isLoading || isTikTok}
+                                          className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50"
+                                        >
+                                          {isLoading ? '⏳...' : '🔄 Cập nhật'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-gray-400">📊 Chưa có stats</span>
+                                      <div className="flex gap-1">
+                                        {isFb && (
+                                          <button
+                                            onClick={() => handleFetchStats(link, li)}
+                                            disabled={isLoading}
+                                            className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50"
+                                          >
+                                            {isLoading ? '⏳ Đang tải...' : '📊 Lấy stats'}
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => {
+                                            const views = prompt('👁 Views:', '0');
+                                            if (views === null) return;
+                                            const likes = prompt('❤️ Likes:', '0');
+                                            if (likes === null) return;
+                                            const shares = prompt('🔁 Shares:', '0');
+                                            if (shares === null) return;
+                                            const comments = prompt('💬 Comments:', '0');
+                                            if (comments === null) return;
+                                            handleManualStats(li, {
+                                              views: parseInt(views) || 0,
+                                              likes: parseInt(likes) || 0,
+                                              shares: parseInt(shares) || 0,
+                                              comments: parseInt(comments) || 0,
+                                            });
+                                          }}
+                                          className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                                        >
+                                          ✏️ Nhập tay
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         ) : (
                           <div className="flex gap-2">

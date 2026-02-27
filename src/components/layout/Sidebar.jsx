@@ -259,6 +259,7 @@ const Sidebar = ({
             { id: 'finance', l: '💰 Tài Chính' },
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
+            { id: 'social', l: '📊 Mạng Xã Hội' },
             { id: 'logs', l: '📋 Lịch Sử HĐ' },
             { id: 'backup', l: '💾 Sao Lưu' }
           ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => {

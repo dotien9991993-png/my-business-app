@@ -186,6 +186,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
             { id: 'zalo', l: '📱 Zalo OA' },
+            { id: 'social', l: '📊 MXH' },
             { id: 'logs', l: '📋 Lịch Sử HĐ' },
             { id: 'backup', l: '💾 Sao Lưu' }
           ] : []).filter(t => !t.tabKey || canAccessTab(activeModule, t.tabKey)).map(t => {
@@ -281,6 +282,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'products', l: '📦 Sản Phẩm' },
             { id: 'shipping', l: '🚚 Vận Chuyển' },
             { id: 'zalo', l: '📱 Zalo OA' },
+            { id: 'social', l: '📊 Mạng Xã Hội' },
             { id: 'logs', l: '📋 Lịch Sử HĐ' },
             { id: 'backup', l: '💾 Sao Lưu' }
           ] : []).find(t => t.id === activeTab)?.l || ''}
