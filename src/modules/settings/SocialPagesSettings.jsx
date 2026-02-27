@@ -7,6 +7,8 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [tokenError, setTokenError] = useState('');
+  const [validatingToken, setValidatingToken] = useState(false);
 
   // Form state
   const [formPlatform, setFormPlatform] = useState('facebook');
@@ -41,6 +43,7 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
     setFormUsername('');
     setFormAccessToken('');
     setFormTokenExpires('');
+    setTokenError('');
   };
 
   const openCreate = () => {
@@ -59,8 +62,55 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
     setShowForm(true);
   };
 
+  const validateFacebookToken = async (token) => {
+    if (!token) return { valid: true }; // Cho phép lưu không có token
+    setValidatingToken(true);
+    setTokenError('');
+    try {
+      const resp = await fetch(`https://graph.facebook.com/me?access_token=${encodeURIComponent(token)}`);
+      const data = await resp.json();
+
+      if (data.error) {
+        if (data.error.code === 190) {
+          return { valid: false, error: 'Token đã hết hạn hoặc không hợp lệ. Vui lòng lấy token mới.' };
+        }
+        return { valid: false, error: `Facebook API lỗi: ${data.error.message}` };
+      }
+
+      // Nếu response có "category" → đây là Page Token
+      if (data.category) {
+        return { valid: true, pageId: data.id, pageName: data.name };
+      }
+
+      // Không có category → User Token
+      return {
+        valid: false,
+        error: 'Token này là User Token, không phải Page Token.\nVào Graph API Explorer → dropdown "Người dùng hoặc Trang" → chọn tên Page → Generate Access Token'
+      };
+    } catch (err) {
+      return { valid: false, error: `Không thể kiểm tra token: ${err.message}` };
+    } finally {
+      setValidatingToken(false);
+    }
+  };
+
   const saveConfig = async () => {
     if (!formPageName.trim()) return alert('Vui lòng nhập tên page');
+    setTokenError('');
+
+    // Validate Facebook token nếu có
+    if (formPlatform === 'facebook' && formAccessToken.trim()) {
+      const validation = await validateFacebookToken(formAccessToken.trim());
+      if (!validation.valid) {
+        setTokenError(validation.error);
+        return;
+      }
+      // Auto-fill Page ID từ token nếu chưa nhập
+      if (validation.pageId && !formPageId.trim()) {
+        setFormPageId(validation.pageId);
+      }
+    }
+
     setSaving(true);
 
     const payload = {
@@ -272,8 +322,13 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
                 />
                 {formPlatform === 'facebook' && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Lấy long-lived token từ Facebook Developer → Graph API Explorer → Generate Page Access Token
+                    Lấy long-lived token từ Facebook Developer → Graph API Explorer → dropdown "Người dùng hoặc Trang" → chọn Page → Generate Access Token
                   </p>
+                )}
+                {tokenError && (
+                  <div className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs text-red-700 font-medium whitespace-pre-line">{tokenError}</p>
+                  </div>
                 )}
               </div>
 
@@ -300,10 +355,10 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
               </button>
               <button
                 onClick={saveConfig}
-                disabled={saving}
+                disabled={saving || validatingToken}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium"
               >
-                {saving ? 'Đang lưu...' : editingId ? 'Cập nhật' : 'Thêm Page'}
+                {validatingToken ? 'Đang kiểm tra token...' : saving ? 'Đang lưu...' : editingId ? 'Cập nhật' : 'Thêm Page'}
               </button>
             </div>
           </div>

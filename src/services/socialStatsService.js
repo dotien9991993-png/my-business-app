@@ -13,28 +13,45 @@ export function detectPlatform(url) {
 
 /**
  * Match URL với page config phù hợp
- * So sánh username/page_id trong URL với bảng social_page_configs
+ * So sánh username/page_id trong URL path segments (exact match)
  */
 export function matchPageConfig(url, configs) {
   if (!url || !configs?.length) return null;
 
-  for (const config of configs) {
-    // Match username trong URL (VD: facebook.com/hoangnamaudio.4/...)
-    if (config.username && url.toLowerCase().includes(config.username.toLowerCase())) {
-      return config;
+  const platform = detectPlatform(url);
+  if (!platform) return null;
+
+  // Lọc configs cùng platform
+  const samePlatformConfigs = configs.filter(c => c.platform === platform);
+  if (samePlatformConfigs.length === 0) return null;
+
+  // Nếu chỉ có 1 config cho platform → dùng luôn
+  if (samePlatformConfigs.length === 1) return samePlatformConfigs[0];
+
+  // Parse URL lấy path segments để exact match
+  let pathSegments = [];
+  try {
+    const parsed = new URL(url);
+    pathSegments = parsed.pathname.split('/').filter(Boolean).map(s => s.toLowerCase());
+  } catch {
+    pathSegments = url.toLowerCase().split('/').filter(Boolean);
+  }
+
+  for (const config of samePlatformConfigs) {
+    // Exact match username theo path segment
+    if (config.username) {
+      const uname = config.username.toLowerCase().replace(/^@/, '');
+      if (pathSegments.some(seg => seg === uname)) {
+        return config;
+      }
     }
-    // Match page_id trong URL
+    // Match page_id trong URL (page_id thường là số dài, ít risk false positive)
     if (config.page_id && url.includes(config.page_id)) {
       return config;
     }
   }
 
-  // Fallback: trả về config đầu tiên cùng platform
-  const platform = detectPlatform(url);
-  if (platform) {
-    return configs.find(c => c.platform === platform) || null;
-  }
-
+  // Không match được khi có 2+ pages → trả null để báo lỗi rõ ràng
   return null;
 }
 
@@ -156,7 +173,11 @@ export async function fetchStatsForLink(url, pageConfigs, tenantId) {
   if (platform === 'facebook') {
     const config = matchPageConfig(url, pageConfigs);
     if (!config) {
-      throw new Error('Chưa cấu hình Facebook Page trong Cài đặt → Mạng Xã Hội');
+      const fbConfigs = pageConfigs.filter(c => c.platform === 'facebook');
+      if (fbConfigs.length === 0) {
+        throw new Error('Chưa cấu hình Facebook Page trong Cài đặt → Mạng Xã Hội');
+      }
+      throw new Error('Không xác định được page cho link này. Vui lòng kiểm tra lại Username trong Cài đặt → Mạng Xã Hội');
     }
     return await fetchFacebookStats(url, config.id, tenantId);
   }

@@ -51,6 +51,7 @@ const TaskModal = ({
   // Social stats
   const [pageConfigs, setPageConfigs] = useState([]);
   const [loadingStatsIndex, setLoadingStatsIndex] = useState(null);
+  const [statsError, setStatsError] = useState({}); // { [linkIndex]: 'error message' }
 
   useEffect(() => {
     if (tenant?.id) {
@@ -60,15 +61,18 @@ const TaskModal = ({
 
   const handleFetchStats = async (link, linkIndex) => {
     const platform = detectPlatform(link.url);
-    if (!platform) return alert('Link này không phải Facebook hoặc TikTok');
+    if (!platform) {
+      setStatsError(prev => ({ ...prev, [linkIndex]: 'Link này không phải Facebook hoặc TikTok' }));
+      return;
+    }
 
     setLoadingStatsIndex(linkIndex);
+    setStatsError(prev => { const n = { ...prev }; delete n[linkIndex]; return n; });
     try {
       const result = await fetchStatsForLink(link.url, pageConfigs, tenant.id);
 
       if (result.note && !result.stats?.views) {
-        // TikTok oEmbed không có stats — cho nhập thủ công
-        alert(result.note);
+        setStatsError(prev => ({ ...prev, [linkIndex]: result.note }));
         setLoadingStatsIndex(null);
         return;
       }
@@ -77,7 +81,7 @@ const TaskModal = ({
       const updatedLinks = await saveStatsToTask(selectedTask.id, linkIndex, result.stats, existingLinks);
       setSelectedTask(prev => ({ ...prev, postLinks: updatedLinks }));
     } catch (err) {
-      alert('❌ ' + err.message);
+      setStatsError(prev => ({ ...prev, [linkIndex]: err.message }));
     }
     setLoadingStatsIndex(null);
   };
@@ -526,6 +530,7 @@ const TaskModal = ({
                               const isLoading = loadingStatsIndex === li;
                               const isFb = detectPlatform(link.url) === 'facebook';
                               const isTikTok = detectPlatform(link.url) === 'tiktok';
+                              const errMsg = statsError[li];
                               return (
                                 <div className="mt-2 p-2 bg-white/70 rounded-lg border border-gray-200">
                                   {s && (s.views !== null || s.likes !== null) ? (
@@ -540,13 +545,36 @@ const TaskModal = ({
                                         <span className="text-[10px] text-gray-400">
                                           Cập nhật: {s.updated_at ? new Date(s.updated_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                         </span>
-                                        <button
-                                          onClick={() => isFb ? handleFetchStats(link, li) : null}
-                                          disabled={isLoading || isTikTok}
-                                          className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50"
-                                        >
-                                          {isLoading ? '⏳...' : '🔄 Cập nhật'}
-                                        </button>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => isFb ? handleFetchStats(link, li) : null}
+                                            disabled={isLoading || isTikTok}
+                                            className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50"
+                                          >
+                                            {isLoading ? '⏳...' : '🔄 Cập nhật'}
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              const views = prompt('👁 Views:', String(s.views || 0));
+                                              if (views === null) return;
+                                              const likes = prompt('❤️ Likes:', String(s.likes || 0));
+                                              if (likes === null) return;
+                                              const shares = prompt('🔁 Shares:', String(s.shares || 0));
+                                              if (shares === null) return;
+                                              const comments = prompt('💬 Comments:', String(s.comments || 0));
+                                              if (comments === null) return;
+                                              handleManualStats(li, {
+                                                views: parseInt(views) || 0,
+                                                likes: parseInt(likes) || 0,
+                                                shares: parseInt(shares) || 0,
+                                                comments: parseInt(comments) || 0,
+                                              });
+                                            }}
+                                            className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                                          >
+                                            ✏️ Sửa
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
                                   ) : (
@@ -584,6 +612,11 @@ const TaskModal = ({
                                           ✏️ Nhập tay
                                         </button>
                                       </div>
+                                    </div>
+                                  )}
+                                  {errMsg && (
+                                    <div className="mt-1.5 p-1.5 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                                      {errMsg}
                                     </div>
                                   )}
                                 </div>

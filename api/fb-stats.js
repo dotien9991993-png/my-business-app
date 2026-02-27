@@ -154,8 +154,20 @@ export default async function handler(req, res) {
       const fbData = await fbResponse.json();
 
       if (fbData.error) {
+        const code = fbData.error.code;
+        let userMessage;
+        if (code === 200) {
+          userMessage = 'Token sai loại hoặc thiếu quyền. Vui lòng vào Cài đặt → Mạng Xã Hội → cập nhật lại Page Access Token';
+        } else if (code === 190) {
+          userMessage = 'Token đã hết hạn. Vui lòng vào Cài đặt → Mạng Xã Hội → lấy token mới';
+        } else if (code === 100) {
+          userMessage = 'Không tìm thấy video hoặc video ID không hợp lệ';
+        } else {
+          userMessage = `Facebook API: ${fbData.error.message}`;
+        }
         return res.status(400).json({
-          error: `Facebook API: ${fbData.error.message}`,
+          error: userMessage,
+          fb_error_code: code,
           fb_error: fbData.error
         });
       }
@@ -202,14 +214,26 @@ export default async function handler(req, res) {
       }
 
       // Thử lấy insights (chỉ hoạt động nếu là page owner)
-      const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_impressions,total_video_views,total_video_reactions_by_type_total,total_video_stories_by_action_type&access_token=${config.access_token}`;
+      const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/insights?metric=post_impressions_unique,post_video_views,post_reactions_like_total,post_comments,post_shares&access_token=${config.access_token}`;
       const insightsResp = await fetch(insightsUrl);
       const insightsData = await insightsResp.json();
 
       if (insightsData.error) {
+        const code = insightsData.error.code;
+        let userMessage;
+        if (code === 200) {
+          userMessage = 'Token sai loại hoặc thiếu quyền. Vui lòng vào Cài đặt → Mạng Xã Hội → cập nhật lại Page Access Token';
+        } else if (code === 190) {
+          userMessage = 'Token đã hết hạn. Vui lòng vào Cài đặt → Mạng Xã Hội → lấy token mới';
+        } else if (code === 100) {
+          userMessage = 'Không tìm thấy video hoặc video ID không hợp lệ';
+        } else {
+          userMessage = `Insights API: ${insightsData.error.message}`;
+        }
         // Fallback sang get_video_stats thường
         return res.status(400).json({
-          error: `Insights API: ${insightsData.error.message}`,
+          error: userMessage,
+          fb_error_code: code,
           fallback: 'get_video_stats'
         });
       }
@@ -220,13 +244,11 @@ export default async function handler(req, res) {
       });
 
       const stats = {
-        views: metrics.total_video_views || 0,
-        impressions: metrics.total_video_impressions || 0,
-        likes: typeof metrics.total_video_reactions_by_type_total === 'object'
-          ? Object.values(metrics.total_video_reactions_by_type_total).reduce((a, b) => a + b, 0)
-          : 0,
-        shares: metrics.total_video_stories_by_action_type?.share || 0,
-        comments: metrics.total_video_stories_by_action_type?.comment || 0,
+        views: metrics.post_video_views || 0,
+        impressions: metrics.post_impressions_unique || 0,
+        likes: metrics.post_reactions_like_total || 0,
+        comments: metrics.post_comments || 0,
+        shares: metrics.post_shares || 0,
         updated_at: new Date().toISOString(),
       };
 
