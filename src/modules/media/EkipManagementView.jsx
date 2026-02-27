@@ -15,7 +15,8 @@ export default function EkipManagementView() {
   // Form state
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
-  const [formCrewIds, setFormCrewIds] = useState([]);
+  const [formCameraIds, setFormCameraIds] = useState([]);
+  const [formEditorIds, setFormEditorIds] = useState([]);
   const [formActorIds, setFormActorIds] = useState([]);
 
   const loadEkips = useCallback(async () => {
@@ -47,7 +48,8 @@ export default function EkipManagementView() {
     setEditingEkip(null);
     setFormName('');
     setFormDescription('');
-    setFormCrewIds([]);
+    setFormCameraIds([]);
+    setFormEditorIds([]);
     setFormActorIds([]);
     setShowForm(true);
   };
@@ -56,15 +58,20 @@ export default function EkipManagementView() {
     setEditingEkip(ekip);
     setFormName(ekip.name);
     setFormDescription(ekip.description || '');
-    // Gộp camera_ids + editor_ids thành crew
-    const crewIds = [...new Set([...(ekip.camera_ids || []), ...(ekip.editor_ids || [])])];
-    setFormCrewIds(crewIds);
+    setFormCameraIds(ekip.camera_ids || []);
+    setFormEditorIds(ekip.editor_ids || []);
     setFormActorIds(ekip.actor_ids || []);
     setShowForm(true);
   };
 
-  const toggleCrewId = (userId) => {
-    setFormCrewIds(prev =>
+  const toggleCameraId = (userId) => {
+    setFormCameraIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const toggleEditorId = (userId) => {
+    setFormEditorIds(prev =>
       prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
     );
   };
@@ -83,8 +90,8 @@ export default function EkipManagementView() {
       tenant_id: tenant.id,
       name: formName.trim(),
       description: formDescription.trim(),
-      camera_ids: formCrewIds,
-      editor_ids: formCrewIds,
+      camera_ids: formCameraIds,
+      editor_ids: formEditorIds,
       actor_ids: formActorIds,
       updated_at: new Date().toISOString(),
     };
@@ -150,8 +157,8 @@ export default function EkipManagementView() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {ekips.map(ekip => {
-            const crewIds = [...new Set([...(ekip.camera_ids || []), ...(ekip.editor_ids || [])])];
-            const crewNames = resolveNames(crewIds);
+            const cameraNames = resolveNames(ekip.camera_ids);
+            const editorNames = resolveNames(ekip.editor_ids);
             const actorNames = resolveNames(ekip.actor_ids);
             return (
               <div key={ekip.id} className="bg-white border rounded-xl p-4 hover:shadow-md transition-shadow">
@@ -187,12 +194,24 @@ export default function EkipManagementView() {
                   </div>
                 </div>
 
-                {/* Crew */}
+                {/* Quay */}
                 <div className="mb-2">
-                  <span className="text-xs font-semibold text-gray-500">🎬 Quay & Dựng ({crewNames.length})</span>
+                  <span className="text-xs font-semibold text-gray-500">🎥 Quay ({cameraNames.length})</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {crewNames.length > 0 ? crewNames.map(name => (
+                    {cameraNames.length > 0 ? cameraNames.map(name => (
                       <span key={name} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">{name}</span>
+                    )) : (
+                      <span className="text-xs text-gray-400">Chưa chọn</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Dựng */}
+                <div className="mb-2">
+                  <span className="text-xs font-semibold text-gray-500">🎬 Dựng ({editorNames.length})</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {editorNames.length > 0 ? editorNames.map(name => (
+                      <span key={name} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs">{name}</span>
                     )) : (
                       <span className="text-xs text-gray-400">Chưa chọn</span>
                     )}
@@ -250,30 +269,61 @@ export default function EkipManagementView() {
                 />
               </div>
 
-              {/* Crew (Quay & Dựng) */}
+              {/* Quay */}
               <div>
-                <label className="block text-sm font-medium mb-2">🎬 Quay & Dựng</label>
+                <label className="block text-sm font-medium mb-2">🎥 Quay</label>
                 <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-1">
                   {allUsers.map(user => (
                     <label key={user.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded">
                       <input
                         type="checkbox"
-                        checked={formCrewIds.includes(user.id)}
-                        onChange={() => toggleCrewId(user.id)}
+                        checked={formCameraIds.includes(user.id)}
+                        onChange={() => toggleCameraId(user.id)}
                         className="w-4 h-4 text-blue-600"
                       />
                       <span className="text-sm">{user.name} <span className="text-gray-400">- {user.team}</span></span>
                     </label>
                   ))}
                 </div>
-                {formCrewIds.length > 0 && (
+                {formCameraIds.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {formCrewIds.map(id => {
+                    {formCameraIds.map(id => {
                       const user = allUsers.find(u => u.id === id);
                       return (
                         <span key={id} className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs flex items-center gap-1">
+                          🎥 {user?.name || '?'}
+                          <button onClick={() => toggleCameraId(id)} className="hover:text-red-600">×</button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Dựng */}
+              <div>
+                <label className="block text-sm font-medium mb-2">🎬 Dựng</label>
+                <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-1">
+                  {allUsers.map(user => (
+                    <label key={user.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded">
+                      <input
+                        type="checkbox"
+                        checked={formEditorIds.includes(user.id)}
+                        onChange={() => toggleEditorId(user.id)}
+                        className="w-4 h-4 text-indigo-600"
+                      />
+                      <span className="text-sm">{user.name} <span className="text-gray-400">- {user.team}</span></span>
+                    </label>
+                  ))}
+                </div>
+                {formEditorIds.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {formEditorIds.map(id => {
+                      const user = allUsers.find(u => u.id === id);
+                      return (
+                        <span key={id} className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs flex items-center gap-1">
                           🎬 {user?.name || '?'}
-                          <button onClick={() => toggleCrewId(id)} className="hover:text-red-600">×</button>
+                          <button onClick={() => toggleEditorId(id)} className="hover:text-red-600">×</button>
                         </span>
                       );
                     })}
