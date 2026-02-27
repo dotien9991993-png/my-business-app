@@ -110,6 +110,23 @@ export async function fetchTikTokStats(url) {
 }
 
 /**
+ * Safe parse JSON từ response — tránh lỗi "Unexpected end of JSON input"
+ * khi API không khả dụng (VD: chạy npm run dev thay vì vercel dev)
+ */
+async function safeParseJSON(resp) {
+  const text = await resp.text();
+  if (!text) {
+    throw new Error('API /api/fb-stats không trả về dữ liệu. Nếu đang chạy local, cần dùng "vercel dev" thay vì "npm run dev"');
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Response không phải JSON (VD: HTML 404 page)
+    throw new Error(`API trả về dữ liệu không hợp lệ (status ${resp.status}). Nếu đang chạy local, cần dùng "vercel dev"`);
+  }
+}
+
+/**
  * Fetch stats Facebook qua /api/fb-stats proxy
  */
 export async function fetchFacebookStats(url, pageConfigId, tenantId) {
@@ -129,7 +146,7 @@ export async function fetchFacebookStats(url, pageConfigId, tenantId) {
     }),
   });
 
-  const reelData = await reelResp.json();
+  const reelData = await safeParseJSON(reelResp);
 
   if (reelResp.ok && reelData.stats) {
     return { stats: reelData.stats, source: 'facebook_insights' };
@@ -147,7 +164,7 @@ export async function fetchFacebookStats(url, pageConfigId, tenantId) {
     }),
   });
 
-  const videoData = await videoResp.json();
+  const videoData = await safeParseJSON(videoResp);
 
   if (!videoResp.ok) {
     throw new Error(videoData.error || 'Lỗi gọi Facebook API');
