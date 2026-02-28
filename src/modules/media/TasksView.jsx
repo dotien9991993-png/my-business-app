@@ -226,13 +226,35 @@ const TasksView = ({
   // Unique products for filter
   const uniqueProductIds = [...new Set(visibleTasks.flatMap(t => t.product_ids || []))];
 
-  const invalidLinkCount = visibleTasks.filter(t =>
+  // Badge counts: dùng filteredTasks trừ link filter để badge phản ánh context filter đang active
+  const tasksForLinkBadge = filteredTasks.length !== visibleTasks.length && filterLinkIssue === 'all'
+    ? filteredTasks
+    : visibleTasks.filter(t => {
+        if (filterTeam !== 'all' && t.team !== filterTeam) return false;
+        if (filterStatus !== 'all' && t.status !== filterStatus) return false;
+        if (filterAssignee !== 'all' && t.assignee !== filterAssignee) return false;
+        if (filterCategory !== 'all' && t.category !== filterCategory) return false;
+        if (filterCrew !== 'all' && !(t.crew || []).includes(filterCrew)) return false;
+        if (filterActor !== 'all' && !(t.actors || []).includes(filterActor)) return false;
+        if (filterProducts.length > 0 && !(t.product_ids || []).some(pid => filterProducts.includes(pid))) return false;
+        if (dateFilter !== 'all') {
+          const range = getDateRange();
+          if (!range) return false;
+          if (!t.dueDate) return false;
+          const dp = t.dueDate.split('-');
+          const td = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+          if (dateFilter === 'overdue') { if (!(td < range.end && t.status !== 'Hoàn Thành')) return false; }
+          else { if (!(td >= range.start && td < range.end)) return false; }
+        }
+        return true;
+      });
+  const invalidLinkCount = tasksForLinkBadge.filter(t =>
     (t.postLinks || []).some(l =>
       (l.type === 'Facebook' && !validateFacebookUrl(l.url)) ||
       (l.type === 'TikTok' && !validateTikTokUrl(l.url))
     )
   ).length;
-  const missingLinkCount = visibleTasks.filter(t => {
+  const missingLinkCount = tasksForLinkBadge.filter(t => {
     const platforms = (t.platform || '').split(', ').filter(Boolean);
     if (platforms.length === 0) return false;
     const linkTypes = (t.postLinks || []).map(l => l.type);
