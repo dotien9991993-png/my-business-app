@@ -114,6 +114,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    // === Tạo OAuth URL để kết nối Facebook Pages ===
+    if (action === 'get_oauth_url') {
+      const APP_ID = process.env.FB_APP_ID;
+      const REDIRECT_URI = process.env.FB_REDIRECT_URI || `https://${req.headers.host}/api/fb-callback`;
+
+      if (!APP_ID) {
+        return res.status(500).json({ error: 'Server chưa cấu hình FB_APP_ID' });
+      }
+
+      const state = params.state || '';
+      const scopes = 'pages_show_list,pages_read_engagement,pages_read_user_content,read_insights';
+      const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}&response_type=code`;
+
+      return res.status(200).json({ url });
+    }
+
     // === Lấy stats video Facebook ===
     if (action === 'get_video_stats') {
       const { url, page_config_id, tenant_id } = params;
@@ -375,7 +391,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ stats, raw: fbData });
     }
 
-    return res.status(400).json({ error: 'Invalid action. Use: get_video_stats, get_reel_stats, get_post_stats' });
+    return res.status(400).json({ error: 'Invalid action. Use: get_oauth_url, get_video_stats, get_reel_stats, get_post_stats' });
   } catch (error) {
     console.error('FB Stats proxy error:', error);
     return res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại sau.' });

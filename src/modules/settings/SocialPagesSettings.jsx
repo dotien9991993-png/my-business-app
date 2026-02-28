@@ -9,6 +9,9 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
   const [editingId, setEditingId] = useState(null);
   const [tokenError, setTokenError] = useState('');
   const [validatingToken, setValidatingToken] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [connecting, setConnecting] = useState(false);
+  const [testingTokenId, setTestingTokenId] = useState(null);
 
   // Form state
   const [formPlatform, setFormPlatform] = useState('facebook');
@@ -35,6 +38,30 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
     loadConfigs();
   }, [loadConfigs]);
 
+  // Detect OAuth callback từ Facebook
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('fb_connected');
+    const fbError = params.get('fb_error');
+    const fbPages = params.get('fb_pages');
+
+    if (connected === 'true') {
+      setToast({ type: 'success', msg: `Kết nối thành công! Đã thêm ${fbPages || ''} page.` });
+      loadConfigs();
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+    } else if (fbError) {
+      setToast({ type: 'error', msg: 'Lỗi: ' + decodeURIComponent(fbError) });
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+    }
+  }, []);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const resetForm = () => {
     setEditingId(null);
     setFormPlatform('facebook');
@@ -60,6 +87,54 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
     setFormAccessToken(config.access_token || '');
     setFormTokenExpires(config.token_expires_at ? config.token_expires_at.slice(0, 16) : '');
     setShowForm(true);
+  };
+
+  const connectFacebook = async () => {
+    if (!tenant?.id) return;
+    setConnecting(true);
+    try {
+      const resp = await fetch('/api/fb-stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_oauth_url', state: tenant.id }),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        setToast({ type: 'error', msg: data.error });
+        setConnecting(false);
+        return;
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      setToast({ type: 'error', msg: 'Không thể kết nối: ' + err.message });
+      setConnecting(false);
+    }
+  };
+
+  const testToken = async (config) => {
+    if (!config.access_token) return;
+    setTestingTokenId(config.id);
+    try {
+      const resp = await fetch(
+        `https://graph.facebook.com/${config.page_id || 'me'}?fields=name&access_token=${encodeURIComponent(config.access_token)}`
+      );
+      const data = await resp.json();
+      if (data.error) {
+        if (data.error.code === 190) {
+          setToast({ type: 'error', msg: `"${config.page_name}": Token hết hạn, vui lòng kết nối lại` });
+        } else {
+          setToast({ type: 'error', msg: `"${config.page_name}": ${data.error.message}` });
+        }
+      } else {
+        setToast({ type: 'success', msg: `"${config.page_name}": Token hoạt động tốt` });
+      }
+    } catch (err) {
+      setToast({ type: 'error', msg: `Không thể kiểm tra: ${err.message}` });
+    } finally {
+      setTestingTokenId(null);
+    }
   };
 
   const validateFacebookToken = async (token) => {
@@ -144,6 +219,9 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
 
   const getTokenStatus = (config) => {
     if (!config.access_token) return { label: 'Chưa có token', color: 'text-gray-400', bg: 'bg-gray-100' };
+    if (config.platform === 'facebook' && !config.token_expires_at) {
+      return { label: 'Token vĩnh viễn', color: 'text-green-700', bg: 'bg-green-100' };
+    }
     if (!config.token_expires_at) return { label: 'Đã cấu hình', color: 'text-green-700', bg: 'bg-green-100' };
 
     const expires = new Date(config.token_expires_at);
@@ -159,18 +237,49 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4">
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[60] max-w-sm px-4 py-3 rounded-xl shadow-lg border text-sm font-medium animate-fade-in ${
+          toast.type === 'success'
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className="flex items-start gap-2">
+            <span>{toast.type === 'success' ? '✅' : '❌'}</span>
+            <span className="flex-1">{toast.msg}</span>
+            <button onClick={() => setToast(null)} className="text-gray-400 hover:text-gray-600 ml-2">&times;</button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-gray-800">📊 Mạng Xã Hội</h2>
           <p className="text-gray-500 text-sm mt-1">Kết nối Facebook Page / TikTok để lấy stats video tự động</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm"
-        >
-          + Thêm Page
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={connectFacebook}
+            disabled={connecting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium text-sm flex items-center gap-1.5"
+          >
+            {connecting ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Đang kết nối...
+              </>
+            ) : (
+              <>📘 Kết nối Facebook</>
+            )}
+          </button>
+          <button
+            onClick={openCreate}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm"
+          >
+            + Thêm Page
+          </button>
+        </div>
       </div>
 
       {/* List */}
@@ -181,9 +290,18 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
           <div className="text-5xl mb-4">📊</div>
           <h3 className="text-lg font-semibold text-gray-600 mb-2">Chưa kết nối page nào</h3>
           <p className="text-gray-400 mb-4">Thêm Facebook Page hoặc TikTok account để lấy stats video</p>
-          <button onClick={openCreate} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm">
-            + Thêm Page đầu tiên
-          </button>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={connectFacebook}
+              disabled={connecting}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium text-sm"
+            >
+              📘 Kết nối Facebook
+            </button>
+            <button onClick={openCreate} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm">
+              + Thêm Page thủ công
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -208,6 +326,16 @@ export default function SocialPagesSettings({ tenant, currentUser }) {
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
+                    {config.platform === 'facebook' && config.access_token && (
+                      <button
+                        onClick={() => testToken(config)}
+                        disabled={testingTokenId === config.id}
+                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg text-sm disabled:opacity-50"
+                        title="Test token"
+                      >
+                        {testingTokenId === config.id ? '⏳' : '🔍'}
+                      </button>
+                    )}
                     <button
                       onClick={() => openEdit(config)}
                       className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg text-sm"
