@@ -224,12 +224,12 @@ export async function saveStatsToTask(taskId, linkIndex, stats, postLinks) {
 
 /**
  * Validate Facebook URL — chỉ chấp nhận link đầy đủ, KHÔNG chấp nhận link rút gọn
- * OK: facebook.com/{page}/videos/{id}, facebook.com/reel/{id}, facebook.com/{page}/posts/{id}, facebook.com/watch/?v={id}
+ * OK: facebook.com/{page}/videos/{id}, /reel/{id}, /{page}/posts/{id}, /watch/?v={id}, /share/v/{id}, /share/r/{id}
  * REJECT: fb.watch/..., m.facebook.com/...
  */
 export function validateFacebookUrl(url) {
   if (!url) return false;
-  return /^https?:\/\/(www\.)?facebook\.com\/(reel\/[\w-]+|watch\/?\?.*v=\d+|[\w.-]+\/(videos|posts)\/[\w.-]+)/.test(url);
+  return /^https?:\/\/(www\.)?facebook\.com\/(reel\/[\w-]+|watch\/?\?.*v=\d+|share\/(v|r)\/[\w-]+|[\w.-]+\/(videos|posts)\/[\w.-]+)/.test(url);
 }
 
 /**
@@ -266,7 +266,7 @@ export function getValidationErrorMessage(url, platform) {
     if (/m\.facebook\.com/i.test(url)) {
       return 'Vui lòng dán link đầy đủ (không dùng link mobile). Mở video trên Facebook bản desktop → copy URL từ thanh địa chỉ.';
     }
-    return 'Link Facebook không đúng định dạng. Cần dạng: facebook.com/.../videos/... hoặc facebook.com/reel/...';
+    return 'Link Facebook không đúng định dạng. Cần dạng: facebook.com/.../videos/..., /reel/..., hoặc /share/v/...';
   }
 
   if (platform === 'TikTok') {

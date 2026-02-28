@@ -170,6 +170,7 @@ const TasksView = ({
       (l.type === 'TikTok' && !validateTikTokUrl(l.url))
     )) return false;
     if (filterLinkIssue === 'missing') {
+      if (t.status !== 'Hoàn Thành') return false;
       const links = (t.postLinks || []);
       const hasFb = links.some(l => l.type === 'Facebook' && validateFacebookUrl(l.url));
       const hasTT = links.some(l => l.type === 'TikTok' && validateTikTokUrl(l.url));
@@ -234,6 +235,7 @@ const TasksView = ({
     )
   ).length;
   const missingLinkCount = visibleTasks.filter(t => {
+    if (t.status !== 'Hoàn Thành') return false;
     const links = (t.postLinks || []);
     const hasFb = links.some(l => l.type === 'Facebook' && validateFacebookUrl(l.url));
     const hasTT = links.some(l => l.type === 'TikTok' && validateTikTokUrl(l.url));
