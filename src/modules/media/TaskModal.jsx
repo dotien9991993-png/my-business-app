@@ -271,7 +271,9 @@ const TaskModal = ({
   const openEditMode = () => {
     setEditTitle(selectedTask.title || '');
     setEditPlatform(selectedTask.platform ? selectedTask.platform.split(', ') : []);
-    setEditDueDate(selectedTask.dueDate || '');
+    // Normalize date-only → datetime-local format cho input
+    const dd = selectedTask.dueDate || '';
+    setEditDueDate(dd.includes('T') ? dd.slice(0, 16) : dd ? dd + 'T17:00' : '');
     setEditDescription(selectedTask.description || '');
     setEditCategory(selectedTask.category || '');
     setEditCrew(selectedTask.crew || []);
@@ -396,8 +398,27 @@ const TaskModal = ({
   const formatDateTime = (dateStr) => {
     if (!dateStr) return 'Chưa';
     try {
+      // Date-only (no T) → chỉ hiện ngày, không hiện 07:00 sai
+      if (!dateStr.includes('T')) {
+        const [y, m, d] = dateStr.split('-');
+        return `${d}/${m}/${y}`;
+      }
       return new Date(dateStr).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     } catch { return dateStr; }
+  };
+
+  // So sánh overdue đúng cho cả date-only và datetime
+  const isDeadlinePassed = (dueDate) => {
+    if (!dueDate) return false;
+    const vn = getVietnamDate();
+    if (dueDate.includes('T')) {
+      return new Date(dueDate) < vn;
+    }
+    // Date-only → quá hạn khi ngày deadline < hôm nay (không tính cùng ngày)
+    const [y, m, d] = dueDate.split('-').map(Number);
+    const deadline = new Date(y, m - 1, d);
+    const today = new Date(vn.getFullYear(), vn.getMonth(), vn.getDate());
+    return deadline < today;
   };
 
   const taskCrew = selectedTask.crew || [];
@@ -429,11 +450,11 @@ const TaskModal = ({
                   🏢 {selectedTask.team}
                 </span>
                 <span className={`px-3 py-1 backdrop-blur-sm rounded-full text-sm ${
-                  selectedTask.dueDate && new Date(selectedTask.dueDate) < getVietnamDate() && selectedTask.status !== 'Hoàn Thành'
+                  isDeadlinePassed(selectedTask.dueDate) && selectedTask.status !== 'Hoàn Thành'
                     ? 'bg-red-500/40 font-bold' : 'bg-white/20'
                 }`}>
-                  {selectedTask.dueDate && new Date(selectedTask.dueDate) < getVietnamDate() && selectedTask.status !== 'Hoàn Thành' ? '⚠️' : '📅'} {formatDateTime(selectedTask.dueDate)}
-                  {selectedTask.dueDate && new Date(selectedTask.dueDate) < getVietnamDate() && selectedTask.status !== 'Hoàn Thành' && ' (Quá hạn)'}
+                  {isDeadlinePassed(selectedTask.dueDate) && selectedTask.status !== 'Hoàn Thành' ? '⚠️' : '📅'} {formatDateTime(selectedTask.dueDate)}
+                  {isDeadlinePassed(selectedTask.dueDate) && selectedTask.status !== 'Hoàn Thành' && ' (Quá hạn)'}
                 </span>
                 <span className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm">
                   📱 {selectedTask.platform}
