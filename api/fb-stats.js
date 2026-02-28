@@ -60,10 +60,6 @@ function parseFacebookVideoId(url) {
     match = url.match(/facebook\.com\/watch\/?\?v=(\d+)/);
     if (match) return match[1];
 
-    // /share/v/ID hoặc /share/r/ID
-    match = url.match(/facebook\.com\/share\/(v|r)\/([\w-]+)/);
-    if (match) return match[2];
-
     // /posts/ID
     match = url.match(/facebook\.com\/[^/]+\/posts\/([\w.]+)/);
     if (match) return match[1];
@@ -80,6 +76,42 @@ function parseFacebookVideoId(url) {
     return null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Resolve Facebook share URL (/share/v/xxx, /share/r/xxx) → URL thật
+ * Follow redirect server-side để lấy URL đầy đủ chứa video/reel/post ID
+ */
+async function resolveShareUrl(shareUrl) {
+  try {
+    // Dùng facebookexternalhit UA để Facebook trả redirect thay vì login page
+    const resp = await fetch(shareUrl, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'facebookexternalhit/1.1' },
+    });
+
+    // resp.url = URL cuối cùng sau khi follow redirects
+    const finalUrl = resp.url;
+    if (finalUrl && finalUrl !== shareUrl && /facebook\.com/.test(finalUrl)) {
+      console.log(`[resolveShareUrl] Resolved: ${shareUrl} → ${finalUrl}`);
+      return finalUrl;
+    }
+
+    // Fallback: parse HTML tìm og:url hoặc canonical
+    const html = await resp.text();
+    let match = html.match(/property="og:url"\s+content="([^"]+)"/);
+    if (!match) match = html.match(/content="([^"]+)"\s+property="og:url"/);
+    if (match) {
+      console.log(`[resolveShareUrl] From og:url: ${shareUrl} → ${match[1]}`);
+      return match[1];
+    }
+
+    console.log(`[resolveShareUrl] Could not resolve: ${shareUrl}, using original`);
+    return shareUrl;
+  } catch (err) {
+    console.log(`[resolveShareUrl] Error: ${err.message}, using original`);
+    return shareUrl;
   }
 }
 
@@ -111,6 +143,11 @@ export default async function handler(req, res) {
 
   if (!action) {
     return res.status(400).json({ error: 'Missing action' });
+  }
+
+  // Pre-process: resolve Facebook share URLs (/share/v/, /share/r/) → URL thật
+  if (params.url && /facebook\.com\/share\/(v|r)\//.test(params.url)) {
+    params.url = await resolveShareUrl(params.url);
   }
 
   try {

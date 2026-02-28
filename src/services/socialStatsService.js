@@ -131,8 +131,10 @@ async function safeParseJSON(resp) {
  */
 export function detectFacebookUrlType(url) {
   if (/\/reel\//.test(url)) return 'reel';
+  if (/\/share\/r\//.test(url)) return 'reel';   // share reel link
   if (/\/videos\//.test(url) || /\/watch/.test(url)) return 'video';
-  if (/\/posts\//.test(url) || /\/permalink\.php/.test(url) || /\/share\//.test(url)) return 'post';
+  if (/\/share\/v\//.test(url)) return 'video';   // share video link
+  if (/\/posts\//.test(url) || /\/permalink\.php/.test(url)) return 'post';
   return 'video'; // fallback
 }
 
