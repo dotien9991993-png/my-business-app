@@ -64,9 +64,13 @@ function parseFacebookVideoId(url) {
     match = url.match(/facebook\.com\/[^/]+\/posts\/([\w.]+)/);
     if (match) return match[1];
 
-    // /permalink.php?story_fbid=ID
-    match = url.match(/story_fbid=(\d+)/);
-    if (match) return match[1];
+    // /permalink.php?story_fbid=ID&id=PAGE_ID → composite ID cho Graph API
+    const storyMatch = url.match(/story_fbid=(\d+)/);
+    if (storyMatch) {
+      const pageIdMatch = url.match(/[?&]id=(\d+)/);
+      if (pageIdMatch) return `${pageIdMatch[1]}_${storyMatch[1]}`;
+      return storyMatch[1];
+    }
 
     // fb.watch/ID — redirect, cần video ID từ user
     // Fallback: tìm chuỗi số dài trong URL
@@ -447,6 +451,123 @@ export default async function handler(req, res) {
       return res.status(200).json({ stats, raw: fbData });
     }
 
+    // === Query Page posts/videos rồi match URL ===
+    if (action === 'get_page_posts_match') {
+      const { url, page_config_id, tenant_id } = params;
+
+      if (!url || !page_config_id || !tenant_id) {
+        return res.status(400).json({ error: 'Thiếu url, page_config_id hoặc tenant_id' });
+      }
+
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrl || !supabaseKey) {
+        return res.status(500).json({ error: 'Server chưa cấu hình Supabase' });
+      }
+
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { data: config } = await supabase
+        .from('social_page_configs')
+        .select('access_token, page_id, token_expires_at')
+        .eq('id', page_config_id)
+        .eq('tenant_id', tenant_id)
+        .eq('is_active', true)
+        .single();
+
+      if (!config?.access_token || !config.page_id) {
+        return res.status(404).json({ error: 'Không tìm thấy cấu hình page hoặc thiếu page_id' });
+      }
+
+      if (config.token_expires_at && new Date(config.token_expires_at) < new Date()) {
+        return res.status(401).json({ error: 'Access token đã hết hạn' });
+      }
+
+      // Extract numeric ID từ input URL để match
+      const inputId = parseFacebookVideoId(url);
+      console.log(`[get_page_posts_match] Input URL: ${url}, extracted ID: ${inputId}`);
+
+      // Helper: normalize stats từ video object
+      const videoToStats = (video) => ({
+        views: video.views || 0,
+        likes: video.likes?.summary?.total_count || 0,
+        comments: video.comments?.summary?.total_count || 0,
+        shares: video.shares?.count || 0,
+        title: video.title || '',
+        updated_at: new Date().toISOString(),
+      });
+
+      // Helper: normalize stats từ post object
+      const postToStats = (post) => ({
+        views: null,
+        likes: post.reactions?.summary?.total_count || 0,
+        comments: post.comments?.summary?.total_count || 0,
+        shares: post.shares?.count || 0,
+        title: post.message ? post.message.substring(0, 100) : '',
+        updated_at: new Date().toISOString(),
+      });
+
+      // Helper: check if 2 IDs match (xử lý composite ID dạng page_id_post_id)
+      const idsMatch = (id1, id2) => {
+        if (!id1 || !id2) return false;
+        if (id1 === id2) return true;
+        // Tách composite ID: "123_456" → "456"
+        const strip = (id) => id.includes('_') ? id.split('_').pop() : id;
+        return strip(id1) === strip(id2);
+      };
+
+      // 1. Thử query videos của page
+      try {
+        const videosGraphUrl = `https://graph.facebook.com/v21.0/${config.page_id}/videos?fields=permalink_url,id,title,views,likes.summary(true),comments.summary(true),shares&limit=100&access_token=${config.access_token}`;
+        const videosResp = await fetch(videosGraphUrl);
+        const videosData = await videosResp.json();
+
+        if (!videosData.error && videosData.data) {
+          for (const video of videosData.data) {
+            if (inputId && idsMatch(inputId, video.id)) {
+              console.log(`[get_page_posts_match] Matched video by ID: ${video.id}`);
+              return res.status(200).json({ stats: videoToStats(video), raw: video, matched_by: 'video_id' });
+            }
+            if (video.permalink_url && inputId) {
+              const permalinkId = parseFacebookVideoId(video.permalink_url);
+              if (permalinkId && idsMatch(inputId, permalinkId)) {
+                console.log(`[get_page_posts_match] Matched video by permalink: ${video.permalink_url}`);
+                return res.status(200).json({ stats: videoToStats(video), raw: video, matched_by: 'permalink' });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.log('[get_page_posts_match] Videos query error:', err.message);
+      }
+
+      // 2. Thử query published_posts của page
+      try {
+        const postsGraphUrl = `https://graph.facebook.com/v21.0/${config.page_id}/published_posts?fields=permalink_url,id,message,reactions.summary(true),comments.summary(true),shares&limit=100&access_token=${config.access_token}`;
+        const postsResp = await fetch(postsGraphUrl);
+        const postsData = await postsResp.json();
+
+        if (!postsData.error && postsData.data) {
+          for (const post of postsData.data) {
+            if (inputId && idsMatch(inputId, post.id)) {
+              console.log(`[get_page_posts_match] Matched post by ID: ${post.id}`);
+              return res.status(200).json({ stats: postToStats(post), raw: post, matched_by: 'post_id' });
+            }
+            if (post.permalink_url && inputId) {
+              const permalinkId = parseFacebookVideoId(post.permalink_url);
+              if (permalinkId && idsMatch(inputId, permalinkId)) {
+                console.log(`[get_page_posts_match] Matched post by permalink: ${post.permalink_url}`);
+                return res.status(200).json({ stats: postToStats(post), raw: post, matched_by: 'permalink' });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.log('[get_page_posts_match] Posts query error:', err.message);
+      }
+
+      return res.status(404).json({ error: 'Không tìm thấy post/video match trong page' });
+    }
+
     // === URL Lookup — fallback dùng Facebook URL Object endpoint ===
     if (action === 'url_lookup') {
       const { url, page_config_id, tenant_id } = params;
@@ -539,7 +660,7 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(400).json({ error: 'Invalid action. Use: get_oauth_url, resolve_url, get_video_stats, get_reel_stats, get_post_stats, url_lookup' });
+    return res.status(400).json({ error: 'Invalid action. Use: get_oauth_url, resolve_url, get_video_stats, get_reel_stats, get_post_stats, get_page_posts_match, url_lookup' });
   } catch (error) {
     console.error('FB Stats proxy error:', error);
     return res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại sau.' });

@@ -127,20 +127,67 @@ async function safeParseJSON(resp) {
 }
 
 /**
- * Detect loại URL Facebook: reel, video, hay post
+ * Clean Facebook URL — bỏ tracking params (__cft__, __tn__, fbclid, mibextid...)
  */
-export function detectFacebookUrlType(url) {
-  if (/\/reel\//.test(url)) return 'reel';
-  if (/\/share\/r\//.test(url)) return 'reel';   // share reel link
-  if (/\/videos\//.test(url) || /\/watch/.test(url)) return 'video';
-  if (/\/share\/v\//.test(url)) return 'video';   // share video link
-  if (/\/posts\//.test(url) || /\/permalink\.php/.test(url)) return 'post';
-  return 'video'; // fallback
+function cleanFacebookUrl(url) {
+  try {
+    const u = new URL(url);
+    const keysToRemove = [];
+    for (const key of u.searchParams.keys()) {
+      if (/^(__cft__|__tn__|fbclid|mibextid|__eep__)/.test(key) || key === 'ref' || key === 'locale') {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => u.searchParams.delete(k));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Extract Facebook ID và type từ URL (client-side, không cần server call)
+ * @returns {{ id: string|null, type: 'reel'|'video'|'post'|null }}
+ */
+function extractFacebookId(url) {
+  if (!url) return { id: null, type: null };
+  try {
+    // /reel/ID — reel ID chính là video ID
+    let match = url.match(/facebook\.com\/reel\/(\d+)/);
+    if (match) return { id: match[1], type: 'reel' };
+
+    // /videos/ID
+    match = url.match(/facebook\.com\/[^/]+\/videos\/(\d+)/);
+    if (match) return { id: match[1], type: 'video' };
+
+    // /watch/?v=ID
+    match = url.match(/facebook\.com\/watch\/?\?v=(\d+)/);
+    if (match) return { id: match[1], type: 'video' };
+
+    // /permalink.php?story_fbid=ID&id=PAGE_ID → composite post ID
+    const storyMatch = url.match(/story_fbid=(\d+)/);
+    if (storyMatch) {
+      const pageIdMatch = url.match(/[?&]id=(\d+)/);
+      if (pageIdMatch) return { id: `${pageIdMatch[1]}_${storyMatch[1]}`, type: 'post' };
+      return { id: storyMatch[1], type: 'post' };
+    }
+
+    // /posts/ID
+    match = url.match(/facebook\.com\/[^/]+\/posts\/([\w.]+)/);
+    if (match) return { id: match[1], type: 'post' };
+
+    // Fallback: tìm chuỗi số dài (>= 10 digits)
+    match = url.match(/\/(\d{10,})/);
+    if (match) return { id: match[1], type: 'video' };
+
+    return { id: null, type: null };
+  } catch {
+    return { id: null, type: null };
+  }
 }
 
 /**
  * Resolve Facebook URL qua server-side (handle fb.watch, m.facebook, /share/*, etc.)
- * Trả về resolved URL hoặc original nếu đã standard
  */
 async function resolveUrl(url) {
   try {
@@ -156,103 +203,132 @@ async function resolveUrl(url) {
   } catch (err) {
     console.warn('[resolveUrl] Error:', err.message);
   }
-  return url; // fallback về URL gốc
+  return url;
 }
 
 /**
- * Gọi url_lookup — ultimate fallback dùng Facebook URL Object endpoint
+ * Gọi /api/fb-stats — trả về data hoặc null (không throw)
  */
-async function fetchUrlLookup(url, pageConfigId, tenantId) {
-  const resp = await fetch('/api/fb-stats', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'url_lookup',
-      url,
-      page_config_id: pageConfigId,
-      tenant_id: tenantId,
-    }),
-  });
-  const data = await safeParseJSON(resp);
-  if (!resp.ok) {
-    throw new Error(data.error || 'URL Lookup thất bại');
-  }
-  return { stats: data.stats, source: 'facebook_url_lookup' };
-}
-
-/**
- * Fetch stats Facebook qua /api/fb-stats proxy — Universal flow
- * 1. Resolve URL server-side (fb.watch, m.facebook, /share/*, etc.)
- * 2. Detect type từ resolved URL
- * 3. Gọi action phù hợp, fallback action khác
- * 4. Ultimate fallback: url_lookup
- */
-export async function fetchFacebookStats(url, pageConfigId, tenantId) {
-  if (!url || !pageConfigId || !tenantId) {
-    throw new Error('Thiếu url, pageConfigId hoặc tenantId');
-  }
-
-  // Bước 1: Resolve URL
-  const resolvedUrl = await resolveUrl(url);
-
-  // Bước 2: Detect type từ resolved URL
-  const urlType = detectFacebookUrlType(resolvedUrl);
-
-  // Bước 3: Gọi action phù hợp
-  const callAction = async (action, targetUrl) => {
+async function callFbStats(action, url, pageConfigId, tenantId) {
+  try {
     const resp = await fetch('/api/fb-stats', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action,
-        url: targetUrl,
+        url,
         page_config_id: pageConfigId,
         tenant_id: tenantId,
       }),
     });
     const data = await safeParseJSON(resp);
-    if (!resp.ok) throw new Error(data.error || 'Lỗi gọi Facebook API');
+    if (!resp.ok || !data.stats) return null;
     return data;
-  };
+  } catch {
+    return null;
+  }
+}
 
-  // Post: chỉ gọi get_post_stats, fallback url_lookup
-  if (urlType === 'post') {
-    try {
-      const data = await callAction('get_post_stats', resolvedUrl);
-      return { stats: data.stats, source: 'facebook_post' };
-    } catch {
-      // Fallback url_lookup
-      return await fetchUrlLookup(resolvedUrl, pageConfigId, tenantId);
+/**
+ * Phương pháp 1 & 4: Thử lấy stats bằng ID trực tiếp
+ * Construct synthetic URL từ ID, thử với từng token (config) cho đến khi thành công
+ * Reel thử get_reel_stats (có video_insights) trước, fallback get_video_stats
+ */
+async function tryGetStatsById(id, type, allConfigs, tenantId) {
+  // Construct synthetic URL để server parse ID
+  const syntheticUrl = type === 'reel'
+    ? `https://www.facebook.com/reel/${id}`
+    : type === 'post'
+      ? `https://www.facebook.com/x/posts/${id}`
+      : `https://www.facebook.com/x/videos/${id}`;
+
+  // Actions theo thứ tự ưu tiên
+  const actions = type === 'post'
+    ? ['get_post_stats']
+    : type === 'reel'
+      ? ['get_reel_stats', 'get_video_stats']
+      : ['get_video_stats', 'get_reel_stats'];
+
+  // Thử từng action, mỗi action thử tất cả configs
+  for (const action of actions) {
+    for (const config of allConfigs) {
+      const data = await callFbStats(action, syntheticUrl, config.id, tenantId);
+      if (data) {
+        const source = action === 'get_reel_stats' ? 'facebook_insights'
+          : action === 'get_post_stats' ? 'facebook_post'
+          : 'facebook_graph';
+        return { stats: data.stats, source };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Phương pháp 3: Query page posts/videos rồi match URL
+ */
+async function matchFromPagePosts(url, config, tenantId) {
+  try {
+    const resp = await fetch('/api/fb-stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get_page_posts_match',
+        url,
+        page_config_id: config.id,
+        tenant_id: tenantId,
+      }),
+    });
+    const data = await safeParseJSON(resp);
+    if (resp.ok && data.stats) {
+      return { stats: data.stats, source: 'facebook_page_match' };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
+ * Fetch stats Facebook — Universal flow với 4 phương pháp fallback:
+ * 1. Extract ID trực tiếp → gọi Graph API với tất cả tokens
+ * 2. Resolve redirect (fb.watch, /share/*, m.facebook) → extract ID → retry
+ * 3. Query page posts/videos → match URL
+ * 4. (Built into get_reel_stats) Video Insights endpoint
+ */
+export async function fetchFacebookStats(url, allFbConfigs, tenantId) {
+  if (!url || !allFbConfigs?.length || !tenantId) {
+    throw new Error('Thiếu url, page configs hoặc tenantId');
+  }
+
+  // Bước 0: Clean URL — bỏ tracking params
+  const cleanUrl = cleanFacebookUrl(url);
+
+  // Bước 1: Thử extract ID trực tiếp từ URL
+  const extracted = extractFacebookId(cleanUrl);
+  if (extracted.id) {
+    const result = await tryGetStatsById(extracted.id, extracted.type, allFbConfigs, tenantId);
+    if (result) return result;
+  }
+
+  // Bước 2: Resolve URL (cho fb.watch, /share/v/, /share/r/, m.facebook...)
+  const resolvedUrl = await resolveUrl(cleanUrl);
+  if (resolvedUrl !== cleanUrl) {
+    const extracted2 = extractFacebookId(resolvedUrl);
+    if (extracted2.id) {
+      const result = await tryGetStatsById(extracted2.id, extracted2.type, allFbConfigs, tenantId);
+      if (result) return result;
     }
   }
 
-  // Reel/Video: thử primary → fallback → url_lookup
-  const primaryAction = urlType === 'reel' ? 'get_reel_stats' : 'get_video_stats';
-  const fallbackAction = urlType === 'reel' ? 'get_video_stats' : 'get_reel_stats';
-
-  // Thử primary
-  try {
-    const data = await callAction(primaryAction, resolvedUrl);
-    return {
-      stats: data.stats,
-      source: primaryAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph',
-    };
-  } catch {
-    // Thử fallback action
+  // Bước 3: Query page posts/videos rồi match
+  for (const config of allFbConfigs) {
+    const result = await matchFromPagePosts(cleanUrl, config, tenantId);
+    if (result) return result;
   }
 
-  try {
-    const data = await callAction(fallbackAction, resolvedUrl);
-    return {
-      stats: data.stats,
-      source: fallbackAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph',
-    };
-  } catch {
-    // Ultimate fallback: url_lookup
-  }
-
-  // Bước 4: url_lookup
-  return await fetchUrlLookup(resolvedUrl, pageConfigId, tenantId);
+  // Bước 4: Tất cả fail
+  throw new Error('Không thể lấy stats cho link này. Vui lòng nhập stats thủ công.');
 }
 
 /**
@@ -270,30 +346,11 @@ export async function fetchStatsForLink(url, pageConfigs, tenantId) {
   }
 
   if (platform === 'facebook') {
-    // Resolve URL trước khi match page config
-    const resolvedUrl = await resolveUrl(url);
-
-    // Thử match bằng resolved URL, fallback original URL
-    let config = matchPageConfig(resolvedUrl, pageConfigs);
-    if (!config && resolvedUrl !== url) {
-      config = matchPageConfig(url, pageConfigs);
+    const fbConfigs = (pageConfigs || []).filter(c => c.platform === 'facebook');
+    if (fbConfigs.length === 0) {
+      throw new Error('Chưa cấu hình Facebook Page trong Cài đặt → Mạng Xã Hội');
     }
-
-    if (!config) {
-      const fbConfigs = pageConfigs.filter(c => c.platform === 'facebook');
-      if (fbConfigs.length === 0) {
-        throw new Error('Chưa cấu hình Facebook Page trong Cài đặt → Mạng Xã Hội');
-      }
-      // Nếu chỉ có 1 FB config → dùng luôn
-      if (fbConfigs.length === 1) {
-        config = fbConfigs[0];
-      } else {
-        throw new Error('Không xác định được page cho link này. Vui lòng kiểm tra lại Username trong Cài đặt → Mạng Xã Hội');
-      }
-    }
-
-    // Truyền resolvedUrl cho fetchFacebookStats (bên trong sẽ skip resolve lại nếu đã standard)
-    return await fetchFacebookStats(resolvedUrl, config.id, tenantId);
+    return await fetchFacebookStats(url, fbConfigs, tenantId);
   }
 
   throw new Error(`Platform không hỗ trợ stats: ${platform || 'unknown'}`);

@@ -4,7 +4,7 @@ import { isAdmin } from '../../utils/permissionUtils';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN, getVietnamDate } from '../../utils/dateUtils';
 import EkipSelector from './EkipSelector';
-import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs, validateLinkForPlatform, getValidationErrorMessage, detectFacebookUrlType } from '../../services/socialStatsService';
+import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs, validateLinkForPlatform, getValidationErrorMessage } from '../../services/socialStatsService';
 
 const TaskModal = ({
   selectedTask,
