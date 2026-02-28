@@ -80,21 +80,30 @@ function parseFacebookVideoId(url) {
 }
 
 /**
- * Resolve Facebook share URL (/share/v/xxx, /share/r/xxx) → URL thật
- * Follow redirect server-side để lấy URL đầy đủ chứa video/reel/post ID
+ * Detect URL đã ở dạng standard (có thể parse ID trực tiếp) hay chưa
+ * Standard = facebook.com với path rõ ràng chứa ID
  */
-async function resolveShareUrl(shareUrl) {
+function isStandardFacebookUrl(url) {
+  return /facebook\.com\/(reel\/\d|[\w.-]+\/videos\/\d|watch\/?\?.*v=\d|[\w.-]+\/posts\/[\w.]|permalink\.php)/.test(url);
+}
+
+/**
+ * Universal Facebook URL resolver
+ * Resolve MỌI dạng URL Facebook (fb.watch, m.facebook, /share/v/, /share/r/, bất kỳ)
+ * → URL thật ở dạng standard chứa video/reel/post ID
+ * Follow redirect server-side với UA facebookexternalhit
+ */
+async function resolveFacebookUrl(inputUrl) {
   try {
-    // Dùng facebookexternalhit UA để Facebook trả redirect thay vì login page
-    const resp = await fetch(shareUrl, {
+    const resp = await fetch(inputUrl, {
       redirect: 'follow',
       headers: { 'User-Agent': 'facebookexternalhit/1.1' },
     });
 
     // resp.url = URL cuối cùng sau khi follow redirects
     const finalUrl = resp.url;
-    if (finalUrl && finalUrl !== shareUrl && /facebook\.com/.test(finalUrl)) {
-      console.log(`[resolveShareUrl] Resolved: ${shareUrl} → ${finalUrl}`);
+    if (finalUrl && finalUrl !== inputUrl && /facebook\.com/.test(finalUrl)) {
+      console.log(`[resolveFacebookUrl] Resolved: ${inputUrl} → ${finalUrl}`);
       return finalUrl;
     }
 
@@ -102,16 +111,17 @@ async function resolveShareUrl(shareUrl) {
     const html = await resp.text();
     let match = html.match(/property="og:url"\s+content="([^"]+)"/);
     if (!match) match = html.match(/content="([^"]+)"\s+property="og:url"/);
+    if (!match) match = html.match(/<link\s+rel="canonical"\s+href="([^"]+)"/);
     if (match) {
-      console.log(`[resolveShareUrl] From og:url: ${shareUrl} → ${match[1]}`);
+      console.log(`[resolveFacebookUrl] From meta tag: ${inputUrl} → ${match[1]}`);
       return match[1];
     }
 
-    console.log(`[resolveShareUrl] Could not resolve: ${shareUrl}, using original`);
-    return shareUrl;
+    console.log(`[resolveFacebookUrl] Could not resolve: ${inputUrl}, using original`);
+    return inputUrl;
   } catch (err) {
-    console.log(`[resolveShareUrl] Error: ${err.message}, using original`);
-    return shareUrl;
+    console.log(`[resolveFacebookUrl] Error: ${err.message}, using original`);
+    return inputUrl;
   }
 }
 
@@ -145,9 +155,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing action' });
   }
 
-  // Pre-process: resolve Facebook share URLs (/share/v/, /share/r/) → URL thật
-  if (params.url && /facebook\.com\/share\/(v|r)\//.test(params.url)) {
-    params.url = await resolveShareUrl(params.url);
+  // Pre-process: resolve MỌI URL Facebook không phải dạng standard
+  if (params.url && !isStandardFacebookUrl(params.url)) {
+    params.url = await resolveFacebookUrl(params.url);
   }
 
   try {
@@ -165,6 +175,15 @@ export default async function handler(req, res) {
       const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}&response_type=code`;
 
       return res.status(200).json({ url });
+    }
+
+    // === Resolve URL Facebook (không cần token) ===
+    if (action === 'resolve_url') {
+      const { url } = params;
+      if (!url) return res.status(400).json({ error: 'Thiếu url' });
+
+      const resolvedUrl = isStandardFacebookUrl(url) ? url : await resolveFacebookUrl(url);
+      return res.status(200).json({ resolved_url: resolvedUrl, original_url: url });
     }
 
     // === Lấy stats video Facebook ===
@@ -428,7 +447,99 @@ export default async function handler(req, res) {
       return res.status(200).json({ stats, raw: fbData });
     }
 
-    return res.status(400).json({ error: 'Invalid action. Use: get_oauth_url, get_video_stats, get_reel_stats, get_post_stats' });
+    // === URL Lookup — fallback dùng Facebook URL Object endpoint ===
+    if (action === 'url_lookup') {
+      const { url, page_config_id, tenant_id } = params;
+
+      if (!url || !page_config_id || !tenant_id) {
+        return res.status(400).json({ error: 'Thiếu url, page_config_id hoặc tenant_id' });
+      }
+
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+      if (!supabaseUrl || !supabaseKey) {
+        return res.status(500).json({ error: 'Server chưa cấu hình Supabase' });
+      }
+
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: config, error: configError } = await supabase
+        .from('social_page_configs')
+        .select('access_token, page_id, token_expires_at')
+        .eq('id', page_config_id)
+        .eq('tenant_id', tenant_id)
+        .eq('is_active', true)
+        .single();
+
+      if (configError || !config) {
+        return res.status(404).json({ error: 'Không tìm thấy cấu hình page' });
+      }
+
+      if (!config.access_token) {
+        return res.status(400).json({ error: 'Page chưa có access token' });
+      }
+
+      if (config.token_expires_at && new Date(config.token_expires_at) < new Date()) {
+        return res.status(401).json({ error: 'Access token đã hết hạn. Vui lòng cập nhật trong Cài đặt.' });
+      }
+
+      // Gọi Facebook URL Object endpoint
+      const lookupUrl = `https://graph.facebook.com/v21.0/?id=${encodeURIComponent(url)}&fields=og_object{id,type,engagement}&access_token=${config.access_token}`;
+      const lookupResp = await fetch(lookupUrl);
+      const lookupData = await lookupResp.json();
+      console.log('[url_lookup] Response:', JSON.stringify(lookupData));
+
+      if (lookupData.error) {
+        return res.status(400).json({
+          error: `Facebook URL Lookup: ${lookupData.error.message}`,
+          fb_error_code: lookupData.error.code,
+          fb_error: lookupData.error
+        });
+      }
+
+      const ogObject = lookupData.og_object || {};
+      const engagement = ogObject.engagement || {};
+
+      const stats = {
+        views: null,
+        likes: engagement.count || 0,
+        comments: null,
+        shares: null,
+        title: '',
+        updated_at: new Date().toISOString(),
+      };
+
+      // Nếu có og_id, thử lấy thêm chi tiết
+      if (ogObject.id) {
+        try {
+          const detailUrl = `https://graph.facebook.com/v21.0/${ogObject.id}?fields=engagement,title,description&access_token=${config.access_token}`;
+          const detailResp = await fetch(detailUrl);
+          const detailData = await detailResp.json();
+          console.log('[url_lookup] Detail response:', JSON.stringify(detailData));
+
+          if (!detailData.error) {
+            if (detailData.engagement) {
+              stats.likes = detailData.engagement.reaction_count || stats.likes;
+              stats.comments = detailData.engagement.comment_count || null;
+              stats.shares = detailData.engagement.share_count || null;
+            }
+            stats.title = detailData.title || detailData.description || '';
+          }
+        } catch (detailErr) {
+          console.log('[url_lookup] Detail error (bỏ qua):', detailErr.message);
+        }
+      }
+
+      return res.status(200).json({
+        stats,
+        raw: lookupData,
+        source: 'url_lookup',
+        og_type: ogObject.type || null,
+      });
+    }
+
+    return res.status(400).json({ error: 'Invalid action. Use: get_oauth_url, resolve_url, get_video_stats, get_reel_stats, get_post_stats, url_lookup' });
   } catch (error) {
     console.error('FB Stats proxy error:', error);
     return res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại sau.' });

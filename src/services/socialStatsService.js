@@ -139,76 +139,120 @@ export function detectFacebookUrlType(url) {
 }
 
 /**
- * Fetch stats Facebook qua /api/fb-stats proxy
- * Detect URL type để chọn action phù hợp
+ * Resolve Facebook URL qua server-side (handle fb.watch, m.facebook, /share/*, etc.)
+ * Trả về resolved URL hoặc original nếu đã standard
+ */
+async function resolveUrl(url) {
+  try {
+    const resp = await fetch('/api/fb-stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resolve_url', url }),
+    });
+    const data = await safeParseJSON(resp);
+    if (resp.ok && data.resolved_url) {
+      return data.resolved_url;
+    }
+  } catch (err) {
+    console.warn('[resolveUrl] Error:', err.message);
+  }
+  return url; // fallback về URL gốc
+}
+
+/**
+ * Gọi url_lookup — ultimate fallback dùng Facebook URL Object endpoint
+ */
+async function fetchUrlLookup(url, pageConfigId, tenantId) {
+  const resp = await fetch('/api/fb-stats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'url_lookup',
+      url,
+      page_config_id: pageConfigId,
+      tenant_id: tenantId,
+    }),
+  });
+  const data = await safeParseJSON(resp);
+  if (!resp.ok) {
+    throw new Error(data.error || 'URL Lookup thất bại');
+  }
+  return { stats: data.stats, source: 'facebook_url_lookup' };
+}
+
+/**
+ * Fetch stats Facebook qua /api/fb-stats proxy — Universal flow
+ * 1. Resolve URL server-side (fb.watch, m.facebook, /share/*, etc.)
+ * 2. Detect type từ resolved URL
+ * 3. Gọi action phù hợp, fallback action khác
+ * 4. Ultimate fallback: url_lookup
  */
 export async function fetchFacebookStats(url, pageConfigId, tenantId) {
   if (!url || !pageConfigId || !tenantId) {
     throw new Error('Thiếu url, pageConfigId hoặc tenantId');
   }
 
-  const urlType = detectFacebookUrlType(url);
+  // Bước 1: Resolve URL
+  const resolvedUrl = await resolveUrl(url);
 
-  // Post: chỉ gọi get_post_stats, không fallback
-  if (urlType === 'post') {
+  // Bước 2: Detect type từ resolved URL
+  const urlType = detectFacebookUrlType(resolvedUrl);
+
+  // Bước 3: Gọi action phù hợp
+  const callAction = async (action, targetUrl) => {
     const resp = await fetch('/api/fb-stats', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'get_post_stats',
-        url,
+        action,
+        url: targetUrl,
         page_config_id: pageConfigId,
         tenant_id: tenantId,
       }),
     });
     const data = await safeParseJSON(resp);
-    if (!resp.ok) {
-      throw new Error(data.error || 'Lỗi gọi Facebook API');
+    if (!resp.ok) throw new Error(data.error || 'Lỗi gọi Facebook API');
+    return data;
+  };
+
+  // Post: chỉ gọi get_post_stats, fallback url_lookup
+  if (urlType === 'post') {
+    try {
+      const data = await callAction('get_post_stats', resolvedUrl);
+      return { stats: data.stats, source: 'facebook_post' };
+    } catch {
+      // Fallback url_lookup
+      return await fetchUrlLookup(resolvedUrl, pageConfigId, tenantId);
     }
-    return { stats: data.stats, source: 'facebook_post' };
   }
 
-  // Reel: thử reel trước, fallback video
-  // Video: thử video trước, fallback reel
+  // Reel/Video: thử primary → fallback → url_lookup
   const primaryAction = urlType === 'reel' ? 'get_reel_stats' : 'get_video_stats';
   const fallbackAction = urlType === 'reel' ? 'get_video_stats' : 'get_reel_stats';
 
-  const primaryResp = await fetch('/api/fb-stats', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: primaryAction,
-      url,
-      page_config_id: pageConfigId,
-      tenant_id: tenantId,
-    }),
-  });
-
-  const primaryData = await safeParseJSON(primaryResp);
-
-  if (primaryResp.ok && primaryData.stats) {
-    return { stats: primaryData.stats, source: primaryAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph' };
+  // Thử primary
+  try {
+    const data = await callAction(primaryAction, resolvedUrl);
+    return {
+      stats: data.stats,
+      source: primaryAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph',
+    };
+  } catch {
+    // Thử fallback action
   }
 
-  // Fallback
-  const fallbackResp = await fetch('/api/fb-stats', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: fallbackAction,
-      url,
-      page_config_id: pageConfigId,
-      tenant_id: tenantId,
-    }),
-  });
-
-  const fallbackData = await safeParseJSON(fallbackResp);
-
-  if (!fallbackResp.ok) {
-    throw new Error(fallbackData.error || 'Lỗi gọi Facebook API');
+  try {
+    const data = await callAction(fallbackAction, resolvedUrl);
+    return {
+      stats: data.stats,
+      source: fallbackAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph',
+    };
+  } catch {
+    // Ultimate fallback: url_lookup
   }
 
-  return { stats: fallbackData.stats, source: fallbackAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph' };
+  // Bước 4: url_lookup
+  return await fetchUrlLookup(resolvedUrl, pageConfigId, tenantId);
 }
 
 /**
@@ -226,15 +270,30 @@ export async function fetchStatsForLink(url, pageConfigs, tenantId) {
   }
 
   if (platform === 'facebook') {
-    const config = matchPageConfig(url, pageConfigs);
+    // Resolve URL trước khi match page config
+    const resolvedUrl = await resolveUrl(url);
+
+    // Thử match bằng resolved URL, fallback original URL
+    let config = matchPageConfig(resolvedUrl, pageConfigs);
+    if (!config && resolvedUrl !== url) {
+      config = matchPageConfig(url, pageConfigs);
+    }
+
     if (!config) {
       const fbConfigs = pageConfigs.filter(c => c.platform === 'facebook');
       if (fbConfigs.length === 0) {
         throw new Error('Chưa cấu hình Facebook Page trong Cài đặt → Mạng Xã Hội');
       }
-      throw new Error('Không xác định được page cho link này. Vui lòng kiểm tra lại Username trong Cài đặt → Mạng Xã Hội');
+      // Nếu chỉ có 1 FB config → dùng luôn
+      if (fbConfigs.length === 1) {
+        config = fbConfigs[0];
+      } else {
+        throw new Error('Không xác định được page cho link này. Vui lòng kiểm tra lại Username trong Cài đặt → Mạng Xã Hội');
+      }
     }
-    return await fetchFacebookStats(url, config.id, tenantId);
+
+    // Truyền resolvedUrl cho fetchFacebookStats (bên trong sẽ skip resolve lại nếu đã standard)
+    return await fetchFacebookStats(resolvedUrl, config.id, tenantId);
   }
 
   throw new Error(`Platform không hỗ trợ stats: ${platform || 'unknown'}`);
@@ -269,13 +328,12 @@ export async function saveStatsToTask(taskId, linkIndex, stats, postLinks) {
 }
 
 /**
- * Validate Facebook URL — chỉ chấp nhận link đầy đủ, KHÔNG chấp nhận link rút gọn
- * OK: facebook.com/{page}/videos/{id}, /reel/{id}, /{page}/posts/{id}, /watch/?v={id}, /share/v/{id}, /share/r/{id}, /permalink.php?story_fbid=*&id=*
- * REJECT: fb.watch/..., m.facebook.com/...
+ * Validate Facebook URL — chấp nhận TẤT CẢ dạng link Facebook
+ * Server sẽ resolve URL không standard (fb.watch, m.facebook, /share/, etc.)
  */
 export function validateFacebookUrl(url) {
   if (!url) return false;
-  return /^https?:\/\/(www\.)?facebook\.com\/(reel\/[\w-]+|watch\/?\?.*v=\d+|share\/(v|r)\/[\w-]+|permalink\.php\?.*story_fbid=|[\w.-]+\/(videos|posts)\/[\w.-]+)/.test(url);
+  return /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.com|m\.facebook\.com)\//i.test(url);
 }
 
 /**
@@ -306,13 +364,7 @@ export function getValidationErrorMessage(url, platform) {
 
   if (platform === 'Facebook') {
     if (validateFacebookUrl(url)) return null;
-    if (/fb\.watch/i.test(url)) {
-      return 'Vui lòng dán link đầy đủ (không dùng fb.watch). Mở video trên Facebook → copy URL từ thanh địa chỉ trình duyệt.';
-    }
-    if (/m\.facebook\.com/i.test(url)) {
-      return 'Vui lòng dán link đầy đủ (không dùng link mobile). Mở video trên Facebook bản desktop → copy URL từ thanh địa chỉ.';
-    }
-    return 'Link Facebook không đúng định dạng. Cần dạng: facebook.com/.../videos/..., /reel/..., hoặc /share/v/...';
+    return 'Link Facebook không hợp lệ. Cần link từ facebook.com, fb.watch, hoặc m.facebook.com.';
   }
 
   if (platform === 'TikTok') {
