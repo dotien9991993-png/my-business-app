@@ -70,7 +70,6 @@ const getTypeBadgeClass = (type) => {
 export default function HrmLeaveRequestsView({
   employees,
   leaveRequests,
-  leaveBalances,
   loadHrmData,
   tenant,
   currentUser,
@@ -82,7 +81,6 @@ export default function HrmLeaveRequestsView({
   const canCreateLeave = hasPermission ? hasPermission('hrm', 1) : true; // level 1+ tạo đơn
   // ---- State ----
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showBalancePanel, setShowBalancePanel] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -185,36 +183,10 @@ export default function HrmLeaveRequestsView({
     return emp?.full_name || 'Không rõ';
   }, [employees]);
 
-  // ---- Lấy số dư phép của nhân viên ----
-  const getLeaveBalance = useCallback((employeeId, leaveType) => {
-    const balances = leaveBalances || [];
-    const currentYear = getVietnamDate().getFullYear();
-    const balance = balances.find(b =>
-      b.employee_id === employeeId && b.year === currentYear
-    );
-    if (!balance) return { total: 0, used: 0 };
-    if (leaveType === 'annual_leave') {
-      return { id: balance.id, total: balance.annual_leave_total || 12, used: balance.annual_leave_used || 0 };
-    }
-    if (leaveType === 'sick_leave') {
-      return { id: balance.id, total: balance.sick_leave_total || 30, used: balance.sick_leave_used || 0 };
-    }
-    return { total: 0, used: 0 };
-  }, [leaveBalances]);
-
   // ---- Số ngày dự kiến trong form ----
   const formDays = useMemo(() => {
     return calcDays(formStartDate, formEndDate, formIsHalfDay);
   }, [formStartDate, formEndDate, formIsHalfDay]);
-
-  // ---- Số dư phép cho employee đang chọn trong form ----
-  const formBalance = useMemo(() => {
-    if (!formEmployeeId) return null;
-    if (formType === 'annual_leave' || formType === 'sick_leave') {
-      return getLeaveBalance(formEmployeeId, formType);
-    }
-    return null;
-  }, [formEmployeeId, formType, getLeaveBalance]);
 
   // ---- Mở modal tạo đơn ----
   const handleOpenCreate = () => {
@@ -253,17 +225,6 @@ export default function HrmLeaveRequestsView({
       return;
     }
 
-    // Kiểm tra số dư phép nếu là phép năm hoặc nghỉ ốm
-    if (formType === 'annual_leave' || formType === 'sick_leave') {
-      const balance = getLeaveBalance(formEmployeeId, formType);
-      const remaining = (balance.total || 0) - (balance.used || 0);
-      if (days > remaining) {
-        const typeName = LEAVE_TYPES[formType]?.label || formType;
-        alert(`Số ngày ${typeName} còn lại không đủ (còn ${remaining} ngày)`);
-        return;
-      }
-    }
-
     setSaving(true);
     try {
       const code = generateLeaveCode();
@@ -275,6 +236,7 @@ export default function HrmLeaveRequestsView({
         start_date: formStartDate,
         end_date: formEndDate,
         days,
+        is_half_day: formIsHalfDay,
         reason: formReason.trim(),
         status: 'pending',
         created_at: getNowISOVN()
@@ -334,20 +296,6 @@ export default function HrmLeaveRequestsView({
         entityId: request.id, entityName: request.code,
         description: `Duyệt đơn nghỉ phép ${request.code} của ${empName}`
       });
-
-      // Cập nhật số dư phép nếu là phép năm hoặc nghỉ ốm
-      if (request.type === 'annual_leave' || request.type === 'sick_leave') {
-        const balance = getLeaveBalance(request.employee_id, request.type);
-        if (balance.id) {
-          const newUsed = (balance.used || 0) + (request.days || 0);
-          const updateField = request.type === 'annual_leave' ? 'annual_leave_used' : 'sick_leave_used';
-          const { error: balError } = await supabase
-            .from('leave_balances')
-            .update({ [updateField]: newUsed })
-            .eq('id', balance.id);
-          if (balError) console.error('Lỗi cập nhật số dư phép:', balError);
-        }
-      }
 
       // Cập nhật chấm công cho những ngày nghỉ
       const attendanceStatus = request.type === 'sick_leave' ? 'sick' : 'annual_leave';
@@ -474,27 +422,6 @@ export default function HrmLeaveRequestsView({
     }
   };
 
-  // ---- Danh sách số dư phép nhân viên ----
-  const balanceSummary = useMemo(() => {
-    const currentYear = getVietnamDate().getFullYear();
-    return activeEmployees.map(emp => {
-      const balance = (leaveBalances || []).find(b =>
-        b.employee_id === emp.id && b.year === currentYear
-      );
-      const annual = balance
-        ? { total: balance.annual_leave_total || 12, used: balance.annual_leave_used || 0 }
-        : { total: 0, used: 0 };
-      const sick = balance
-        ? { total: balance.sick_leave_total || 30, used: balance.sick_leave_used || 0 }
-        : { total: 0, used: 0 };
-      return {
-        employee: emp,
-        annual,
-        sick
-      };
-    });
-  }, [activeEmployees, leaveBalances]);
-
   // ============ RENDER ============
   return (
     <div className="space-y-4">
@@ -505,14 +432,6 @@ export default function HrmLeaveRequestsView({
           <p className="text-sm text-gray-500 mt-0.5">Nghỉ phép, tăng ca, công tác, WFH</p>
         </div>
         <div className="flex gap-2">
-          {permLevel >= 2 && (
-            <button
-              onClick={() => setShowBalancePanel(!showBalancePanel)}
-              className="px-3 py-2 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
-            >
-              Số dư phép
-            </button>
-          )}
           {canCreateLeave && (
             <button
               onClick={handleOpenCreate}
@@ -543,77 +462,6 @@ export default function HrmLeaveRequestsView({
           <p className="text-2xl font-bold text-red-700 mt-1">{stats.rejected}</p>
         </div>
       </div>
-
-      {/* ---- Bảng số dư phép (toggle) ---- */}
-      {showBalancePanel && (
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-            <h3 className="font-semibold text-blue-800 text-sm">Số dư phép năm nhân viên</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-gray-600">
-                  <th className="text-left px-4 py-2 font-medium">Nhân viên</th>
-                  <th className="text-center px-4 py-2 font-medium">Phép năm (đã dùng / tổng)</th>
-                  <th className="text-center px-4 py-2 font-medium">Nghỉ ốm (đã dùng / tổng)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {balanceSummary.map(item => {
-                  const annualUsed = item.annual.used || 0;
-                  const annualTotal = item.annual.total || 0;
-                  const annualPct = annualTotal > 0 ? Math.min((annualUsed / annualTotal) * 100, 100) : 0;
-                  const sickUsed = item.sick.used || 0;
-                  const sickTotal = item.sick.total || 0;
-                  const sickPct = sickTotal > 0 ? Math.min((sickUsed / sickTotal) * 100, 100) : 0;
-
-                  return (
-                    <tr key={item.employee.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-800">
-                        {item.employee.full_name}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2 justify-center">
-                          <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-500 rounded-full transition-all"
-                              style={{ width: `${annualPct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-600 min-w-[60px] text-right">
-                            {annualUsed} / {annualTotal}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2 justify-center">
-                          <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-red-400 rounded-full transition-all"
-                              style={{ width: `${sickPct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-600 min-w-[60px] text-right">
-                            {sickUsed} / {sickTotal}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {balanceSummary.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="text-center py-6 text-gray-400 text-sm">
-                      Chưa có dữ liệu số dư phép
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* ---- Bộ lọc ---- */}
       <div className="bg-white rounded-xl border shadow-sm p-4">
@@ -905,18 +753,24 @@ export default function HrmLeaveRequestsView({
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Nhân viên <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={formEmployeeId}
-                  onChange={e => setFormEmployeeId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none bg-white"
-                >
-                  <option value="">-- Chọn nhân viên --</option>
-                  {activeEmployees.map(emp => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.full_name} {emp.employee_code ? `(${emp.employee_code})` : ''}
-                    </option>
-                  ))}
-                </select>
+                {permLevel >= 2 || userIsAdmin ? (
+                  <select
+                    value={formEmployeeId}
+                    onChange={e => setFormEmployeeId(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none bg-white"
+                  >
+                    <option value="">-- Chọn nhân viên --</option>
+                    {activeEmployees.map(emp => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.full_name} {emp.employee_code ? `(${emp.employee_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full border rounded-lg px-3 py-2.5 text-sm bg-gray-50 text-gray-700">
+                    {currentEmployee?.full_name || 'Không tìm thấy hồ sơ'}
+                  </div>
+                )}
               </div>
 
               {/* Loại đơn */}
@@ -978,33 +832,6 @@ export default function HrmLeaveRequestsView({
                   <span className="text-lg font-bold text-green-700">{formDays}</span>
                 </div>
               </div>
-
-              {/* Hiển thị số dư phép */}
-              {formBalance && formEmployeeId && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-blue-700 font-medium">
-                      {LEAVE_TYPES[formType]?.label || formType} còn lại:
-                    </span>
-                    <span className="text-sm font-bold text-blue-800">
-                      {Math.max((formBalance.total || 0) - (formBalance.used || 0), 0)} / {formBalance.total || 0} ngày
-                    </span>
-                  </div>
-                  <div className="mt-2 w-full h-2 bg-blue-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-600 rounded-full transition-all"
-                      style={{
-                        width: `${formBalance.total > 0 ? Math.min(((formBalance.used || 0) / formBalance.total) * 100, 100) : 0}%`
-                      }}
-                    />
-                  </div>
-                  {formDays > 0 && formDays > ((formBalance.total || 0) - (formBalance.used || 0)) && (
-                    <p className="text-xs text-red-600 mt-1.5 font-medium">
-                      Cảnh báo: Số ngày xin nghỉ vượt quá số ngày phép còn lại!
-                    </p>
-                  )}
-                </div>
-              )}
 
               {/* Lý do */}
               <div>
