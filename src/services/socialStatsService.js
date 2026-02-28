@@ -224,12 +224,12 @@ export async function saveStatsToTask(taskId, linkIndex, stats, postLinks) {
 
 /**
  * Validate Facebook URL — chỉ chấp nhận link đầy đủ, KHÔNG chấp nhận link rút gọn
- * OK: facebook.com/{page}/videos/{id}, /reel/{id}, /{page}/posts/{id}, /watch/?v={id}, /share/v/{id}, /share/r/{id}
+ * OK: facebook.com/{page}/videos/{id}, /reel/{id}, /{page}/posts/{id}, /watch/?v={id}, /share/v/{id}, /share/r/{id}, /permalink.php?story_fbid=*&id=*
  * REJECT: fb.watch/..., m.facebook.com/...
  */
 export function validateFacebookUrl(url) {
   if (!url) return false;
-  return /^https?:\/\/(www\.)?facebook\.com\/(reel\/[\w-]+|watch\/?\?.*v=\d+|share\/(v|r)\/[\w-]+|[\w.-]+\/(videos|posts)\/[\w.-]+)/.test(url);
+  return /^https?:\/\/(www\.)?facebook\.com\/(reel\/[\w-]+|watch\/?\?.*v=\d+|share\/(v|r)\/[\w-]+|permalink\.php\?.*story_fbid=|[\w.-]+\/(videos|posts)\/[\w.-]+)/.test(url);
 }
 
 /**
