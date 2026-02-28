@@ -261,9 +261,32 @@ export default async function handler(req, res) {
         });
       }
 
+      // Lấy views: thử field views trước, nếu 0 thì fallback video_insights
+      let views = fbData.views || 0;
+      let insightsRaw = null;
+      if (!views) {
+        try {
+          const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_views&access_token=${config.access_token}`;
+          const insightsResp = await fetch(insightsUrl);
+          const insightsData = await insightsResp.json();
+          console.log('[get_video_stats] Fallback insights:', JSON.stringify(insightsData));
+          insightsRaw = insightsData;
+          if (!insightsData.error && insightsData.data) {
+            for (const m of insightsData.data) {
+              if (m.name === 'total_video_views') {
+                views = m.values?.[0]?.value || 0;
+                break;
+              }
+            }
+          }
+        } catch (insErr) {
+          console.log('[get_video_stats] Insights fallback lỗi (bỏ qua):', insErr.message);
+        }
+      }
+
       // Normalize response
       const stats = {
-        views: fbData.views || 0,
+        views,
         likes: fbData.likes?.summary?.total_count || 0,
         comments: fbData.comments?.summary?.total_count || 0,
         shares: fbData.shares?.count || 0,
@@ -271,7 +294,7 @@ export default async function handler(req, res) {
         updated_at: new Date().toISOString(),
       };
 
-      return res.status(200).json({ stats, raw: fbData });
+      return res.status(200).json({ stats, raw: { basic: fbData, insights: insightsRaw } });
     }
 
     // === Lấy stats Reel (2 bước: basic engagement + insights views) ===
@@ -303,8 +326,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Không parse được video ID từ URL' });
       }
 
-      // BƯỚC 1: Lấy basic engagement (likes, comments, title)
-      const basicFields = 'id,title,likes.summary(true),comments.summary(true),shares';
+      // BƯỚC 1: Lấy basic engagement + views field (likes, comments, views)
+      const basicFields = 'id,title,views,likes.summary(true),comments.summary(true),shares';
       const basicUrl = `https://graph.facebook.com/v21.0/${videoId}?fields=${basicFields}&access_token=${config.access_token}`;
       const basicResp = await fetch(basicUrl);
       const basicData = await basicResp.json();
@@ -334,25 +357,29 @@ export default async function handler(req, res) {
       const shares = basicData.shares?.count || 0;
       const title = basicData.title || '';
 
-      // BƯỚC 2: Lấy views qua insights
-      let views = 0;
+      // BƯỚC 2: Lấy views — dùng field views trước, fallback qua insights
+      let views = basicData.views || 0;
       let insightsRaw = null;
-      try {
-        const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_impressions,total_video_views&access_token=${config.access_token}`;
-        const insightsResp = await fetch(insightsUrl);
-        const insightsData = await insightsResp.json();
-        console.log('[get_reel_stats] BƯỚC 2 - insights:', JSON.stringify(insightsData));
-        insightsRaw = insightsData;
+      // Chỉ gọi insights nếu views chưa có từ basic fields
+      if (!views) {
+        try {
+          const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_impressions,total_video_views&access_token=${config.access_token}`;
+          const insightsResp = await fetch(insightsUrl);
+          const insightsData = await insightsResp.json();
+          console.log('[get_reel_stats] BƯỚC 2 - insights:', JSON.stringify(insightsData));
+          insightsRaw = insightsData;
 
-        if (!insightsData.error && insightsData.data) {
-          const metrics = {};
-          insightsData.data.forEach(m => {
-            metrics[m.name] = m.values?.[0]?.value || 0;
-          });
-          views = metrics.total_video_views || 0;
+          if (!insightsData.error && insightsData.data) {
+            for (const m of insightsData.data) {
+              if (m.name === 'total_video_views') {
+                views = m.values?.[0]?.value || 0;
+                break;
+              }
+            }
+          }
+        } catch (insErr) {
+          console.log('[get_reel_stats] Insights lỗi (bỏ qua):', insErr.message);
         }
-      } catch (insErr) {
-        console.log('[get_reel_stats] Insights lỗi (bỏ qua):', insErr.message);
       }
 
       // BƯỚC 3: Gộp kết quả
