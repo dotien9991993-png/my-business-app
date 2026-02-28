@@ -239,9 +239,8 @@ export default function HrmAttendanceView({
     if (filterDepartment !== 'all') {
       list = list.filter(e => e.department_id === filterDepartment);
     }
-    if (permLevel <= 1 && currentEmployee) {
-      list = list.filter(e => e.id === currentEmployee.id);
-    }
+    // Mọi nhân viên đều xem được bảng chấm công tổng quan
+    // (edit chỉ cho admin/manager — đã guard bởi userCanEdit)
     return list.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
   }, [employees, filterDepartment, permLevel, currentEmployee]);
 
