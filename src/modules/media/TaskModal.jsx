@@ -4,7 +4,7 @@ import { isAdmin } from '../../utils/permissionUtils';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN, getVietnamDate } from '../../utils/dateUtils';
 import EkipSelector from './EkipSelector';
-import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs } from '../../services/socialStatsService';
+import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs, validateLinkForPlatform, getValidationErrorMessage } from '../../services/socialStatsService';
 
 const TaskModal = ({
   selectedTask,
@@ -33,9 +33,13 @@ const TaskModal = ({
   const [editCrew, setEditCrew] = useState([]);
   const [editActors, setEditActors] = useState([]);
 
-  // Link validation
+  // Link validation + preview
   const [showLinkWarning, setShowLinkWarning] = useState(false);
   const [missingLinks, setMissingLinks] = useState([]);
+  const [linkInputErrors, setLinkInputErrors] = useState({});
+  const [linkInputValues, setLinkInputValues] = useState({});
+  const [linkPreviews, setLinkPreviews] = useState({});
+  const latestPreviewUrl = useRef({});
   const linksRef = useRef(null);
 
   // Product states
@@ -98,6 +102,82 @@ const TaskModal = ({
       alert('❌ Lỗi lưu stats: ' + err.message);
     }
   };
+
+  // Reset link input states when task changes
+  useEffect(() => {
+    setLinkInputValues({});
+    setLinkPreviews({});
+    setLinkInputErrors({});
+    latestPreviewUrl.current = {};
+  }, [selectedTask?.id]);
+
+  // Fetch preview cho link đã validate
+  const fetchLinkPreview = useCallback(async (plat, url) => {
+    latestPreviewUrl.current[plat] = url;
+    setLinkPreviews(prev => ({ ...prev, [plat]: { loading: true, data: null, error: null } }));
+
+    if (plat === 'TikTok') {
+      try {
+        const resp = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`);
+        if (!resp.ok) throw new Error('Failed');
+        if (latestPreviewUrl.current[plat] !== url) return;
+        const data = await resp.json();
+        setLinkPreviews(prev => ({ ...prev, [plat]: {
+          loading: false,
+          data: { title: data.title, thumbnail: data.thumbnail_url, author: data.author_name },
+          error: null
+        }}));
+      } catch {
+        if (latestPreviewUrl.current[plat] !== url) return;
+        setLinkPreviews(prev => ({ ...prev, [plat]: {
+          loading: false, data: null,
+          error: 'Không thể tải preview. Link có thể sai hoặc video đã bị xóa.'
+        }}));
+      }
+    } else if (plat === 'Facebook') {
+      // Facebook: dùng iframe embed — set data ngay, iframe tự load
+      setLinkPreviews(prev => ({ ...prev, [plat]: {
+        loading: false,
+        data: { embedUrl: `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&width=300&show_text=false` },
+        error: null
+      }}));
+    } else {
+      // Platform khác: không cần preview
+      setLinkPreviews(prev => ({ ...prev, [plat]: { loading: false, data: { noPreview: true }, error: null } }));
+    }
+  }, []);
+
+  // Handle link input change — validate + trigger preview
+  const handleLinkInput = useCallback((plat, val) => {
+    setLinkInputValues(prev => ({ ...prev, [plat]: val }));
+    setLinkPreviews(prev => { const n = { ...prev }; delete n[plat]; return n; });
+    latestPreviewUrl.current[plat] = '';
+
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setLinkInputErrors(prev => { const n = { ...prev }; delete n[plat]; return n; });
+      return;
+    }
+
+    const error = getValidationErrorMessage(trimmed, plat);
+    if (error) {
+      setLinkInputErrors(prev => ({ ...prev, [plat]: error }));
+    } else {
+      setLinkInputErrors(prev => { const n = { ...prev }; delete n[plat]; return n; });
+      fetchLinkPreview(plat, trimmed);
+    }
+  }, [fetchLinkPreview]);
+
+  // Xác nhận + lưu link
+  const handleConfirmLink = useCallback((plat) => {
+    const url = (linkInputValues[plat] || '').trim();
+    if (!url) return;
+    addPostLink(selectedTask.id, url, plat, true);
+    setLinkInputValues(prev => { const n = { ...prev }; delete n[plat]; return n; });
+    setLinkPreviews(prev => { const n = { ...prev }; delete n[plat]; return n; });
+    setLinkInputErrors(prev => { const n = { ...prev }; delete n[plat]; return n; });
+    latestPreviewUrl.current[plat] = '';
+  }, [linkInputValues, addPostLink, selectedTask?.id]);
 
   const videoCategories = [
     { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },
@@ -518,6 +598,9 @@ const TaskModal = ({
                           <div>
                             <div className="flex items-center gap-2">
                               <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all flex-1">{link.url}</a>
+                              {link.link_valid === false && (
+                                <span className="text-amber-500 shrink-0" title="Link không đúng định dạng">⚠️</span>
+                              )}
                               <button onClick={() => { navigator.clipboard.writeText(link.url); alert('✅ Đã copy!'); }} className="px-2 py-1 bg-white rounded text-xs hover:bg-gray-100 shrink-0">📋</button>
                               {(currentUser.name === link.addedBy || currentUser.role === 'Manager' || isAdmin(currentUser)) && (
                                 <button onClick={() => { if (window.confirm('Xóa link này?')) removePostLink(selectedTask.id, existingLinks.indexOf(link)); }} className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs hover:bg-red-200 shrink-0">🗑️</button>
@@ -623,12 +706,88 @@ const TaskModal = ({
                               );
                             })()}
                           </div>
+                        ) : (plat === 'Facebook' || plat === 'TikTok') ? (
+                          <div>
+                            <input
+                              type="url"
+                              value={linkInputValues[plat] || ''}
+                              placeholder={`Paste link ${plat} đầy đủ vào đây...`}
+                              className={`w-full px-3 py-2 border-2 rounded-lg text-sm focus:outline-none focus:ring-2 bg-white ${
+                                linkInputErrors[plat] ? 'border-red-400 focus:ring-red-300' :
+                                linkPreviews[plat]?.data ? 'border-green-400 focus:ring-green-300' :
+                                'border-gray-200 focus:ring-blue-400'
+                              }`}
+                              onChange={(e) => handleLinkInput(plat, e.target.value)}
+                            />
+                            {/* Error message */}
+                            {linkInputErrors[plat] && (
+                              <div className="mt-1.5 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                                {linkInputErrors[plat]}
+                              </div>
+                            )}
+                            {/* Loading preview */}
+                            {linkPreviews[plat]?.loading && (
+                              <div className="mt-2 p-3 bg-gray-50 rounded-lg border text-center text-sm text-gray-500">
+                                ⏳ Đang tải preview...
+                              </div>
+                            )}
+                            {/* Preview error */}
+                            {linkPreviews[plat]?.error && !linkPreviews[plat]?.loading && (
+                              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                <p className="text-sm text-amber-700">⚠️ {linkPreviews[plat].error}</p>
+                                <button
+                                  onClick={() => handleConfirmLink(plat)}
+                                  className="mt-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium"
+                                >
+                                  Vẫn lưu link này
+                                </button>
+                              </div>
+                            )}
+                            {/* Preview success */}
+                            {linkPreviews[plat]?.data && !linkPreviews[plat]?.loading && (
+                              <div className="mt-2 border rounded-lg overflow-hidden bg-gray-50">
+                                {plat === 'Facebook' && linkPreviews[plat].data.embedUrl && (
+                                  <iframe
+                                    src={linkPreviews[plat].data.embedUrl}
+                                    width="100%"
+                                    height="200"
+                                    style={{ border: 'none', overflow: 'hidden' }}
+                                    scrolling="no"
+                                    frameBorder="0"
+                                    allowFullScreen
+                                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                                  />
+                                )}
+                                {plat === 'TikTok' && (
+                                  <div className="flex gap-3 p-3">
+                                    {linkPreviews[plat].data.thumbnail && (
+                                      <img src={linkPreviews[plat].data.thumbnail} alt="" className="w-20 h-28 object-cover rounded" />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium line-clamp-2">{linkPreviews[plat].data.title || 'Video TikTok'}</p>
+                                      {linkPreviews[plat].data.author && (
+                                        <p className="text-xs text-gray-500 mt-1">@{linkPreviews[plat].data.author}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="p-2 border-t bg-white">
+                                  <button
+                                    onClick={() => handleConfirmLink(plat)}
+                                    className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium"
+                                  >
+                                    ✓ Xác nhận đúng video — Lưu link
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <div className="flex gap-2">
                             <input
                               type="url"
                               placeholder={`Paste link ${plat} vào đây...`}
-                              className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                              className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && e.target.value.trim()) {
                                   addPostLink(selectedTask.id, e.target.value.trim(), plat);

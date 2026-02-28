@@ -52,6 +52,7 @@ const TasksView = ({
   const setFilterProducts = setTaskFilterProduct || (() => {});
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [showProductFilter, setShowProductFilter] = useState(false);
+  const [filterLinkIssue, setFilterLinkIssue] = useState('all');
   const [productFilterSearch, setProductFilterSearch] = useState('');
   const productFilterRef = React.useRef(null);
 
@@ -163,6 +164,12 @@ const TasksView = ({
     if (filterCrew !== 'all' && !(t.crew || []).includes(filterCrew)) return false;
     if (filterActor !== 'all' && !(t.actors || []).includes(filterActor)) return false;
     if (filterProducts.length > 0 && !(t.product_ids || []).some(pid => filterProducts.includes(pid))) return false;
+    if (filterLinkIssue === 'invalid' && !(t.postLinks || []).some(l => l.link_valid === false)) return false;
+    if (filterLinkIssue === 'missing') {
+      const platforms = (t.platform || '').split(', ').filter(Boolean);
+      const links = (t.postLinks || []).map(l => l.type);
+      if (!platforms.some(p => !links.includes(p))) return false;
+    }
 
     // Date filter (Vietnam timezone)
     if (dateFilter !== 'all') {
@@ -203,6 +210,7 @@ const TasksView = ({
     setFilterCrew('all');
     setFilterActor('all');
     setFilterProducts([]);
+    setFilterLinkIssue('all');
     setDateFilter('all');
     setCustomStartDate('');
     setCustomEndDate('');
@@ -214,7 +222,16 @@ const TasksView = ({
   // Unique products for filter
   const uniqueProductIds = [...new Set(visibleTasks.flatMap(t => t.product_ids || []))];
 
-  const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || dateFilter !== 'all';
+  const invalidLinkCount = visibleTasks.filter(t =>
+    (t.postLinks || []).some(l => l.link_valid === false)
+  ).length;
+  const missingLinkCount = visibleTasks.filter(t => {
+    const platforms = (t.platform || '').split(', ').filter(Boolean);
+    const links = (t.postLinks || []).map(l => l.type);
+    return platforms.length > 0 && platforms.some(p => !links.includes(p));
+  }).length;
+
+  const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6">
@@ -481,6 +498,49 @@ const TasksView = ({
             )}
           </div>
 
+          {/* Link Filter */}
+          {(invalidLinkCount > 0 || missingLinkCount > 0) && (
+            <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t">
+              <label className="text-xs sm:text-sm font-medium mb-2 block">🔗 Links:</label>
+              <div className="flex gap-1.5 md:gap-2 flex-wrap">
+                <button
+                  onClick={() => setFilterLinkIssue('all')}
+                  className={`px-2.5 md:px-4 py-1 md:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                    filterLinkIssue === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Tất cả
+                </button>
+                {invalidLinkCount > 0 && (
+                  <button
+                    onClick={() => setFilterLinkIssue('invalid')}
+                    className={`px-2.5 md:px-4 py-1 md:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-1 ${
+                      filterLinkIssue === 'invalid' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    ⚠️ Link sai
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      filterLinkIssue === 'invalid' ? 'bg-red-400 text-white' : 'bg-red-100 text-red-600'
+                    }`}>{invalidLinkCount}</span>
+                  </button>
+                )}
+                {missingLinkCount > 0 && (
+                  <button
+                    onClick={() => setFilterLinkIssue('missing')}
+                    className={`px-2.5 md:px-4 py-1 md:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-1 ${
+                      filterLinkIssue === 'missing' ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Thiếu link
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      filterLinkIssue === 'missing' ? 'bg-amber-400 text-white' : 'bg-amber-100 text-amber-600'
+                    }`}>{missingLinkCount}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Footer: count + clear */}
           <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t flex items-center justify-between">
             <span className="text-xs md:text-sm text-gray-600">
@@ -568,6 +628,11 @@ const TasksView = ({
                     📦 {productMap[pid]?.sku || (productMap[pid]?.name ? (productMap[pid].name.length > 15 ? productMap[pid].name.slice(0, 15) + '...' : productMap[pid].name) : 'SP')}
                   </span>
                 ))}
+              </div>
+            )}
+            {(task.postLinks || []).some(l => l.link_valid === false) && (
+              <div className="mt-1">
+                <span className="px-2 py-0.5 bg-red-50 border border-red-200 text-red-600 rounded-full text-xs">⚠️ Link sai</span>
               </div>
             )}
             {task.isOverdue && (

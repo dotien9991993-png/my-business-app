@@ -221,3 +221,61 @@ export async function saveStatsToTask(taskId, linkIndex, stats, postLinks) {
   if (error) throw error;
   return updated;
 }
+
+/**
+ * Validate Facebook URL — chỉ chấp nhận link đầy đủ, KHÔNG chấp nhận link rút gọn
+ * OK: facebook.com/{page}/videos/{id}, facebook.com/reel/{id}, facebook.com/{page}/posts/{id}, facebook.com/watch/?v={id}
+ * REJECT: fb.watch/..., m.facebook.com/...
+ */
+export function validateFacebookUrl(url) {
+  if (!url) return false;
+  return /^https?:\/\/(www\.)?facebook\.com\/(reel\/[\w-]+|watch\/?\?.*v=\d+|[\w.-]+\/(videos|posts)\/[\w.-]+)/.test(url);
+}
+
+/**
+ * Validate TikTok URL — chỉ chấp nhận link đầy đủ
+ * OK: tiktok.com/@username/video/{id}
+ * REJECT: vt.tiktok.com/..., vm.tiktok.com/...
+ */
+export function validateTikTokUrl(url) {
+  if (!url) return false;
+  return /^https?:\/\/(www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+/.test(url);
+}
+
+/**
+ * Validate link theo platform
+ * @returns true nếu URL hợp lệ cho platform đó
+ */
+export function validateLinkForPlatform(url, platform) {
+  if (platform === 'Facebook') return validateFacebookUrl(url);
+  if (platform === 'TikTok') return validateTikTokUrl(url);
+  return true;
+}
+
+/**
+ * Trả về error message cụ thể nếu URL sai, null nếu hợp lệ
+ */
+export function getValidationErrorMessage(url, platform) {
+  if (!url) return null;
+
+  if (platform === 'Facebook') {
+    if (validateFacebookUrl(url)) return null;
+    if (/fb\.watch/i.test(url)) {
+      return 'Vui lòng dán link đầy đủ (không dùng fb.watch). Mở video trên Facebook → copy URL từ thanh địa chỉ trình duyệt.';
+    }
+    if (/m\.facebook\.com/i.test(url)) {
+      return 'Vui lòng dán link đầy đủ (không dùng link mobile). Mở video trên Facebook bản desktop → copy URL từ thanh địa chỉ.';
+    }
+    return 'Link Facebook không đúng định dạng. Cần dạng: facebook.com/.../videos/... hoặc facebook.com/reel/...';
+  }
+
+  if (platform === 'TikTok') {
+    if (validateTikTokUrl(url)) return null;
+    if (/(vt|vm)\.tiktok\.com/i.test(url)) {
+      return 'Vui lòng dán link đầy đủ (không dùng vt.tiktok hoặc vm.tiktok). Mở video trên TikTok → copy URL từ thanh địa chỉ trình duyệt.';
+    }
+    return 'Link TikTok không đúng định dạng. Cần dạng: tiktok.com/@username/video/...';
+  }
+
+  return null;
+}

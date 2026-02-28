@@ -486,12 +486,12 @@ export function DataProvider({ children }) {
     } catch (error) { console.error('Error adding comment:', error); alert('❌ Lỗi khi thêm comment!'); }
   }, [tasks, currentUser, selectedTask]);
 
-  const addPostLink = useCallback(async (taskId, url, type) => {
+  const addPostLink = useCallback(async (taskId, url, type, linkValid = true) => {
     if (!url.trim()) return;
     try {
       const task = tasks.find(t => t.id === taskId);
       const timeStr = getNowStringVN();
-      const newLink = { url, type: type || 'Other', addedBy: currentUser?.name, addedAt: timeStr };
+      const newLink = { url, type: type || 'Other', addedBy: currentUser?.name, addedAt: timeStr, link_valid: linkValid };
       const newPostLinks = [...(task.postLinks || []), newLink];
       const { error } = await supabase.from('tasks').update({ post_links: newPostLinks }).eq('id', taskId);
       if (error) throw error;
