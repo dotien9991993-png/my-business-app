@@ -222,9 +222,11 @@ async function callFbStats(action, url, pageConfigId, tenantId) {
       }),
     });
     const data = await safeParseJSON(resp);
+    console.log(`[callFbStats] action=${action} resp.ok=${resp.ok} stats.views=${data?.stats?.views} stats=`, JSON.stringify(data?.stats));
     if (!resp.ok || !data.stats) return null;
     return data;
-  } catch {
+  } catch (err) {
+    console.log(`[callFbStats] action=${action} ERROR:`, err.message);
     return null;
   }
 }
@@ -303,27 +305,35 @@ export async function fetchFacebookStats(url, allFbConfigs, tenantId) {
 
   // Bước 0: Clean URL — bỏ tracking params
   const cleanUrl = cleanFacebookUrl(url);
+  console.log('[fetchFacebookStats] cleanUrl:', cleanUrl);
 
   // Bước 1: Thử extract ID trực tiếp từ URL
   const extracted = extractFacebookId(cleanUrl);
+  console.log('[fetchFacebookStats] extracted:', JSON.stringify(extracted));
   if (extracted.id) {
     const result = await tryGetStatsById(extracted.id, extracted.type, allFbConfigs, tenantId);
+    console.log('[fetchFacebookStats] Bước 1 result:', result ? `views=${result.stats?.views} source=${result.source}` : 'NULL');
     if (result) return result;
   }
 
   // Bước 2: Resolve URL (cho fb.watch, /share/v/, /share/r/, m.facebook...)
   const resolvedUrl = await resolveUrl(cleanUrl);
+  console.log('[fetchFacebookStats] Bước 2 resolvedUrl:', resolvedUrl);
   if (resolvedUrl !== cleanUrl) {
     const extracted2 = extractFacebookId(resolvedUrl);
+    console.log('[fetchFacebookStats] extracted2:', JSON.stringify(extracted2));
     if (extracted2.id) {
       const result = await tryGetStatsById(extracted2.id, extracted2.type, allFbConfigs, tenantId);
+      console.log('[fetchFacebookStats] Bước 2 result:', result ? `views=${result.stats?.views}` : 'NULL');
       if (result) return result;
     }
   }
 
   // Bước 3: Query page posts/videos rồi match
+  console.log('[fetchFacebookStats] Bước 3: matchFromPagePosts...');
   for (const config of allFbConfigs) {
     const result = await matchFromPagePosts(cleanUrl, config, tenantId);
+    console.log('[fetchFacebookStats] Bước 3 result:', result ? `views=${result.stats?.views}` : 'NULL');
     if (result) return result;
   }
 

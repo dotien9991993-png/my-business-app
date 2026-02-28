@@ -71,6 +71,7 @@ const TaskModal = ({
 
   const handleFetchStats = async (link, linkIndex) => {
     const platform = detectPlatform(link.url);
+    console.log('[handleFetchStats] START', { url: link.url, linkIndex, platform });
     if (!platform) {
       setStatsError(prev => ({ ...prev, [linkIndex]: 'Link này không phải Facebook hoặc TikTok' }));
       return;
@@ -80,17 +81,23 @@ const TaskModal = ({
     setStatsError(prev => { const n = { ...prev }; delete n[linkIndex]; return n; });
     try {
       const result = await fetchStatsForLink(link.url, pageConfigs, tenant.id);
+      console.log('[handleFetchStats] RESULT from fetchStatsForLink:', JSON.stringify(result));
+      console.log('[handleFetchStats] result.stats.views =', result?.stats?.views, '(type:', typeof result?.stats?.views, ')');
 
       if (result.note && !result.stats?.views) {
+        console.log('[handleFetchStats] BLOCKED by result.note:', result.note);
         setStatsError(prev => ({ ...prev, [linkIndex]: result.note }));
         setLoadingStatsIndex(null);
         return;
       }
 
       const existingLinks = selectedTask.postLinks || [];
+      console.log('[handleFetchStats] existingLinks count:', existingLinks.length, 'linkIndex:', linkIndex);
       const updatedLinks = await saveStatsToTask(selectedTask.id, linkIndex, result.stats, existingLinks);
+      console.log('[handleFetchStats] SAVED. updatedLinks[linkIndex].stats:', JSON.stringify(updatedLinks[linkIndex]?.stats));
       setSelectedTask(prev => ({ ...prev, postLinks: updatedLinks }));
     } catch (err) {
+      console.error('[handleFetchStats] ERROR:', err.message, err);
       setStatsError(prev => ({ ...prev, [linkIndex]: err.message }));
     }
     setLoadingStatsIndex(null);
