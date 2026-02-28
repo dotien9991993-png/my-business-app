@@ -13,33 +13,19 @@ function formatCompactNumber(num) {
   return num.toString();
 }
 
-// Tổng hợp stats từ tất cả links trong task
-function getTaskStats(task) {
+// Tổng hợp stats theo platform — chỉ trả về platform có views data
+function getTaskStatsByPlatform(task) {
   const links = task.postLinks || [];
-  let totalViews = 0, totalLikes = 0, totalComments = 0, totalShares = 0;
-  let hasStats = false;
-  let hasViews = false;
-
+  const byPlatform = {};
   for (const link of links) {
-    if (link.stats) {
-      hasStats = true;
-      if (link.stats.views != null) {
-        hasViews = true;
-        totalViews += link.stats.views;
-      }
-      totalLikes += link.stats.likes || 0;
-      totalComments += link.stats.comments || 0;
-      totalShares += link.stats.shares || 0;
-    }
+    if (!link.stats || !link.type || link.stats.views == null) continue;
+    if (!byPlatform[link.type]) byPlatform[link.type] = { views: 0, likes: 0, comments: 0 };
+    const p = byPlatform[link.type];
+    p.views += link.stats.views || 0;
+    p.likes += link.stats.likes || 0;
+    p.comments += link.stats.comments || 0;
   }
-
-  if (!hasStats) return null;
-  return {
-    views: hasViews ? totalViews : null,
-    likes: totalLikes,
-    comments: totalComments,
-    shares: totalShares,
-  };
+  return Object.keys(byPlatform).length > 0 ? byPlatform : null;
 }
 
 const TasksView = ({
@@ -628,9 +614,8 @@ const TasksView = ({
 
       <div className="grid gap-3 md:gap-4">
         {filteredTasks.map(task => {
-          const stats = getTaskStats(task);
+          const platformStats = getTaskStatsByPlatform(task);
           const totalPrice = (task.product_ids || []).reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
-          const platforms = [...new Set((task.postLinks || []).map(l => l.type).filter(Boolean))];
 
           return (
           <div
@@ -641,38 +626,44 @@ const TasksView = ({
             }}
             className="bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer"
           >
-            {/* Title + Stats block */}
+            {/* Title + Stats box */}
             <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2 md:gap-4 mb-2">
               <h3 className="text-base md:text-xl font-bold flex-1 min-w-0">{task.title}</h3>
-              {(stats || totalPrice > 0) && (
-                <div className="shrink-0 bg-gradient-to-br from-slate-50 to-blue-50 rounded-lg px-3 py-2 text-right">
-                  {stats && (
-                    <>
-                      <div className="text-lg md:text-xl font-bold text-gray-800 leading-tight">
-                        👁 {formatCompactNumber(stats.views)}
+              {(platformStats || totalPrice > 0) && (
+                <div className="shrink-0 overflow-hidden" style={{ width: 200, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                  {platformStats && Object.entries(platformStats)
+                    .sort((a) => a[0] === 'Facebook' ? -1 : 1)
+                    .map(([platform, s], idx, arr) => (
+                    <div key={platform} className="flex items-center gap-1.5" style={{ padding: '6px 10px', borderBottom: (idx < arr.length - 1 || totalPrice > 0) ? '1px solid #e2e8f0' : 'none' }}>
+                      {platform === 'Facebook' && (
+                        <div className="flex items-center justify-center shrink-0" style={{ width: 22, height: 22, background: '#eff6ff', borderRadius: 6 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                        </div>
+                      )}
+                      {platform === 'TikTok' && (
+                        <div className="flex items-center justify-center shrink-0" style={{ width: 22, height: 22, background: '#f5f5f5', borderRadius: 6 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="#000"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1v-3.49a6.37 6.37 0 0 0-.79-.05A6.34 6.34 0 0 0 3.15 15.2a6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V9.13a8.16 8.16 0 0 0 4.77 1.52v-3.45a4.85 4.85 0 0 1-1.01-.51z"/></svg>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <span className="flex items-center gap-0.5" style={{ minWidth: 48, fontWeight: 800, fontSize: 14, color: '#1e293b' }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="#64748b"><path d="M8 5v14l11-7z"/></svg>
+                          {formatCompactNumber(s.views)}
+                        </span>
+                        <span className="flex items-center gap-0.5" style={{ minWidth: 32, fontSize: 12, color: '#64748b' }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="#2563eb"><path d="M2 20h2V8H2v12zm20-11a2 2 0 0 0-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13.17 0 7.58 5.59C7.22 5.95 7 6.45 7 7v11a2 2 0 0 0 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+                          {formatCompactNumber(s.likes)}
+                        </span>
+                        <span className="flex items-center gap-0.5" style={{ minWidth: 28, fontSize: 12, color: '#64748b' }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="#6b7280"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                          {formatCompactNumber(s.comments)}
+                        </span>
                       </div>
-                      <div className="flex gap-2.5 text-xs md:text-sm text-gray-500 mt-0.5 justify-end">
-                        <span>❤️ {formatCompactNumber(stats.likes)}</span>
-                        <span>💬 {formatCompactNumber(stats.comments)}</span>
-                        {stats.shares > 0 && <span>🔗 {formatCompactNumber(stats.shares)}</span>}
-                      </div>
-                    </>
-                  )}
-                  {(totalPrice > 0 || platforms.length > 0) && (
-                    <div className="flex items-center gap-1.5 mt-1 justify-end">
-                      {totalPrice > 0 && <span className="text-xs text-gray-400">{formatMoney(totalPrice)}</span>}
-                      {platforms.map((p, i) => (
-                        <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          p === 'Facebook' ? 'bg-blue-100 text-blue-600' :
-                          p === 'TikTok' ? 'bg-gray-800 text-white' :
-                          p === 'YouTube' ? 'bg-red-100 text-red-600' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>{
-                          p === 'Facebook' ? 'FB' :
-                          p === 'TikTok' ? 'TT' :
-                          p === 'YouTube' ? 'YT' : p
-                        }</span>
-                      ))}
+                    </div>
+                  ))}
+                  {totalPrice > 0 && (
+                    <div style={{ padding: '5px 10px', fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>
+                      💰 {formatMoney(totalPrice)}
                     </div>
                   )}
                 </div>
