@@ -690,7 +690,153 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(400).json({ error: 'Invalid action. Use: get_oauth_url, resolve_url, get_video_stats, get_reel_stats, get_post_stats, get_page_posts_match, url_lookup' });
+    // === Debug Views — Test TẤT CẢ cách lấy views ===
+    if (action === 'debug_views') {
+      const { video_id, page_config_id, tenant_id } = params;
+
+      if (!video_id || !page_config_id || !tenant_id) {
+        return res.status(400).json({ error: 'Thiếu video_id, page_config_id hoặc tenant_id' });
+      }
+
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: config } = await supabase
+        .from('social_page_configs')
+        .select('access_token, page_id, page_name')
+        .eq('id', page_config_id)
+        .eq('tenant_id', tenant_id)
+        .eq('is_active', true)
+        .single();
+
+      if (!config?.access_token) {
+        return res.status(404).json({ error: 'Không tìm thấy token' });
+      }
+
+      const token = config.access_token;
+      const vid = video_id;
+      const tests = {};
+
+      // Helper gọi API
+      async function callTest(url) {
+        try {
+          const resp = await fetch(url);
+          const body = await resp.json();
+          return { status: resp.status, body, url: url.replace(token, 'TOKEN***') };
+        } catch (err) {
+          return { status: 'ERROR', error: err.message, url: url.replace(token, 'TOKEN***') };
+        }
+      }
+
+      // Test 0: Token type check
+      tests['0_token_type'] = await callTest(
+        `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${token}`
+      );
+
+      // Test 1: fields=views
+      tests['1_fields_views'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}?fields=id,views&access_token=${token}`
+      );
+
+      // Test 2: fields=video_views
+      tests['2_fields_video_views'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}?fields=id,video_views&access_token=${token}`
+      );
+
+      // Test 3: fields=views,video_views,universal_video_id
+      tests['3_fields_combined'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}?fields=id,views,universal_video_id&access_token=${token}`
+      );
+
+      // Test 4: video_insights không metric
+      tests['4_insights_no_metric'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}/video_insights?access_token=${token}`
+      );
+
+      // Test 5: video_insights với metric cụ thể
+      tests['5_insights_with_metrics'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}/video_insights?metric=total_video_impressions,total_video_views&access_token=${token}`
+      );
+
+      // Test 6: video_insights qua fields
+      tests['6_insights_via_fields'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}?fields=video_insights.metric(total_video_impressions,total_video_views)&access_token=${token}`
+      );
+
+      // Test 7: post insights endpoint
+      tests['7_post_insights'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}/insights?metric=post_video_views,post_impressions&period=lifetime&access_token=${token}`
+      );
+
+      // Test 8: Reel-specific metrics
+      tests['8_reel_metrics'] = await callTest(
+        `https://graph.facebook.com/v21.0/${vid}/video_insights?metric=blue_reels_play_count,fb_reels_total_plays&access_token=${token}`
+      );
+
+      // Test 9: Page videos (top 5) xem views có data không
+      tests['9_page_videos'] = await callTest(
+        `https://graph.facebook.com/v21.0/${config.page_id}/videos?fields=id,title,views,permalink_url&limit=5&access_token=${token}`
+      );
+
+      // Tổng kết: endpoint nào có views
+      const summary = {};
+      for (const [key, result] of Object.entries(tests)) {
+        let hasViews = false;
+        let viewsValue = null;
+        const body = result.body;
+
+        if (body && !body.error) {
+          // Check direct fields
+          if (body.views !== undefined) { hasViews = true; viewsValue = body.views; }
+          if (body.video_views !== undefined) { hasViews = true; viewsValue = body.video_views; }
+          // Check insights data array
+          if (body.data && Array.isArray(body.data)) {
+            for (const m of body.data) {
+              if (m.values?.[0]?.value !== undefined) {
+                hasViews = true;
+                viewsValue = viewsValue || {};
+                viewsValue[m.name] = m.values[0].value;
+              }
+            }
+          }
+          // Check video_insights nested
+          if (body.video_insights?.data) {
+            for (const m of body.video_insights.data) {
+              if (m.values?.[0]?.value !== undefined) {
+                hasViews = true;
+                viewsValue = viewsValue || {};
+                viewsValue[m.name] = m.values[0].value;
+              }
+            }
+          }
+          // Check page videos
+          if (body.data && Array.isArray(body.data) && body.data[0]?.views !== undefined) {
+            hasViews = true;
+            viewsValue = body.data.map(v => ({ id: v.id, views: v.views, title: v.title }));
+          }
+        }
+
+        summary[key] = {
+          status: result.status,
+          has_views: hasViews,
+          views_value: viewsValue,
+          has_error: !!body?.error,
+          error_msg: body?.error?.message || null,
+        };
+      }
+
+      return res.status(200).json({
+        video_id: vid,
+        page_name: config.page_name,
+        page_id: config.page_id,
+        tested_at: new Date().toISOString(),
+        summary,
+        full_results: tests,
+      });
+    }
+
+    return res.status(400).json({ error: 'Invalid action. Use: get_oauth_url, resolve_url, get_video_stats, get_reel_stats, get_post_stats, get_page_posts_match, url_lookup, debug_views' });
   } catch (error) {
     console.error('FB Stats proxy error:', error);
     return res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại sau.' });

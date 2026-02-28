@@ -60,6 +60,8 @@ const TaskModal = ({
   const [manualStatsValues, setManualStatsValues] = useState({ views: '', likes: '', shares: '', comments: '' });
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, errors: [] });
+  const [debugResult, setDebugResult] = useState(null);
+  const [debugLoading, setDebugLoading] = useState(false);
 
   useEffect(() => {
     if (tenant?.id) {
@@ -105,6 +107,47 @@ const TaskModal = ({
     } catch (err) {
       alert('❌ Lỗi lưu stats: ' + err.message);
     }
+  };
+
+  const handleDebugViews = async (link) => {
+    if (!pageConfigs?.length || !tenant?.id) {
+      alert('Chưa có page config');
+      return;
+    }
+    // Extract video ID from URL
+    let videoId = null;
+    const url = link.url || '';
+    let m = url.match(/\/reel\/(\d+)/); if (m) videoId = m[1];
+    if (!videoId) { m = url.match(/\/videos\/(\d+)/); if (m) videoId = m[1]; }
+    if (!videoId) { m = url.match(/[?&]v=(\d+)/); if (m) videoId = m[1]; }
+    if (!videoId) { m = url.match(/\/(\d{10,})/); if (m) videoId = m[1]; }
+    if (!videoId) {
+      alert('Không parse được video ID từ URL: ' + url);
+      return;
+    }
+    const fbConfig = pageConfigs.find(c => c.platform === 'facebook');
+    if (!fbConfig) { alert('Không có Facebook page config'); return; }
+
+    setDebugLoading(true);
+    setDebugResult(null);
+    try {
+      const resp = await fetch('/api/fb-stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'debug_views',
+          video_id: videoId,
+          page_config_id: fbConfig.id,
+          tenant_id: tenant.id,
+        }),
+      });
+      const data = await resp.json();
+      setDebugResult(data);
+      console.log('[DEBUG VIEWS] Full result:', JSON.stringify(data, null, 2));
+    } catch (err) {
+      setDebugResult({ error: err.message });
+    }
+    setDebugLoading(false);
   };
 
   const handleBulkFetchStats = async () => {
@@ -757,8 +800,45 @@ const TaskModal = ({
                                           >
                                             ✏️ Sửa
                                           </button>
+                                          {isFb && (
+                                            <button
+                                              onClick={() => handleDebugViews(link)}
+                                              disabled={debugLoading}
+                                              className="text-[10px] px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
+                                            >
+                                              {debugLoading ? '...' : 'Debug'}
+                                            </button>
+                                          )}
                                         </div>
                                       </div>
+                                      {/* Debug views result */}
+                                      {debugResult && (
+                                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-[10px] max-h-60 overflow-y-auto">
+                                          <div className="flex justify-between items-center mb-1">
+                                            <b className="text-red-700">DEBUG VIEWS RESULT</b>
+                                            <button onClick={() => setDebugResult(null)} className="text-gray-400 hover:text-gray-600">X</button>
+                                          </div>
+                                          {debugResult.summary && (
+                                            <table className="w-full text-left mb-2">
+                                              <thead><tr className="border-b"><th className="pr-2">Test</th><th className="pr-2">Status</th><th className="pr-2">Views?</th><th>Value</th></tr></thead>
+                                              <tbody>
+                                                {Object.entries(debugResult.summary).map(([key, val]) => (
+                                                  <tr key={key} className={val.has_views ? 'bg-green-100' : val.has_error ? 'bg-red-50' : ''}>
+                                                    <td className="pr-2 font-mono">{key}</td>
+                                                    <td className="pr-2">{val.status}</td>
+                                                    <td className="pr-2">{val.has_views ? 'YES' : 'NO'}</td>
+                                                    <td className="font-mono">{val.has_views ? JSON.stringify(val.views_value) : (val.error_msg || '—')}</td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          )}
+                                          <details>
+                                            <summary className="cursor-pointer text-gray-500">Full JSON response</summary>
+                                            <pre className="mt-1 text-[9px] whitespace-pre-wrap break-all">{JSON.stringify(debugResult, null, 2)}</pre>
+                                          </details>
+                                        </div>
+                                      )}
                                       {/* Stats history */}
                                       {link.stats_history?.length > 0 && (
                                         <details className="mt-1.5">
