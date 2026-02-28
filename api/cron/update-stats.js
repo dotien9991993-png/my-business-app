@@ -1,87 +1,76 @@
 /**
  * Vercel Cron Job — Tự động cập nhật stats Facebook mỗi ngày
- * Schedule: 6h sáng hàng ngày (cấu hình trong vercel.json)
+ * Schedule: 6h sáng VN (23:00 UTC) — cấu hình trong vercel.json
+ *
+ * Chiến lược BATCH: Lấy TẤT CẢ video/posts từ Page trong 2-4 API calls,
+ * rồi match với links trong tasks. Nhanh hơn 100x so với gọi từng video.
  *
  * Flow:
- * 1. Load tất cả FB page configs (grouped by tenant)
- * 2. Load tasks có post_links Facebook (tạo/cập nhật trong 60 ngày gần)
- * 3. Với mỗi link: clean URL → extract ID → gọi Graph API → update stats
- * 4. Delay 2s giữa mỗi request (respect rate limit)
+ * 1. Load tất cả FB page configs
+ * 2. Với mỗi Page: GET /{page_id}/videos + /published_posts (có pagination)
+ * 3. Gom tất cả media items vào 1 array
+ * 4. Load tasks có post_links Facebook
+ * 5. Match links ↔ media items bằng ID / permalink / số dài
+ * 6. Cập nhật stats vào tasks
  */
 
 import { createClient } from '@supabase/supabase-js';
 
 export const config = {
-  maxDuration: 300,
+  maxDuration: 60,
 };
 
-// ── Helpers: parse & clean URL (mirror logic từ fb-stats.js + socialStatsService) ──
+// ── Helpers ──
 
-function cleanFacebookUrl(url) {
+/**
+ * Extract ID từ Facebook URL (cho matching)
+ */
+function extractId(url) {
+  if (!url) return null;
   try {
-    const u = new URL(url);
-    const keysToRemove = [];
-    for (const key of u.searchParams.keys()) {
-      if (/^(__cft__|__tn__|fbclid|mibextid|__eep__)/.test(key) || key === 'ref' || key === 'locale') {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach(k => u.searchParams.delete(k));
-    return u.toString();
-  } catch {
-    return url;
-  }
-}
+    // /reel/{id}
+    let match = url.match(/\/reel\/(\d+)/);
+    if (match) return match[1];
 
-function extractFacebookId(url) {
-  if (!url) return { id: null, type: null };
-  try {
-    let match = url.match(/facebook\.com\/reel\/(\d+)/);
-    if (match) return { id: match[1], type: 'reel' };
+    // /videos/{id}
+    match = url.match(/\/videos\/(\d+)/);
+    if (match) return match[1];
 
-    match = url.match(/facebook\.com\/[^/]+\/videos\/(\d+)/);
-    if (match) return { id: match[1], type: 'video' };
+    // /watch/?v={id}
+    match = url.match(/[?&]v=(\d+)/);
+    if (match) return match[1];
 
-    match = url.match(/facebook\.com\/watch\/?\?v=(\d+)/);
-    if (match) return { id: match[1], type: 'video' };
-
-    const storyMatch = url.match(/story_fbid=(\d+)/);
+    // /permalink.php?story_fbid={id}&id={page_id} → composite
+    const storyMatch = url.match(/story_fbid=(\w+)/);
     if (storyMatch) {
       const pageIdMatch = url.match(/[?&]id=(\d+)/);
-      if (pageIdMatch) return { id: `${pageIdMatch[1]}_${storyMatch[1]}`, type: 'post' };
-      return { id: storyMatch[1], type: 'post' };
+      if (pageIdMatch) return `${pageIdMatch[1]}_${storyMatch[1]}`;
+      return storyMatch[1];
     }
 
-    match = url.match(/facebook\.com\/[^/]+\/posts\/([\w.]+)/);
-    if (match) return { id: match[1], type: 'post' };
+    // /posts/{id}
+    match = url.match(/\/posts\/([\w.]+)/);
+    if (match) return match[1];
 
+    // Fallback: tìm số dài (>= 10 digits) trong URL
     match = url.match(/\/(\d{10,})/);
-    if (match) return { id: match[1], type: 'video' };
+    if (match) return match[1];
 
-    return { id: null, type: null };
+    return null;
   } catch {
-    return { id: null, type: null };
+    return null;
   }
 }
 
-async function resolveFacebookUrl(inputUrl) {
+/**
+ * Clean URL để so sánh — bỏ query params, trailing slash, lowercase
+ */
+function cleanUrl(url) {
   try {
-    const resp = await fetch(inputUrl, {
-      redirect: 'follow',
-      headers: { 'User-Agent': 'facebookexternalhit/1.1' },
-    });
-    const finalUrl = resp.url;
-    if (finalUrl && finalUrl !== inputUrl && /facebook\.com/.test(finalUrl)) {
-      return finalUrl;
-    }
-    const html = await resp.text();
-    let match = html.match(/property="og:url"\s+content="([^"]+)"/);
-    if (!match) match = html.match(/content="([^"]+)"\s+property="og:url"/);
-    if (!match) match = html.match(/<link\s+rel="canonical"\s+href="([^"]+)"/);
-    if (match) return match[1];
-    return inputUrl;
+    const u = new URL(url);
+    return (u.origin + u.pathname).replace(/\/+$/, '').toLowerCase();
   } catch {
-    return inputUrl;
+    return (url || '').toLowerCase().replace(/\/+$/, '');
   }
 }
 
@@ -89,73 +78,126 @@ function isFacebookUrl(url) {
   return /facebook\.com|fb\.watch|fb\.com|m\.facebook\.com/i.test(url || '');
 }
 
-// ── Graph API calls ──
+// ── Fetch Page-level data ──
 
-async function fetchVideoStats(id, accessToken) {
-  const fields = 'id,title,views,likes.summary(true),comments.summary(true),shares';
-  const url = `https://graph.facebook.com/v21.0/${id}?fields=${fields}&access_token=${accessToken}`;
-  const resp = await fetch(url);
-  const data = await resp.json();
-  if (data.error) return null;
+/**
+ * Lấy tất cả videos của 1 Page (bao gồm Reels)
+ * Pagination: tối đa maxPages trang (mỗi trang 100)
+ */
+async function fetchPageVideos(pageId, accessToken, maxPages = 3) {
+  const items = [];
+  let url = `https://graph.facebook.com/v21.0/${pageId}/videos?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),shares,created_time&limit=100&access_token=${accessToken}`;
+  let page = 0;
 
-  let views = data.views || 0;
+  while (url && page < maxPages) {
+    const resp = await fetch(url);
+    const data = await resp.json();
 
-  // Nếu views = 0, thử video_insights (phương pháp 4)
-  if (!views) {
-    try {
-      const insUrl = `https://graph.facebook.com/v21.0/${id}/video_insights?metric=total_video_views&access_token=${accessToken}`;
-      const insResp = await fetch(insUrl);
-      const insData = await insResp.json();
-      if (!insData.error && insData.data) {
-        for (const m of insData.data) {
-          if (m.name === 'total_video_views') views = m.values?.[0]?.value || 0;
-        }
+    if (data.error) {
+      console.log(`[cron] Videos error for page ${pageId}:`, data.error.message);
+      break;
+    }
+
+    if (data.data) {
+      for (const v of data.data) {
+        items.push({
+          fb_id: v.id,
+          permalink_url: v.permalink_url || '',
+          views: v.views || 0,
+          likes: v.likes?.summary?.total_count || 0,
+          comments: v.comments?.summary?.total_count || 0,
+          shares: v.shares?.count || 0,
+          title: v.title || '',
+          type: 'video',
+        });
       }
-    } catch { /* ignore */ }
+    }
+
+    url = data.paging?.next || null;
+    page++;
   }
 
-  return {
-    views,
-    likes: data.likes?.summary?.total_count || 0,
-    comments: data.comments?.summary?.total_count || 0,
-    shares: data.shares?.count || 0,
-    title: data.title || '',
-    updated_at: new Date().toISOString(),
-  };
-}
-
-async function fetchPostStats(id, accessToken) {
-  const fields = 'id,message,reactions.summary(true),comments.summary(true),shares';
-  const url = `https://graph.facebook.com/v21.0/${id}?fields=${fields}&access_token=${accessToken}`;
-  const resp = await fetch(url);
-  const data = await resp.json();
-  if (data.error) return null;
-
-  return {
-    views: null,
-    likes: data.reactions?.summary?.total_count || 0,
-    comments: data.comments?.summary?.total_count || 0,
-    shares: data.shares?.count || 0,
-    title: data.message ? data.message.substring(0, 100) : '',
-    updated_at: new Date().toISOString(),
-  };
+  return items;
 }
 
 /**
- * Thử lấy stats với từng token cho đến khi thành công
+ * Lấy tất cả published posts của 1 Page
+ * Chỉ lấy 1 trang (100 posts gần nhất)
  */
-async function tryGetStats(id, type, configs) {
-  for (const config of configs) {
-    if (config.token_expires_at && new Date(config.token_expires_at) < new Date()) continue;
-    const stats = type === 'post'
-      ? await fetchPostStats(id, config.access_token)
-      : await fetchVideoStats(id, config.access_token);
-    if (stats) return stats;
+async function fetchPagePosts(pageId, accessToken) {
+  const items = [];
+  const url = `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,permalink_url,message,reactions.summary(true),comments.summary(true),shares,created_time&limit=100&access_token=${accessToken}`;
+
+  const resp = await fetch(url);
+  const data = await resp.json();
+
+  if (data.error) {
+    console.log(`[cron] Posts error for page ${pageId}:`, data.error.message);
+    return items;
   }
-  return null;
+
+  if (data.data) {
+    for (const p of data.data) {
+      items.push({
+        fb_id: p.id,
+        permalink_url: p.permalink_url || '',
+        views: null,
+        likes: p.reactions?.summary?.total_count || 0,
+        comments: p.comments?.summary?.total_count || 0,
+        shares: p.shares?.count || 0,
+        title: p.message ? p.message.substring(0, 100) : '',
+        type: 'post',
+      });
+    }
+  }
+
+  return items;
 }
 
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
+// ── Matching ──
+
+/**
+ * Tìm media item match với task link URL
+ * Thử 3 cách: ID match → permalink match → số dài trong URL
+ */
+function findMatch(taskUrl, allMediaItems) {
+  const taskId = extractId(taskUrl);
+  const cleanTaskUrl = cleanUrl(taskUrl);
+
+  for (const item of allMediaItems) {
+    // Match 1: So sánh ID trực tiếp
+    if (taskId && item.fb_id) {
+      // fb_id có thể là "12345" hoặc "page_id_12345"
+      const itemIdParts = item.fb_id.split('_');
+      const itemNumericId = itemIdParts.length > 1 ? itemIdParts[itemIdParts.length - 1] : item.fb_id;
+
+      if (taskId === item.fb_id || taskId === itemNumericId) {
+        return item;
+      }
+      // Ngược lại: taskId có thể là composite, itemNumericId match phần sau
+      if (taskId.includes('_') && taskId.endsWith('_' + itemNumericId)) {
+        return item;
+      }
+    }
+
+    // Match 2: So sánh permalink_url (clean, bỏ query params)
+    if (item.permalink_url && cleanTaskUrl === cleanUrl(item.permalink_url)) {
+      return item;
+    }
+
+    // Match 3: Tìm ID dài từ fb_id trong task URL
+    if (item.fb_id) {
+      const parts = item.fb_id.split('_');
+      for (const part of parts) {
+        if (part.length >= 8 && taskUrl.includes(part)) {
+          return item;
+        }
+      }
+    }
+  }
+
+  return null;
+}
 
 // ── Main handler ──
 
@@ -179,111 +221,125 @@ export default async function handler(req, res) {
   const supabase = createClient(supabaseUrl, supabaseKey);
   const startTime = Date.now();
 
-  // 1. Load tất cả active FB page configs
-  const { data: allConfigs } = await supabase
+  // ── Bước 1: Load tất cả active FB page configs ──
+  const { data: pages } = await supabase
     .from('social_page_configs')
-    .select('id, tenant_id, access_token, page_id, token_expires_at')
+    .select('id, tenant_id, access_token, page_id, page_name, token_expires_at')
     .eq('is_active', true)
     .eq('platform', 'facebook');
 
-  if (!allConfigs?.length) {
+  if (!pages?.length) {
     return res.status(200).json({ message: 'Không có FB page config nào', updated: 0 });
   }
 
-  // Group configs by tenant_id
-  const configsByTenant = {};
-  for (const c of allConfigs) {
-    if (!configsByTenant[c.tenant_id]) configsByTenant[c.tenant_id] = [];
-    configsByTenant[c.tenant_id].push(c);
-  }
-  const tenantIds = Object.keys(configsByTenant);
+  // ── Bước 2: Lấy tất cả videos + posts từ mỗi Page ──
+  const allMediaItems = [];
+  const tenantIds = new Set();
 
-  // 2. Load tasks có post_links, tạo/cập nhật trong 60 ngày gần
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+  for (const page of pages) {
+    // Skip token hết hạn
+    if (page.token_expires_at && new Date(page.token_expires_at) < new Date()) {
+      console.log(`[cron] Skipping page ${page.page_name || page.page_id}: token expired`);
+      continue;
+    }
+
+    if (!page.page_id || !page.access_token) continue;
+
+    tenantIds.add(page.tenant_id);
+
+    // Lấy videos (bao gồm reels) — tối đa 3 trang = 300 videos
+    const videos = await fetchPageVideos(page.page_id, page.access_token, 3);
+    for (const v of videos) {
+      v.tenant_id = page.tenant_id;
+      v.page_name = page.page_name || '';
+    }
+    allMediaItems.push(...videos);
+
+    // Lấy published posts — 1 trang = 100 posts
+    const posts = await fetchPagePosts(page.page_id, page.access_token);
+    for (const p of posts) {
+      p.tenant_id = page.tenant_id;
+      p.page_name = page.page_name || '';
+    }
+    allMediaItems.push(...posts);
+
+    console.log(`[cron] Page ${page.page_name || page.page_id}: ${videos.length} videos, ${posts.length} posts`);
+  }
+
+  if (!allMediaItems.length) {
+    return res.status(200).json({ message: 'Không lấy được media nào từ Facebook', updated: 0 });
+  }
+
+  // ── Bước 3: Load tasks có post_links ──
   const { data: tasks } = await supabase
     .from('tasks')
     .select('id, tenant_id, post_links')
-    .in('tenant_id', tenantIds)
-    .not('post_links', 'is', null)
-    .gte('updated_at', sixtyDaysAgo);
+    .in('tenant_id', [...tenantIds])
+    .not('post_links', 'is', null);
 
   if (!tasks?.length) {
-    return res.status(200).json({ message: 'Không có task nào cần cập nhật', updated: 0 });
+    return res.status(200).json({
+      message: 'Không có task nào cần cập nhật',
+      totalMediaFromAPI: allMediaItems.length,
+      updated: 0,
+    });
   }
 
-  let updated = 0;
-  let failed = 0;
-  let skipped = 0;
-  const errors = [];
+  // ── Bước 4: Match links ↔ media items và cập nhật stats ──
+  let linksUpdated = 0;
+  let linksNotMatched = 0;
+  let linksSkipped = 0;
+  let tasksUpdated = 0;
 
-  // 3. Process từng task
   for (const task of tasks) {
     if (!task.post_links?.length) continue;
 
-    const tenantConfigs = configsByTenant[task.tenant_id];
-    if (!tenantConfigs?.length) continue;
+    // Chỉ match media cùng tenant
+    const tenantMedia = allMediaItems.filter(m => m.tenant_id === task.tenant_id);
+    if (!tenantMedia.length) continue;
 
     let taskModified = false;
     const links = [...task.post_links];
 
     for (let i = 0; i < links.length; i++) {
-      // Timeout guard: dừng nếu đã chạy > 4 phút (để có thời gian trả response)
-      if (Date.now() - startTime > 240_000) {
-        console.log('[cron/update-stats] Timeout guard — stopping early');
-        break;
-      }
-
       const link = links[i];
+
+      // Skip link không phải Facebook
       if (!link.url || !isFacebookUrl(link.url)) {
-        skipped++;
+        linksSkipped++;
         continue;
       }
 
-      try {
-        // Clean URL → extract ID
-        const cleanUrl = cleanFacebookUrl(link.url);
-        let extracted = extractFacebookId(cleanUrl);
+      // Tìm match
+      const matched = findMatch(link.url, tenantMedia);
 
-        // Nếu không extract được → resolve redirect rồi thử lại
-        if (!extracted.id) {
-          const resolved = await resolveFacebookUrl(cleanUrl);
-          extracted = extractFacebookId(resolved);
+      if (matched) {
+        // Lưu stats cũ vào history
+        const updatedLink = { ...link };
+        const history = [...(updatedLink.stats_history || [])];
+        if (updatedLink.stats?.updated_at) {
+          history.push({ ...updatedLink.stats });
+          if (history.length > 30) history.splice(0, history.length - 30);
         }
 
-        if (!extracted.id) {
-          skipped++;
-          continue;
-        }
-
-        // Thử lấy stats với tất cả tokens
-        const stats = await tryGetStats(extracted.id, extracted.type, tenantConfigs);
-
-        if (stats) {
-          // Lưu stats + history (max 30 entries)
-          const updatedLink = { ...link };
-          const history = [...(updatedLink.stats_history || [])];
-          if (updatedLink.stats?.updated_at) {
-            history.push({ ...updatedLink.stats });
-            if (history.length > 30) history.splice(0, history.length - 30);
-          }
-          updatedLink.stats = stats;
-          updatedLink.stats_history = history;
-          links[i] = updatedLink;
-          taskModified = true;
-          updated++;
-        } else {
-          failed++;
-        }
-      } catch (err) {
-        failed++;
-        errors.push(`Task ${task.id} link ${i}: ${err.message}`);
+        updatedLink.stats = {
+          views: matched.views,
+          likes: matched.likes,
+          comments: matched.comments,
+          shares: matched.shares,
+          title: matched.title || updatedLink.stats?.title || '',
+          updated_at: new Date().toISOString(),
+        };
+        updatedLink.stats_history = history;
+        links[i] = updatedLink;
+        taskModified = true;
+        linksUpdated++;
+      } else {
+        linksNotMatched++;
       }
-
-      // Delay 2 giây giữa mỗi request
-      await delay(2000);
     }
 
-    // Cập nhật task nếu có thay đổi
+    // Update task nếu có thay đổi
     if (taskModified) {
       const { error: updateErr } = await supabase
         .from('tasks')
@@ -291,14 +347,24 @@ export default async function handler(req, res) {
         .eq('id', task.id);
 
       if (updateErr) {
-        errors.push(`Update task ${task.id}: ${updateErr.message}`);
+        console.log(`[cron] Update task ${task.id} error:`, updateErr.message);
+      } else {
+        tasksUpdated++;
       }
     }
   }
 
+  // ── Bước 5: Log kết quả ──
   const duration = Math.round((Date.now() - startTime) / 1000);
-  const summary = { updated, failed, skipped, total_tasks: tasks.length, duration_seconds: duration };
-  if (errors.length) summary.errors = errors.slice(0, 20); // Max 20 errors in response
+  const summary = {
+    totalMediaFromAPI: allMediaItems.length,
+    totalTasks: tasks.length,
+    linksUpdated,
+    linksNotMatched,
+    linksSkipped,
+    tasksUpdated,
+    duration_seconds: duration,
+  };
 
   console.log('[cron/update-stats] Done:', JSON.stringify(summary));
   return res.status(200).json(summary);
