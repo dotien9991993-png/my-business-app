@@ -54,6 +54,7 @@ const TasksView = ({
   setTaskFilterActor,
   taskFilterProduct,
   setTaskFilterProduct,
+  tenant,
 }) => {
   // Dùng filter state từ App (không bị reset khi đóng modal)
   const filterTeam = taskFilterTeam;
@@ -264,7 +265,7 @@ const TasksView = ({
       return;
     }
 
-    const tenantId = tasksWithFbLinks[0].tenant_id;
+    const tenantId = tenant?.id;
     if (!tenantId) return;
 
     setBulkUpdating(true);
