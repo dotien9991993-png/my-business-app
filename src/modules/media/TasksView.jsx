@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { getStatusColor, getTeamColor, formatMoney } from '../../utils/formatUtils';
 import { getVietnamDate } from '../../utils/dateUtils';
-import { validateFacebookUrl, validateTikTokUrl } from '../../services/socialStatsService';
+import { validateFacebookUrl, validateTikTokUrl, fetchStatsForLink, saveStatsToTask, loadPageConfigs } from '../../services/socialStatsService';
 
 // Format số gọn: 1000→1K, 15000→15K, 1500000→1.5M
 function formatCompactNumber(num) {
@@ -81,6 +81,13 @@ const TasksView = ({
   const [filterLinkIssue, setFilterLinkIssue] = useState('all');
   const [productFilterSearch, setProductFilterSearch] = useState('');
   const productFilterRef = React.useRef(null);
+
+  // Bulk stats update
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(0);
+  const [bulkTotal, setBulkTotal] = useState(0);
+  const [bulkResult, setBulkResult] = useState(null);
+  const bulkCancelRef = React.useRef(false);
 
   // Load product names for display
   const [productMap, setProductMap] = useState({});
@@ -244,6 +251,73 @@ const TasksView = ({
     setCustomStartDate('');
     setCustomEndDate('');
     setShowCustomDate(false);
+  };
+
+  // Bulk update stats cho tất cả task đang hiển thị
+  const handleBulkUpdateStats = async () => {
+    const tasksWithFbLinks = filteredTasks.filter(task =>
+      (task.postLinks || []).some(l => l.type === 'Facebook' && validateFacebookUrl(l.url))
+    );
+    if (!tasksWithFbLinks.length) {
+      setBulkResult({ success: 0, total: 0 });
+      setTimeout(() => setBulkResult(null), 3000);
+      return;
+    }
+
+    const tenantId = tasksWithFbLinks[0].tenant_id;
+    if (!tenantId) return;
+
+    setBulkUpdating(true);
+    setBulkProgress(0);
+    setBulkTotal(tasksWithFbLinks.length);
+    setBulkResult(null);
+    bulkCancelRef.current = false;
+
+    let pageConfigs;
+    try {
+      pageConfigs = await loadPageConfigs(tenantId);
+    } catch {
+      setBulkUpdating(false);
+      setBulkResult({ success: 0, total: tasksWithFbLinks.length, error: 'Lỗi tải page configs' });
+      setTimeout(() => setBulkResult(null), 5000);
+      return;
+    }
+
+    let successCount = 0;
+    for (let t = 0; t < tasksWithFbLinks.length; t++) {
+      if (bulkCancelRef.current) break;
+      const task = tasksWithFbLinks[t];
+      const fbLinks = (task.postLinks || [])
+        .map((l, idx) => ({ ...l, _idx: idx }))
+        .filter(l => l.type === 'Facebook' && validateFacebookUrl(l.url));
+
+      let taskSuccess = false;
+      let currentPostLinks = [...(task.postLinks || [])];
+
+      for (const link of fbLinks) {
+        if (bulkCancelRef.current) break;
+        try {
+          const result = await fetchStatsForLink(link.url, pageConfigs, tenantId);
+          if (result?.stats) {
+            currentPostLinks = await saveStatsToTask(task.id, link._idx, result.stats, currentPostLinks);
+            taskSuccess = true;
+          }
+        } catch {
+          // skip link lỗi
+        }
+        // Delay 1 giây giữa mỗi request
+        if (!bulkCancelRef.current) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+
+      if (taskSuccess) successCount++;
+      setBulkProgress(t + 1);
+    }
+
+    setBulkUpdating(false);
+    setBulkResult({ success: successCount, total: tasksWithFbLinks.length });
+    setTimeout(() => setBulkResult(null), 5000);
   };
 
   const uniqueCrew = [...new Set(visibleTasks.flatMap(t => t.crew || []))].sort();
@@ -596,19 +670,37 @@ const TasksView = ({
             </div>
           )}
 
-          {/* Footer: count + clear */}
-          <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t flex items-center justify-between">
+          {/* Footer: count + clear + bulk stats */}
+          <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t flex items-center justify-between gap-2">
             <span className="text-xs md:text-sm text-gray-600">
               <span className="font-bold text-blue-600">{filteredTasks.length}</span> / {visibleTasks.length} video
             </span>
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="px-3 md:px-4 py-1.5 md:py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs sm:text-sm font-medium"
-              >
-                ✕ Xóa bộ lọc
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {bulkUpdating ? (
+                <button
+                  onClick={() => { bulkCancelRef.current = true; }}
+                  className="px-3 md:px-4 py-1.5 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs sm:text-sm font-medium flex items-center gap-2"
+                >
+                  <span className="animate-pulse">⏳</span> Đang cập nhật... {bulkProgress}/{bulkTotal}
+                  <span className="px-1.5 py-0.5 bg-red-500 hover:bg-red-600 rounded text-white text-[10px] font-bold">Dừng</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleBulkUpdateStats}
+                  className="px-3 md:px-4 py-1.5 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs sm:text-sm font-medium"
+                >
+                  📊 Cập nhật stats
+                </button>
+              )}
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="px-3 md:px-4 py-1.5 md:py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs sm:text-sm font-medium"
+                >
+                  ✕ Xóa bộ lọc
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -738,6 +830,19 @@ const TasksView = ({
           );
         })}
       </div>
+
+      {/* Toast thông báo kết quả bulk update */}
+      {bulkResult && (
+        <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${
+          bulkResult.error ? 'bg-red-600' : bulkResult.success > 0 ? 'bg-green-600' : 'bg-gray-600'
+        }`}>
+          {bulkResult.error
+            ? bulkResult.error
+            : bulkResult.total === 0
+              ? 'Không có task nào có link Facebook'
+              : `Đã cập nhật ${bulkResult.success}/${bulkResult.total} task`}
+        </div>
+      )}
     </div>
   );
 };
