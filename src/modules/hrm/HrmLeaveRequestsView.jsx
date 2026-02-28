@@ -236,7 +236,6 @@ export default function HrmLeaveRequestsView({
         start_date: formStartDate,
         end_date: formEndDate,
         days,
-        is_half_day: formIsHalfDay,
         reason: formReason.trim(),
         status: 'pending',
         created_at: getNowISOVN()
@@ -574,7 +573,7 @@ export default function HrmLeaveRequestsView({
                     </td>
                     <td className="px-4 py-3 text-center font-semibold text-gray-700">
                       {req.days || 0}
-                      {req.is_half_day && <span className="text-xs text-gray-400 ml-0.5">(nửa ngày)</span>}
+                      {req.days % 1 !== 0 && <span className="text-xs text-gray-400 ml-0.5">(nửa ngày)</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate" title={req.reason}>
                       {req.reason || '-'}
@@ -671,7 +670,7 @@ export default function HrmLeaveRequestsView({
                   </span>
                   <span className="text-xs text-gray-500">
                     {req.days || 0} ngày
-                    {req.is_half_day && ' (nửa ngày)'}
+                    {req.days % 1 !== 0 && ' (nửa ngày)'}
                   </span>
                 </div>
 
