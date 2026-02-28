@@ -86,7 +86,7 @@ function isFacebookUrl(url) {
  */
 async function fetchPageVideos(pageId, accessToken, maxPages = 3) {
   const items = [];
-  let url = `https://graph.facebook.com/v21.0/${pageId}/videos?fields=id,title,permalink_url,views,video_views,likes.summary(true),comments.summary(true),shares,created_time&limit=100&access_token=${accessToken}`;
+  let url = `https://graph.facebook.com/v21.0/${pageId}/videos?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),shares,created_time&limit=100&access_token=${accessToken}`;
   let page = 0;
 
   while (url && page < maxPages) {
@@ -103,7 +103,7 @@ async function fetchPageVideos(pageId, accessToken, maxPages = 3) {
         items.push({
           fb_id: v.id,
           permalink_url: v.permalink_url || '',
-          views: v.views || v.video_views || 0,
+          views: v.views || 0,
           likes: v.likes?.summary?.total_count || 0,
           comments: v.comments?.summary?.total_count || 0,
           shares: v.shares?.count || 0,

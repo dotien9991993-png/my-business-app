@@ -262,20 +262,22 @@ export default async function handler(req, res) {
       }
 
       // Lấy views: thử field views trước, nếu 0 thì fallback video_insights
+      // Reels dùng metric: blue_reels_play_count / fb_reels_total_plays
+      // Video thường dùng metric: total_video_views
       let views = fbData.views || 0;
       let insightsRaw = null;
       if (!views) {
         try {
-          const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_views&access_token=${config.access_token}`;
+          const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_views,blue_reels_play_count,fb_reels_total_plays&access_token=${config.access_token}`;
           const insightsResp = await fetch(insightsUrl);
           const insightsData = await insightsResp.json();
           console.log('[get_video_stats] Fallback insights:', JSON.stringify(insightsData));
           insightsRaw = insightsData;
           if (!insightsData.error && insightsData.data) {
             for (const m of insightsData.data) {
-              if (m.name === 'total_video_views') {
-                views = m.values?.[0]?.value || 0;
-                break;
+              if (['total_video_views', 'blue_reels_play_count', 'fb_reels_total_plays'].includes(m.name)) {
+                const val = m.values?.[0]?.value || 0;
+                if (val > views) views = val;
               }
             }
           }
@@ -361,9 +363,10 @@ export default async function handler(req, res) {
       let views = basicData.views || 0;
       let insightsRaw = null;
       // Chỉ gọi insights nếu views chưa có từ basic fields
+      // Reels dùng metric: blue_reels_play_count / fb_reels_total_plays (KHÔNG phải total_video_views)
       if (!views) {
         try {
-          const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_impressions,total_video_views&access_token=${config.access_token}`;
+          const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=blue_reels_play_count,fb_reels_total_plays&access_token=${config.access_token}`;
           const insightsResp = await fetch(insightsUrl);
           const insightsData = await insightsResp.json();
           console.log('[get_reel_stats] BƯỚC 2 - insights:', JSON.stringify(insightsData));
@@ -371,9 +374,9 @@ export default async function handler(req, res) {
 
           if (!insightsData.error && insightsData.data) {
             for (const m of insightsData.data) {
-              if (m.name === 'total_video_views') {
-                views = m.values?.[0]?.value || 0;
-                break;
+              if (['blue_reels_play_count', 'fb_reels_total_plays'].includes(m.name)) {
+                const val = m.values?.[0]?.value || 0;
+                if (val > views) views = val;
               }
             }
           }
