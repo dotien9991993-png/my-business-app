@@ -627,7 +627,12 @@ const TasksView = ({
       </div>
 
       <div className="grid gap-3 md:gap-4">
-        {filteredTasks.map(task => (
+        {filteredTasks.map(task => {
+          const stats = getTaskStats(task);
+          const totalPrice = (task.product_ids || []).reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
+          const platforms = [...new Set((task.postLinks || []).map(l => l.type).filter(Boolean))];
+
+          return (
           <div
             key={task.id}
             onClick={() => {
@@ -636,39 +641,42 @@ const TasksView = ({
             }}
             className="bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer"
           >
-            {/* Title row: tiêu đề bên trái, giá + stats bên phải */}
-            <div className="flex justify-between items-start gap-3 mb-2">
+            {/* Title + Stats block */}
+            <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2 md:gap-4 mb-2">
               <h3 className="text-base md:text-xl font-bold flex-1 min-w-0">{task.title}</h3>
-              <div className="shrink-0 flex flex-col items-end gap-1">
-                {(task.product_ids || []).length > 0 && (() => {
-                  const total = task.product_ids.reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
-                  return total > 0 ? (
-                    <span className="text-base md:text-lg font-bold text-blue-600 whitespace-nowrap">
-                      💰 {formatMoney(total)}
-                    </span>
-                  ) : null;
-                })()}
-                {(() => {
-                  const stats = getTaskStats(task);
-                  if (!stats) return null;
-                  return (
-                    <div className="flex gap-1.5 md:gap-2.5 text-[11px] md:text-xs">
-                      <span className={`font-semibold ${stats.views > 0 ? 'text-gray-700' : 'text-gray-300'}`}>
+              {(stats || totalPrice > 0) && (
+                <div className="shrink-0 bg-gradient-to-br from-slate-50 to-blue-50 rounded-lg px-3 py-2 text-right">
+                  {stats && (
+                    <>
+                      <div className="text-lg md:text-xl font-bold text-gray-800 leading-tight">
                         👁 {formatCompactNumber(stats.views)}
-                      </span>
-                      <span className={stats.likes > 0 ? 'text-gray-500' : 'text-gray-300'}>
-                        ❤️ {formatCompactNumber(stats.likes)}
-                      </span>
-                      <span className={stats.comments > 0 ? 'text-gray-500' : 'text-gray-300'}>
-                        💬 {formatCompactNumber(stats.comments)}
-                      </span>
-                      <span className={stats.shares > 0 ? 'text-gray-500' : 'text-gray-300'}>
-                        🔗 {formatCompactNumber(stats.shares)}
-                      </span>
+                      </div>
+                      <div className="flex gap-2.5 text-xs md:text-sm text-gray-500 mt-0.5 justify-end">
+                        <span>❤️ {formatCompactNumber(stats.likes)}</span>
+                        <span>💬 {formatCompactNumber(stats.comments)}</span>
+                        {stats.shares > 0 && <span>🔗 {formatCompactNumber(stats.shares)}</span>}
+                      </div>
+                    </>
+                  )}
+                  {(totalPrice > 0 || platforms.length > 0) && (
+                    <div className="flex items-center gap-1.5 mt-1 justify-end">
+                      {totalPrice > 0 && <span className="text-xs text-gray-400">{formatMoney(totalPrice)}</span>}
+                      {platforms.map((p, i) => (
+                        <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          p === 'Facebook' ? 'bg-blue-100 text-blue-600' :
+                          p === 'TikTok' ? 'bg-gray-800 text-white' :
+                          p === 'YouTube' ? 'bg-red-100 text-red-600' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>{
+                          p === 'Facebook' ? 'FB' :
+                          p === 'TikTok' ? 'TT' :
+                          p === 'YouTube' ? 'YT' : p
+                        }</span>
+                      ))}
                     </div>
-                  );
-                })()}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-1.5 md:gap-2 mb-2 md:mb-3 flex-wrap">
               <span className={`px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs md:text-sm font-medium ${getStatusColor(task.status)}`}>
@@ -731,7 +739,8 @@ const TasksView = ({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
