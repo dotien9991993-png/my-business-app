@@ -706,7 +706,7 @@ const TasksView = ({
         </div>
       </div>
 
-      <div className="grid gap-3 md:gap-4">
+      <div className="grid gap-1 md:gap-4">
         {filteredTasks.map(task => {
           const platformStats = getTaskStatsByPlatform(task);
           const totalPrice = (task.product_ids || []).reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
@@ -718,13 +718,32 @@ const TasksView = ({
               setSelectedTask(task);
               setShowModal(true);
             }}
-            className="bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer"
+            className="bg-white p-2.5 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer"
           >
-            {/* Title + Stats box */}
-            <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2 md:gap-4 mb-2">
-              <h3 className="text-base md:text-xl font-bold flex-1 min-w-0">{task.title}</h3>
+            {/* Title + Stats */}
+            <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-1 md:gap-4 mb-1 md:mb-2">
+              <h3 className="text-[13px] md:text-xl font-bold flex-1 min-w-0 leading-snug">{task.title}</h3>
+              {/* Mobile: inline compact stats */}
               {(platformStats || totalPrice > 0) && (
-                <div className="shrink-0 overflow-hidden" style={{ width: 200, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <div className="flex items-center gap-1.5 flex-wrap md:hidden" style={{ fontSize: 11 }}>
+                  {platformStats && Object.entries(platformStats)
+                    .sort((a) => a[0] === 'Facebook' ? -1 : 1)
+                    .map(([platform, s]) => (
+                    <span key={platform} className="inline-flex items-center gap-1 text-gray-500">
+                      {platform === 'Facebook' && <svg width="12" height="12" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>}
+                      {platform === 'TikTok' && <svg width="12" height="12" viewBox="0 0 24 24" fill="#000"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1v-3.49a6.37 6.37 0 0 0-.79-.05A6.34 6.34 0 0 0 3.15 15.2a6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V9.13a8.16 8.16 0 0 0 4.77 1.52v-3.45a4.85 4.85 0 0 1-1.01-.51z"/></svg>}
+                      <span className="font-extrabold text-gray-800">▶{formatCompactNumber(s.views)}</span>
+                      <span>👍{formatCompactNumber(s.likes)}</span>
+                      <span>💬{formatCompactNumber(s.comments)}</span>
+                      {s.shares > 0 && <span>🔗{formatCompactNumber(s.shares)}</span>}
+                    </span>
+                  ))}
+                  {totalPrice > 0 && <span style={{ color: '#f59e0b', fontWeight: 600 }}>💰{formatMoney(totalPrice)}</span>}
+                </div>
+              )}
+              {/* Desktop: styled stats box */}
+              {(platformStats || totalPrice > 0) && (
+                <div className="hidden md:block shrink-0 overflow-hidden" style={{ width: 200, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
                   {platformStats && Object.entries(platformStats)
                     .sort((a) => a[0] === 'Facebook' ? -1 : 1)
                     .map(([platform, s], idx, arr) => (
@@ -767,15 +786,15 @@ const TasksView = ({
                 </div>
               )}
             </div>
-            <div className="flex gap-1.5 md:gap-2 mb-2 md:mb-3 flex-wrap">
-              <span className={`px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs md:text-sm font-medium ${getStatusColor(task.status)}`}>
+            <div className="flex gap-1 md:gap-2 mb-1.5 md:mb-3 flex-wrap">
+              <span className={`px-1.5 md:px-3 py-0.5 md:py-1 rounded-full text-[10px] md:text-sm font-medium ${getStatusColor(task.status)}`}>
                 {task.status}
               </span>
-              <span className={`px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs md:text-sm font-medium ${getTeamColor(task.team)}`}>
+              <span className={`px-1.5 md:px-3 py-0.5 md:py-1 rounded-full text-[10px] md:text-sm font-medium ${getTeamColor(task.team)}`}>
                 {task.team}
               </span>
               {task.category && (
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                <span className={`px-1.5 md:px-3 py-0.5 md:py-1 rounded-full text-[10px] md:text-sm font-medium ${
                   task.category === 'video_dan' ? 'bg-purple-100 text-purple-700' :
                   task.category === 'video_hangngay' ? 'bg-blue-100 text-blue-700' :
                   task.category === 'video_huongdan' ? 'bg-green-100 text-green-700' :
@@ -783,48 +802,48 @@ const TasksView = ({
                   task.category === 'video_review' ? 'bg-yellow-100 text-yellow-700' :
                   'bg-gray-100 text-gray-700'
                 }`}>
-                  {task.category === 'video_dan' ? '🎬 Video dàn' :
-                   task.category === 'video_hangngay' ? '📅 Hàng ngày' :
-                   task.category === 'video_huongdan' ? '📚 Hướng dẫn' :
-                   task.category === 'video_quangcao' ? '📢 Quảng cáo' :
+                  {task.category === 'video_dan' ? '🎬 Dàn' :
+                   task.category === 'video_hangngay' ? '📅 H.ngày' :
+                   task.category === 'video_huongdan' ? '📚 H.dẫn' :
+                   task.category === 'video_quangcao' ? '📢 QC' :
                    task.category === 'video_review' ? '⭐ Review' : task.category}
                 </span>
               )}
-              <span className="px-3 py-1 bg-gray-100 rounded-full text-sm">
+              <span className="px-1.5 md:px-3 py-0.5 md:py-1 bg-gray-100 rounded-full text-[10px] md:text-sm">
                 👤 {task.assignee}
               </span>
               {(task.crew || []).length > 0 && (
-                <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm">
+                <span className="px-1.5 md:px-3 py-0.5 md:py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] md:text-sm">
                   🎬 {task.crew.join(', ')}
                 </span>
               )}
               {(task.actors || []).length > 0 && (
-                <span className="px-3 py-1 bg-pink-50 text-pink-700 rounded-full text-sm">
+                <span className="px-1.5 md:px-3 py-0.5 md:py-1 bg-pink-50 text-pink-700 rounded-full text-[10px] md:text-sm">
                   🎭 {task.actors.join(', ')}
                 </span>
               )}
-              <span className="px-3 py-1 bg-gray-100 rounded-full text-sm">
+              <span className="px-1.5 md:px-3 py-0.5 md:py-1 bg-gray-100 rounded-full text-[10px] md:text-sm text-gray-500 md:text-gray-700">
                 📅 {task.dueDate}
               </span>
             </div>
             {/* Product chips */}
             {(task.product_ids || []).length > 0 && (
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="flex gap-1 md:gap-1.5 flex-wrap">
                 {task.product_ids.map(pid => (
-                  <span key={pid} className="px-2 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded-full text-xs">
+                  <span key={pid} className="px-1.5 md:px-2 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded-full text-[10px] md:text-xs">
                     📦 {productMap[pid]?.sku || (productMap[pid]?.name ? (productMap[pid].name.length > 15 ? productMap[pid].name.slice(0, 15) + '...' : productMap[pid].name) : 'SP')}
                   </span>
                 ))}
               </div>
             )}
             {(task.postLinks || []).some(l => l.link_valid === false) && (
-              <div className="mt-1">
-                <span className="px-2 py-0.5 bg-red-50 border border-red-200 text-red-600 rounded-full text-xs">⚠️ Link sai</span>
+              <div className="mt-0.5 md:mt-1">
+                <span className="px-1.5 md:px-2 py-0.5 bg-red-50 border border-red-200 text-red-600 rounded-full text-[10px] md:text-xs">⚠️ Link sai</span>
               </div>
             )}
             {task.isOverdue && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3">
-                <span className="text-red-700 font-medium">⚠️ Quá hạn!</span>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-2 md:p-3 mt-1.5 md:mt-3">
+                <span className="text-red-700 font-medium text-xs md:text-base">⚠️ Quá hạn!</span>
               </div>
             )}
           </div>
