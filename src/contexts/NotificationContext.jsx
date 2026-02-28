@@ -299,7 +299,7 @@ export function NotificationProvider({ children }) {
         dd = new Date(y, m - 1, d, 23, 59, 59); // cuối ngày local
       }
       const diffHours = (dd - now) / (1000 * 60 * 60);
-      return (diffHours > 0 && diffHours <= 24) || (diffHours < 0 && diffHours > -24);
+      return (diffHours > 0 && diffHours <= 1) || (diffHours < 0 && diffHours > -24);
     });
 
     if (relevantTasks.length === 0) return;
@@ -326,11 +326,12 @@ export function NotificationProvider({ children }) {
       }
       const diffHours = (dueDate - now) / (1000 * 60 * 60);
 
-      if (diffHours > 0 && diffHours <= 24 && !existingSet.has(`deadline_warning:${task.id}`)) {
+      if (diffHours > 0 && diffHours <= 1 && !existingSet.has(`deadline_warning:${task.id}`)) {
+        const diffMinutes = Math.floor(diffHours * 60);
         await createNotification({
           userId: currentUser.id, type: 'deadline_warning',
           title: '⏰ Sắp đến deadline',
-          message: `Task "${task.title}" sẽ đến hạn trong ${Math.floor(diffHours)} giờ`,
+          message: `Task "${task.title}" sẽ đến hạn trong ${diffMinutes} phút`,
           icon: '⏰', referenceType: 'task', referenceId: task.id
         });
       }
