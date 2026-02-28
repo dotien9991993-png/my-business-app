@@ -289,7 +289,16 @@ export function NotificationProvider({ children }) {
       if (task.assignee !== currentUser.name) return false;
       if (task.status === 'Hoàn Thành') return false;
       if (!task.dueDate) return false;
-      const diffHours = (new Date(task.dueDate) - now) / (1000 * 60 * 60);
+      // Nếu due_date chỉ có date (không có 'T'), Supabase trả "YYYY-MM-DD"
+      // → set deadline = cuối ngày đó (23:59:59 VN) thay vì 00:00 UTC (= 07:00 VN)
+      let dd;
+      if (task.dueDate.includes('T')) {
+        dd = new Date(task.dueDate);
+      } else {
+        const [y, m, d] = task.dueDate.split('-').map(Number);
+        dd = new Date(y, m - 1, d, 23, 59, 59); // cuối ngày local
+      }
+      const diffHours = (dd - now) / (1000 * 60 * 60);
       return (diffHours > 0 && diffHours <= 24) || (diffHours < 0 && diffHours > -24);
     });
 
@@ -307,7 +316,14 @@ export function NotificationProvider({ children }) {
     const existingSet = new Set((existingNotifs || []).map(n => `${n.type}:${n.reference_id}`));
 
     for (const task of relevantTasks) {
-      const dueDate = new Date(task.dueDate);
+      // Xử lý date-only string: set cuối ngày thay vì 00:00 UTC
+      let dueDate;
+      if (task.dueDate.includes('T')) {
+        dueDate = new Date(task.dueDate);
+      } else {
+        const [y, m, d] = task.dueDate.split('-').map(Number);
+        dueDate = new Date(y, m - 1, d, 23, 59, 59); // cuối ngày local
+      }
       const diffHours = (dueDate - now) / (1000 * 60 * 60);
 
       if (diffHours > 0 && diffHours <= 24 && !existingSet.has(`deadline_warning:${task.id}`)) {
