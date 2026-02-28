@@ -86,7 +86,7 @@ function isFacebookUrl(url) {
  */
 async function fetchPageVideos(pageId, accessToken, maxPages = 3) {
   const items = [];
-  let url = `https://graph.facebook.com/v21.0/${pageId}/videos?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),shares,created_time&limit=100&access_token=${accessToken}`;
+  let url = `https://graph.facebook.com/v21.0/${pageId}/videos?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),created_time&limit=100&access_token=${accessToken}`;
   let page = 0;
 
   while (url && page < maxPages) {
@@ -106,7 +106,7 @@ async function fetchPageVideos(pageId, accessToken, maxPages = 3) {
           views: v.views || 0,
           likes: v.likes?.summary?.total_count || 0,
           comments: v.comments?.summary?.total_count || 0,
-          shares: v.shares?.count || 0,
+          shares: 0,
           title: v.title || '',
           type: 'video',
         });
@@ -126,7 +126,7 @@ async function fetchPageVideos(pageId, accessToken, maxPages = 3) {
  */
 async function fetchPagePosts(pageId, accessToken) {
   const items = [];
-  const url = `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,permalink_url,message,reactions.summary(true),comments.summary(true),shares,created_time&limit=100&access_token=${accessToken}`;
+  const url = `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,permalink_url,message,reactions.summary(true),comments.summary(true),created_time&limit=100&access_token=${accessToken}`;
 
   const resp = await fetch(url);
   const data = await resp.json();
@@ -144,7 +144,7 @@ async function fetchPagePosts(pageId, accessToken) {
         views: null,
         likes: p.reactions?.summary?.total_count || 0,
         comments: p.comments?.summary?.total_count || 0,
-        shares: p.shares?.count || 0,
+        shares: 0,
         title: p.message ? p.message.substring(0, 100) : '',
         type: 'post',
       });

@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     // ── Test 1: Basic fields + views + video_views ──
     configResult.tests['1_basic_all_fields'] = await callApi(
       'Basic all fields',
-      `https://graph.facebook.com/v21.0/${reelId}?fields=id,views,video_views,length,description,title,likes.summary(true),comments.summary(true),shares&access_token=${token}`
+      `https://graph.facebook.com/v21.0/${reelId}?fields=id,views,length,description,title,likes.summary(true),comments.summary(true)&access_token=${token}`
     );
 
     // ── Test 2: Chỉ video_views ──

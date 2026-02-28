@@ -222,7 +222,7 @@ export default async function handler(req, res) {
       }
 
       // Gọi CHÍNH XÁC endpoint đã test thành công
-      const fields = 'id,views,title,description,likes.summary(true),comments.summary(true),shares';
+      const fields = 'id,views,title,description,likes.summary(true),comments.summary(true)';
       const graphUrl = `https://graph.facebook.com/v21.0/${video_id}?fields=${fields}&access_token=${config.access_token}`;
       console.log(`[get_fb_stats] Calling: GET /v21.0/${video_id}?fields=${fields}`);
 
@@ -241,7 +241,7 @@ export default async function handler(req, res) {
         views: fbData.views ?? null,
         likes: fbData.likes?.summary?.total_count || 0,
         comments: fbData.comments?.summary?.total_count || 0,
-        shares: fbData.shares?.count || 0,
+        shares: 0,
         title: fbData.title || fbData.description || '',
         updated_at: new Date().toISOString(),
       };
@@ -295,7 +295,7 @@ export default async function handler(req, res) {
       }
 
       // Gọi Facebook Graph API — thử với views trước (video thường)
-      const fields = 'id,title,views,likes.summary(true),comments.summary(true),shares';
+      const fields = 'id,title,views,likes.summary(true),comments.summary(true)';
       const graphUrl = `https://graph.facebook.com/v21.0/${videoId}?fields=${fields}&access_token=${config.access_token}`;
 
       const fbResponse = await fetch(graphUrl);
@@ -306,57 +306,27 @@ export default async function handler(req, res) {
         const code = fbData.error.code;
         let userMessage;
         if (code === 200) {
-          userMessage = 'Token sai loại hoặc thiếu quyền. Vui lòng vào Cài đặt → Mạng Xã Hội → cập nhật lại Page Access Token';
+          userMessage = 'Token sai loại hoặc thiếu quyền';
         } else if (code === 190) {
-          userMessage = 'Token đã hết hạn. Vui lòng vào Cài đặt → Mạng Xã Hội → lấy token mới';
+          userMessage = 'Token đã hết hạn';
         } else if (code === 100) {
-          userMessage = 'Không tìm thấy video hoặc video ID không hợp lệ. Thử dùng nút "📊 Lấy stats" lại hoặc nhập tay.';
+          userMessage = 'Không tìm thấy video hoặc video ID không hợp lệ';
         } else {
           userMessage = `Facebook API: ${fbData.error.message}`;
         }
-        return res.status(400).json({
-          error: userMessage,
-          fb_error_code: code,
-          fb_error: fbData.error
-        });
+        return res.status(400).json({ error: userMessage, fb_error_code: code, fb_error: fbData.error });
       }
 
-      // Lấy views: thử field views trước, nếu 0 thì fallback video_insights
-      // Reels dùng metric: blue_reels_play_count / fb_reels_total_plays
-      // Video thường dùng metric: total_video_views
-      let views = fbData.views || 0;
-      let insightsRaw = null;
-      if (!views) {
-        try {
-          const insightsUrl = `https://graph.facebook.com/v21.0/${videoId}/video_insights?metric=total_video_views,blue_reels_play_count,fb_reels_total_plays&access_token=${config.access_token}`;
-          const insightsResp = await fetch(insightsUrl);
-          const insightsData = await insightsResp.json();
-          console.log('[get_video_stats] Fallback insights:', JSON.stringify(insightsData));
-          insightsRaw = insightsData;
-          if (!insightsData.error && insightsData.data) {
-            for (const m of insightsData.data) {
-              if (['total_video_views', 'blue_reels_play_count', 'fb_reels_total_plays'].includes(m.name)) {
-                const val = m.values?.[0]?.value || 0;
-                if (val > views) views = val;
-              }
-            }
-          }
-        } catch (insErr) {
-          console.log('[get_video_stats] Insights fallback lỗi (bỏ qua):', insErr.message);
-        }
-      }
-
-      // Normalize response
       const stats = {
-        views,
+        views: fbData.views || 0,
         likes: fbData.likes?.summary?.total_count || 0,
         comments: fbData.comments?.summary?.total_count || 0,
-        shares: fbData.shares?.count || 0,
+        shares: 0,
         title: fbData.title || '',
         updated_at: new Date().toISOString(),
       };
 
-      return res.status(200).json({ stats, raw: { basic: fbData, insights: insightsRaw } });
+      return res.status(200).json({ stats, raw: fbData });
     }
 
     // === Lấy stats Reel (2 bước: basic engagement + insights views) ===
@@ -389,7 +359,7 @@ export default async function handler(req, res) {
       }
 
       // BƯỚC 1: Lấy basic engagement + views field (likes, comments, views)
-      const basicFields = 'id,title,views,likes.summary(true),comments.summary(true),shares';
+      const basicFields = 'id,title,views,likes.summary(true),comments.summary(true)';
       const basicUrl = `https://graph.facebook.com/v21.0/${videoId}?fields=${basicFields}&access_token=${config.access_token}`;
       const basicResp = await fetch(basicUrl);
       const basicData = await basicResp.json();
@@ -416,7 +386,7 @@ export default async function handler(req, res) {
 
       const likes = basicData.likes?.summary?.total_count || 0;
       const comments = basicData.comments?.summary?.total_count || 0;
-      const shares = basicData.shares?.count || 0;
+      const shares = 0;
       const title = basicData.title || '';
 
       // BƯỚC 2: Lấy views — dùng field views trước, fallback qua insights
@@ -503,7 +473,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Không parse được post ID từ URL' });
       }
 
-      const fields = 'id,message,reactions.summary(true),comments.summary(true),shares';
+      const fields = 'id,message,reactions.summary(true),comments.summary(true)';
       const graphUrl = `https://graph.facebook.com/v21.0/${postId}?fields=${fields}&access_token=${config.access_token}`;
 
       const fbResponse = await fetch(graphUrl);
@@ -533,7 +503,7 @@ export default async function handler(req, res) {
         views: null,
         likes: fbData.reactions?.summary?.total_count || 0,
         comments: fbData.comments?.summary?.total_count || 0,
-        shares: fbData.shares?.count || 0,
+        shares: 0,
         title: fbData.message ? fbData.message.substring(0, 100) : '',
         updated_at: new Date().toISOString(),
       };
@@ -581,7 +551,7 @@ export default async function handler(req, res) {
         views: video.views || 0,
         likes: video.likes?.summary?.total_count || 0,
         comments: video.comments?.summary?.total_count || 0,
-        shares: video.shares?.count || 0,
+        shares: 0,
         title: video.title || '',
         updated_at: new Date().toISOString(),
       });
@@ -591,7 +561,7 @@ export default async function handler(req, res) {
         views: null,
         likes: post.reactions?.summary?.total_count || 0,
         comments: post.comments?.summary?.total_count || 0,
-        shares: post.shares?.count || 0,
+        shares: 0,
         title: post.message ? post.message.substring(0, 100) : '',
         updated_at: new Date().toISOString(),
       });
@@ -607,7 +577,7 @@ export default async function handler(req, res) {
 
       // 1. Thử query videos của page
       try {
-        const videosGraphUrl = `https://graph.facebook.com/v21.0/${config.page_id}/videos?fields=permalink_url,id,title,views,likes.summary(true),comments.summary(true),shares&limit=100&access_token=${config.access_token}`;
+        const videosGraphUrl = `https://graph.facebook.com/v21.0/${config.page_id}/videos?fields=permalink_url,id,title,views,likes.summary(true),comments.summary(true)&limit=100&access_token=${config.access_token}`;
         const videosResp = await fetch(videosGraphUrl);
         const videosData = await videosResp.json();
 
@@ -632,7 +602,7 @@ export default async function handler(req, res) {
 
       // 2. Thử query published_posts của page
       try {
-        const postsGraphUrl = `https://graph.facebook.com/v21.0/${config.page_id}/published_posts?fields=permalink_url,id,message,reactions.summary(true),comments.summary(true),shares&limit=100&access_token=${config.access_token}`;
+        const postsGraphUrl = `https://graph.facebook.com/v21.0/${config.page_id}/published_posts?fields=permalink_url,id,message,reactions.summary(true),comments.summary(true)&limit=100&access_token=${config.access_token}`;
         const postsResp = await fetch(postsGraphUrl);
         const postsData = await postsResp.json();
 
