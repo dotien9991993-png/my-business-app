@@ -232,37 +232,44 @@ async function callFbStats(action, url, pageConfigId, tenantId) {
 }
 
 /**
- * Phương pháp 1 & 4: Thử lấy stats bằng ID trực tiếp
- * Construct synthetic URL từ ID, thử với từng token (config) cho đến khi thành công
- * Reel thử get_reel_stats (có video_insights) trước, fallback get_video_stats
+ * Thử lấy stats bằng video_id trực tiếp (KHÔNG dùng URL)
+ * Gọi action get_fb_stats → truyền video_id thẳng → thử tất cả configs
  */
 async function tryGetStatsById(id, type, allConfigs, tenantId) {
-  // Construct synthetic URL để server parse ID
-  const syntheticUrl = type === 'reel'
-    ? `https://www.facebook.com/reel/${id}`
-    : type === 'post'
-      ? `https://www.facebook.com/x/posts/${id}`
-      : `https://www.facebook.com/x/videos/${id}`;
+  console.log(`[tryGetStatsById] id=${id} type=${type} configs=${allConfigs.length}`);
 
-  // Actions theo thứ tự ưu tiên
-  const actions = type === 'post'
-    ? ['get_post_stats']
-    : type === 'reel'
-      ? ['get_reel_stats', 'get_video_stats']
-      : ['get_video_stats', 'get_reel_stats'];
-
-  // Thử từng action, mỗi action thử tất cả configs
-  for (const action of actions) {
-    for (const config of allConfigs) {
-      const data = await callFbStats(action, syntheticUrl, config.id, tenantId);
-      if (data) {
-        const source = action === 'get_reel_stats' ? 'facebook_insights'
-          : action === 'get_post_stats' ? 'facebook_post'
-          : 'facebook_graph';
-        return { stats: data.stats, source };
+  // Thử action get_fb_stats với video_id trực tiếp — thử từng config
+  for (const config of allConfigs) {
+    try {
+      const resp = await fetch('/api/fb-stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_fb_stats',
+          video_id: id,
+          page_config_id: config.id,
+          tenant_id: tenantId,
+        }),
+      });
+      const data = await safeParseJSON(resp);
+      console.log(`[tryGetStatsById] config=${config.id} resp.ok=${resp.ok} views=${data?.stats?.views} error=${data?.error}`);
+      if (resp.ok && data.stats) {
+        return { stats: data.stats, source: 'facebook_graph' };
       }
+    } catch (err) {
+      console.log(`[tryGetStatsById] config=${config.id} ERROR:`, err.message);
     }
   }
+
+  // Fallback cho posts: dùng get_post_stats qua URL
+  if (type === 'post') {
+    const syntheticUrl = `https://www.facebook.com/x/posts/${id}`;
+    for (const config of allConfigs) {
+      const data = await callFbStats('get_post_stats', syntheticUrl, config.id, tenantId);
+      if (data) return { stats: data.stats, source: 'facebook_post' };
+    }
+  }
+
   return null;
 }
 
