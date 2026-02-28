@@ -423,16 +423,33 @@ const TaskModal = ({
 
   const taskCrew = selectedTask.crew || [];
   const taskActors = selectedTask.actors || [];
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [headerExpanded, setHeaderExpanded] = useState(false);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b bg-gradient-to-r from-blue-500 to-purple-600 text-white sticky top-0 z-10">
-          <div className="flex justify-between items-start">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold mb-2">{selectedTask.title}</h2>
-              <div className="flex gap-2 flex-wrap items-center">
-                <span className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm flex items-center gap-2">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-white rounded-none md:rounded-xl max-w-4xl w-full h-full md:h-auto md:max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-3 md:p-6 border-b bg-gradient-to-r from-blue-500 to-purple-600 text-white sticky top-0 z-10">
+          <div className="flex justify-between items-start gap-2">
+            <div className="flex-1 min-w-0">
+              <h2
+                className={`text-base md:text-2xl font-bold mb-1 md:mb-2 cursor-pointer md:cursor-default ${
+                  !titleExpanded ? 'line-clamp-2 md:line-clamp-none' : ''
+                }`}
+                onClick={() => setTitleExpanded(!titleExpanded)}
+              >
+                {selectedTask.title}
+              </h2>
+              {!titleExpanded && selectedTask.title.length > 60 && (
+                <button
+                  onClick={() => setTitleExpanded(true)}
+                  className="text-white/70 text-xs mb-1 md:hidden"
+                >
+                  ... xem thêm
+                </button>
+              )}
+              <div className={`flex gap-1.5 md:gap-2 flex-wrap items-center ${!headerExpanded ? 'max-h-[52px] md:max-h-none overflow-hidden' : ''}`}>
+                <span className="px-2 md:px-3 py-0.5 md:py-1 bg-white/20 backdrop-blur-sm rounded-full text-xs md:text-sm flex items-center gap-1 md:gap-2">
                   👤 {selectedTask.assignee}
                   {canReassign && (
                     <button
@@ -440,62 +457,71 @@ const TaskModal = ({
                         setNewAssignee(selectedTask.assignee);
                         setShowReassign(true);
                       }}
-                      className="ml-1 px-2 py-0.5 bg-white/30 hover:bg-white/40 rounded text-xs"
+                      className="ml-1 px-1.5 md:px-2 py-0.5 bg-white/30 hover:bg-white/40 rounded text-xs"
                     >
                       🔄
                     </button>
                   )}
                 </span>
-                <span className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm">
+                <span className="px-2 md:px-3 py-0.5 md:py-1 bg-white/20 backdrop-blur-sm rounded-full text-xs md:text-sm">
                   🏢 {selectedTask.team}
                 </span>
-                <span className={`px-3 py-1 backdrop-blur-sm rounded-full text-sm ${
+                <span className={`px-2 md:px-3 py-0.5 md:py-1 backdrop-blur-sm rounded-full text-xs md:text-sm ${
                   isDeadlinePassed(selectedTask.dueDate) && selectedTask.status !== 'Hoàn Thành'
                     ? 'bg-red-500/40 font-bold' : 'bg-white/20'
                 }`}>
                   {isDeadlinePassed(selectedTask.dueDate) && selectedTask.status !== 'Hoàn Thành' ? '⚠️' : '📅'} {formatDateTime(selectedTask.dueDate)}
                   {isDeadlinePassed(selectedTask.dueDate) && selectedTask.status !== 'Hoàn Thành' && ' (Quá hạn)'}
                 </span>
-                <span className="px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm">
+                <span className="px-2 md:px-3 py-0.5 md:py-1 bg-white/20 backdrop-blur-sm rounded-full text-xs md:text-sm">
                   📱 {selectedTask.platform}
                 </span>
+                {/* Cameramen & Editors — inline with tags */}
+                {taskCrew.length > 0 && (
+                  <span className="px-2 md:px-3 py-0.5 md:py-1 bg-blue-400/30 backdrop-blur-sm rounded-full text-xs md:text-sm">
+                    🎬 {taskCrew.join(', ')}
+                  </span>
+                )}
+                {taskActors.length > 0 && (
+                  <span className="px-2 md:px-3 py-0.5 md:py-1 bg-pink-400/30 backdrop-blur-sm rounded-full text-xs md:text-sm">
+                    🎭 {taskActors.join(', ')}
+                  </span>
+                )}
+                {/* Products in header — inline */}
+                {taskProducts.map(product => (
+                  <span key={product.id} className="inline-flex items-center gap-1 px-2 md:px-3 py-0.5 md:py-1 bg-green-400/30 backdrop-blur-sm rounded-full text-xs md:text-sm">
+                    📦 {product.sku || (product.name.length > 15 ? product.name.slice(0, 15) + '...' : product.name)}
+                  </span>
+                ))}
               </div>
-              {/* Cameramen & Editors */}
-              {(taskCrew.length > 0 || taskActors.length > 0) && (
-                <div className="flex gap-2 flex-wrap mt-2">
-                  {taskCrew.length > 0 && (
-                    <span className="px-3 py-1 bg-blue-400/30 backdrop-blur-sm rounded-full text-sm">
-                      🎬 Q&D: {taskCrew.join(', ')}
-                    </span>
-                  )}
-                  {taskActors.length > 0 && (
-                    <span className="px-3 py-1 bg-pink-400/30 backdrop-blur-sm rounded-full text-sm">
-                      🎭 {taskActors.join(', ')}
-                    </span>
-                  )}
-                </div>
+              {/* Xem thêm tags trên mobile */}
+              {!headerExpanded && (taskCrew.length > 0 || taskActors.length > 0 || taskProducts.length > 0) && (
+                <button
+                  onClick={() => setHeaderExpanded(true)}
+                  className="text-white/70 text-xs mt-1 md:hidden"
+                >
+                  + xem thêm tags
+                </button>
               )}
-              {/* Products in header */}
-              {taskProducts.length > 0 && (
-                <div className="flex gap-2 flex-wrap mt-2">
-                  {taskProducts.map(product => (
-                    <span key={product.id} className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-400/30 backdrop-blur-sm rounded-full text-sm">
-                      📦 {product.sku || (product.name.length > 15 ? product.name.slice(0, 15) + '...' : product.name)}
-                    </span>
-                  ))}
-                </div>
+              {headerExpanded && (
+                <button
+                  onClick={() => setHeaderExpanded(false)}
+                  className="text-white/70 text-xs mt-1 md:hidden"
+                >
+                  thu gọn
+                </button>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2 shrink-0">
               <button
                 onClick={openEditMode}
-                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium"
+                className="px-2 md:px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs md:text-sm font-medium min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"
               >
-                ✏️ Sửa
+                ✏️ <span className="hidden md:inline ml-1">Sửa</span>
               </button>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-white/80 hover:text-white text-2xl ml-2"
+                className="text-white/80 hover:text-white text-xl md:text-2xl min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"
               >
                 ✕
               </button>
@@ -503,21 +529,21 @@ const TaskModal = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6">
           {/* Mô tả */}
           {selectedTask.description && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-4">
               <h4 className="font-bold text-sm mb-2 text-gray-700">📝 Mô tả</h4>
               <p className="text-gray-600 text-sm whitespace-pre-wrap">{selectedTask.description}</p>
             </div>
           )}
 
           {/* Production Timeline - Clickable */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border border-blue-200">
-            <h4 className="font-bold text-sm mb-3 text-blue-900">📐 Tiến Trình Sản Xuất <span className="font-normal text-gray-500">(bấm để cập nhật)</span></h4>
-            <div className="flex items-center gap-2 flex-wrap text-xs">
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 md:p-4 rounded-xl border border-blue-200">
+            <h4 className="font-bold text-sm mb-3 text-blue-900">📐 Tiến Trình Sản Xuất <span className="font-normal text-gray-500 text-xs md:text-sm">(bấm để cập nhật)</span></h4>
+            <div className="grid grid-cols-2 md:flex md:items-center gap-2 md:flex-wrap text-xs">
               {/* Tạo - always show, not clickable */}
-              <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg border bg-green-50 border-green-300">
+              <div className="flex items-center gap-1 px-2 md:px-3 py-1.5 rounded-lg border bg-green-50 border-green-300">
                 <span>📝</span>
                 <div>
                   <div className="font-medium">Tạo</div>
@@ -532,7 +558,7 @@ const TaskModal = ({
                 const done = !!selectedTask[step.key];
                 return (
                   <React.Fragment key={step.key}>
-                    <span className="text-gray-400">→</span>
+                    <span className="text-gray-400 hidden md:inline">→</span>
                     <button
                       disabled={done}
                       onClick={async () => {
@@ -577,7 +603,7 @@ const TaskModal = ({
                           alert('❌ Lỗi khi cập nhật!');
                         }
                       }}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all ${
+                      className={`flex items-center gap-1 px-2 md:px-3 py-2 md:py-1.5 rounded-lg border transition-all min-h-[44px] ${
                         done
                           ? 'bg-green-50 border-green-300'
                           : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 hover:scale-105 cursor-pointer'
@@ -599,7 +625,7 @@ const TaskModal = ({
 
           {/* Links per Platform — đưa lên trước SP */}
           <div ref={linksRef}>
-            <h4 className="text-lg font-bold mb-3">🔗 Links Theo Platform</h4>
+            <h4 className="text-base md:text-lg font-bold mb-2 md:mb-3">🔗 Links Theo Platform</h4>
             {(() => {
               const platformIcons = { 'Facebook': '📘', 'Instagram': '📸', 'TikTok': '🎵', 'Blog': '📝', 'Ads': '📢', 'Email': '📧', 'YouTube': '📺' };
               const platformColors = { 'Facebook': 'border-blue-300 bg-blue-50', 'Instagram': 'border-pink-300 bg-pink-50', 'TikTok': 'border-gray-800 bg-gray-50', 'Blog': 'border-green-300 bg-green-50', 'Ads': 'border-orange-300 bg-orange-50', 'Email': 'border-purple-300 bg-purple-50', 'YouTube': 'border-red-300 bg-red-50' };
@@ -622,8 +648,8 @@ const TaskModal = ({
                         </div>
                         {link ? (
                           <div>
-                            <div className="flex items-center gap-2">
-                              <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm break-all flex-1">{link.url}</a>
+                            <div className="flex items-center gap-1 md:gap-2">
+                              <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs md:text-sm break-all flex-1 line-clamp-2 md:line-clamp-none">{link.url}</a>
                               {link.link_valid === false && (
                                 <span className="text-amber-500 shrink-0" title="Link không đúng định dạng">⚠️</span>
                               )}
@@ -849,31 +875,31 @@ const TaskModal = ({
           {/* Product details section — compact table */}
           {taskProducts.length > 0 && (
             <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
-                <h4 className="font-bold text-sm text-gray-800">📦 Sản phẩm trong video ({taskProducts.length})</h4>
-                <span className="font-bold text-sm text-blue-600">
+              <div className="flex items-center justify-between px-3 md:px-4 py-2 md:py-2.5 bg-gray-50 border-b">
+                <h4 className="font-bold text-xs md:text-sm text-gray-800">📦 Sản phẩm ({taskProducts.length})</h4>
+                <span className="font-bold text-xs md:text-sm text-blue-600">
                   💰 {formatMoney(taskProducts.reduce((sum, p) => sum + (parseFloat(p.sell_price) || 0), 0))}
                 </span>
               </div>
-              <div className="max-h-[200px] overflow-y-auto">
-                <table className="w-full text-sm">
+              <div className="max-h-[200px] overflow-y-auto overflow-x-auto">
+                <table className="w-full text-xs md:text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs sticky top-0">
                     <tr>
-                      <th className="text-left px-4 py-1.5 font-medium">SKU</th>
-                      <th className="text-left px-4 py-1.5 font-medium">Tên</th>
-                      <th className="text-right px-4 py-1.5 font-medium">Giá</th>
-                      <th className="text-right px-4 py-1.5 font-medium">Tồn</th>
+                      <th className="text-left px-2 md:px-4 py-1.5 font-medium">SKU</th>
+                      <th className="text-left px-2 md:px-4 py-1.5 font-medium">Tên</th>
+                      <th className="text-right px-2 md:px-4 py-1.5 font-medium">Giá</th>
+                      <th className="text-right px-2 md:px-4 py-1.5 font-medium hidden md:table-cell">Tồn</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {taskProducts.map(product => (
                       <tr key={product.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{product.sku || '—'}</td>
-                        <td className="px-4 py-2 font-medium truncate max-w-[200px]">{product.name}</td>
-                        <td className="px-4 py-2 text-right text-gray-700 whitespace-nowrap">
+                        <td className="px-2 md:px-4 py-1.5 md:py-2 text-gray-600 whitespace-nowrap">{product.sku || '—'}</td>
+                        <td className="px-2 md:px-4 py-1.5 md:py-2 font-medium truncate max-w-[120px] md:max-w-[200px]">{product.name}</td>
+                        <td className="px-2 md:px-4 py-1.5 md:py-2 text-right text-gray-700 whitespace-nowrap">
                           {product.sell_price > 0 ? (Math.round(product.sell_price / 1000).toLocaleString('vi-VN') + 'k') : '—'}
                         </td>
-                        <td className="px-4 py-2 text-right text-gray-600">{product.stock_quantity ?? '—'}</td>
+                        <td className="px-2 md:px-4 py-1.5 md:py-2 text-right text-gray-600 hidden md:table-cell">{product.stock_quantity ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1111,9 +1137,9 @@ const TaskModal = ({
             </div>
           )}
 
-          <div className="border-t pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h5 className="text-lg font-bold">💬 Nhận Xét & Feedback</h5>
+          <div className="border-t pt-4 md:pt-6">
+            <div className="flex items-center justify-between mb-3 md:mb-4">
+              <h5 className="text-base md:text-lg font-bold">💬 Nhận Xét & Feedback</h5>
               <span className="text-sm text-gray-500">
                 {selectedTask.comments?.length || 0} nhận xét
               </span>
@@ -1149,17 +1175,17 @@ const TaskModal = ({
               </div>
             )}
 
-            <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
+            <div className="bg-white border-2 border-gray-200 rounded-lg p-3 md:p-4">
               <div className="font-medium text-sm mb-2">✍️ Thêm nhận xét:</div>
               <textarea
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder={`${currentUser.role === 'Manager' ? 'Nhận xét của bạn về task này...' : 'Cập nhật tiến độ, ghi chú...'}`}
-                rows="3"
-                className="w-full px-4 py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                rows="2"
+                className="w-full px-3 md:px-4 py-2 md:py-3 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
               />
-              <div className="flex justify-between items-center mt-3">
-                <div className="text-xs text-gray-500">
+              <div className="flex justify-between items-center mt-2 md:mt-3">
+                <div className="text-xs text-gray-500 hidden md:block">
                   💡 {currentUser.role === 'Manager' ? 'Admin/Manager có thể để lại feedback chi tiết' : 'Cập nhật tiến độ công việc của bạn'}
                 </div>
                 <button
@@ -1169,7 +1195,7 @@ const TaskModal = ({
                       setNewComment('');
                     }
                   }}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                  className="px-4 md:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm min-h-[44px] ml-auto"
                 >
                   💬 Gửi
                 </button>
@@ -1209,14 +1235,14 @@ const TaskModal = ({
           </div>
         </div>
 
-        <div className="p-6 border-t bg-gray-50 sticky bottom-0">
-          <div className="flex gap-3">
+        <div className="p-3 md:p-6 border-t bg-gray-50 sticky bottom-0">
+          <div className="flex gap-2 md:gap-3">
             <button
               onClick={() => {
                 setShowEditTask(false);
                 setShowModal(false);
               }}
-              className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+              className="flex-1 px-4 md:px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium text-sm md:text-base min-h-[44px]"
             >
               Đóng
             </button>
@@ -1227,15 +1253,15 @@ const TaskModal = ({
                     deleteTask(selectedTask.id);
                   }
                 }}
-                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
+                className="px-4 md:px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm md:text-base min-h-[44px]"
               >
-                🗑️ Xóa
+                🗑️ <span className="hidden md:inline">Xóa</span>
               </button>
             )}
             {showEditTask && (
               <button
                 onClick={saveEditTask}
-                className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                className="flex-1 px-4 md:px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm md:text-base min-h-[44px]"
               >
                 💾 Lưu
               </button>
