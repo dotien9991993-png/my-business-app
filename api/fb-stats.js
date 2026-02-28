@@ -60,6 +60,18 @@ function parseFacebookVideoId(url) {
     match = url.match(/facebook\.com\/watch\/?\?v=(\d+)/);
     if (match) return match[1];
 
+    // /share/v/ID hoặc /share/r/ID
+    match = url.match(/facebook\.com\/share\/(v|r)\/([\w-]+)/);
+    if (match) return match[2];
+
+    // /posts/ID
+    match = url.match(/facebook\.com\/[^/]+\/posts\/([\w.]+)/);
+    if (match) return match[1];
+
+    // /permalink.php?story_fbid=ID
+    match = url.match(/story_fbid=(\d+)/);
+    if (match) return match[1];
+
     // fb.watch/ID — redirect, cần video ID từ user
     // Fallback: tìm chuỗi số dài trong URL
     match = url.match(/\/(\d{10,})/);
@@ -283,7 +295,87 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(400).json({ error: 'Invalid action. Use: get_video_stats, get_reel_stats' });
+    // === Lấy stats Post Facebook (dạng /posts/, /permalink.php, /share/) ===
+    if (action === 'get_post_stats') {
+      const { url, page_config_id, tenant_id } = params;
+
+      if (!url || !page_config_id || !tenant_id) {
+        return res.status(400).json({ error: 'Thiếu url, page_config_id hoặc tenant_id' });
+      }
+
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+      if (!supabaseUrl || !supabaseKey) {
+        return res.status(500).json({ error: 'Server chưa cấu hình Supabase' });
+      }
+
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: config, error: configError } = await supabase
+        .from('social_page_configs')
+        .select('access_token, page_id, token_expires_at')
+        .eq('id', page_config_id)
+        .eq('tenant_id', tenant_id)
+        .eq('is_active', true)
+        .single();
+
+      if (configError || !config) {
+        return res.status(404).json({ error: 'Không tìm thấy cấu hình page' });
+      }
+
+      if (!config.access_token) {
+        return res.status(400).json({ error: 'Page chưa có access token' });
+      }
+
+      if (config.token_expires_at && new Date(config.token_expires_at) < new Date()) {
+        return res.status(401).json({ error: 'Access token đã hết hạn. Vui lòng cập nhật trong Cài đặt.' });
+      }
+
+      const postId = parseFacebookVideoId(url);
+      if (!postId) {
+        return res.status(400).json({ error: 'Không parse được post ID từ URL' });
+      }
+
+      const fields = 'id,message,reactions.summary(true),comments.summary(true),shares';
+      const graphUrl = `https://graph.facebook.com/v21.0/${postId}?fields=${fields}&access_token=${config.access_token}`;
+
+      const fbResponse = await fetch(graphUrl);
+      const fbData = await fbResponse.json();
+      console.log('[get_post_stats] Graph API response:', JSON.stringify(fbData));
+
+      if (fbData.error) {
+        const code = fbData.error.code;
+        let userMessage;
+        if (code === 200) {
+          userMessage = 'Token sai loại hoặc thiếu quyền. Vui lòng vào Cài đặt → Mạng Xã Hội → cập nhật lại Page Access Token';
+        } else if (code === 190) {
+          userMessage = 'Token đã hết hạn. Vui lòng vào Cài đặt → Mạng Xã Hội → lấy token mới';
+        } else if (code === 100) {
+          userMessage = 'Không tìm thấy post hoặc post ID không hợp lệ. Thử nhập stats tay.';
+        } else {
+          userMessage = `Facebook API: ${fbData.error.message}`;
+        }
+        return res.status(400).json({
+          error: userMessage,
+          fb_error_code: code,
+          fb_error: fbData.error
+        });
+      }
+
+      const stats = {
+        views: null,
+        likes: fbData.reactions?.summary?.total_count || 0,
+        comments: fbData.comments?.summary?.total_count || 0,
+        shares: fbData.shares?.count || 0,
+        title: fbData.message ? fbData.message.substring(0, 100) : '',
+        updated_at: new Date().toISOString(),
+      };
+
+      return res.status(200).json({ stats, raw: fbData });
+    }
+
+    return res.status(400).json({ error: 'Invalid action. Use: get_video_stats, get_reel_stats, get_post_stats' });
   } catch (error) {
     console.error('FB Stats proxy error:', error);
     return res.status(500).json({ error: 'Lỗi máy chủ. Vui lòng thử lại sau.' });

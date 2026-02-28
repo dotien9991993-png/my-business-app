@@ -4,7 +4,7 @@ import { isAdmin } from '../../utils/permissionUtils';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN, getVietnamDate } from '../../utils/dateUtils';
 import EkipSelector from './EkipSelector';
-import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs, validateLinkForPlatform, getValidationErrorMessage } from '../../services/socialStatsService';
+import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs, validateLinkForPlatform, getValidationErrorMessage, detectFacebookUrlType } from '../../services/socialStatsService';
 
 const TaskModal = ({
   selectedTask,
@@ -56,6 +56,10 @@ const TaskModal = ({
   const [pageConfigs, setPageConfigs] = useState([]);
   const [loadingStatsIndex, setLoadingStatsIndex] = useState(null);
   const [statsError, setStatsError] = useState({}); // { [linkIndex]: 'error message' }
+  const [manualStatsIndex, setManualStatsIndex] = useState(null);
+  const [manualStatsValues, setManualStatsValues] = useState({ views: '', likes: '', shares: '', comments: '' });
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, errors: [] });
 
   useEffect(() => {
     if (tenant?.id) {
@@ -101,6 +105,33 @@ const TaskModal = ({
     } catch (err) {
       alert('❌ Lỗi lưu stats: ' + err.message);
     }
+  };
+
+  const handleBulkFetchStats = async () => {
+    const links = selectedTask.postLinks || [];
+    const fbLinks = links.map((l, i) => ({ link: l, index: i }))
+      .filter(({ link }) => detectPlatform(link.url) === 'facebook');
+
+    if (fbLinks.length === 0) return;
+    setBulkLoading(true);
+    setBulkProgress({ done: 0, total: fbLinks.length, errors: [] });
+
+    let currentLinks = [...links];
+    for (const { link, index } of fbLinks) {
+      try {
+        const result = await fetchStatsForLink(link.url, pageConfigs, tenant.id);
+        currentLinks = await saveStatsToTask(selectedTask.id, index, result.stats, currentLinks);
+        setSelectedTask(prev => ({ ...prev, postLinks: currentLinks }));
+      } catch (err) {
+        setBulkProgress(prev => ({ ...prev, errors: [...prev.errors, { url: link.url, error: err.message }] }));
+      }
+      setBulkProgress(prev => ({ ...prev, done: prev.done + 1 }));
+      // Delay 1s giữa mỗi request (tránh rate limit)
+      if (fbLinks.indexOf(fbLinks.find(f => f.index === index)) < fbLinks.length - 1) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+    setBulkLoading(false);
   };
 
   // Reset link input states when task changes
@@ -625,7 +656,31 @@ const TaskModal = ({
 
           {/* Links per Platform — đưa lên trước SP */}
           <div ref={linksRef}>
-            <h4 className="text-base md:text-lg font-bold mb-2 md:mb-3">🔗 Links Theo Platform</h4>
+            <div className="flex items-center justify-between mb-2 md:mb-3">
+              <h4 className="text-base md:text-lg font-bold">🔗 Links Theo Platform</h4>
+              {(() => {
+                const links = selectedTask.postLinks || [];
+                const fbCount = links.filter(l => detectPlatform(l.url) === 'facebook').length;
+                if (fbCount < 2) return null;
+                return (
+                  <button
+                    onClick={handleBulkFetchStats}
+                    disabled={bulkLoading}
+                    className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 font-medium"
+                  >
+                    {bulkLoading ? `⏳ ${bulkProgress.done}/${bulkProgress.total}...` : '📊 Lấy stats tất cả'}
+                  </button>
+                );
+              })()}
+            </div>
+            {bulkProgress.errors.length > 0 && !bulkLoading && (
+              <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                <b>Lỗi {bulkProgress.errors.length} link:</b>
+                {bulkProgress.errors.map((e, i) => (
+                  <div key={i} className="mt-0.5 truncate">• {e.url.substring(0, 50)}... — {e.error}</div>
+                ))}
+              </div>
+            )}
             {(() => {
               const platformIcons = { 'Facebook': '📘', 'Instagram': '📸', 'TikTok': '🎵', 'Blog': '📝', 'Ads': '📢', 'Email': '📧', 'YouTube': '📺' };
               const platformColors = { 'Facebook': 'border-blue-300 bg-blue-50', 'Instagram': 'border-pink-300 bg-pink-50', 'TikTok': 'border-gray-800 bg-gray-50', 'Blog': 'border-green-300 bg-green-50', 'Ads': 'border-orange-300 bg-orange-50', 'Email': 'border-purple-300 bg-purple-50', 'YouTube': 'border-red-300 bg-red-50' };
@@ -690,19 +745,12 @@ const TaskModal = ({
                                           </button>
                                           <button
                                             onClick={() => {
-                                              const views = prompt('👁 Views:', String(s.views || 0));
-                                              if (views === null) return;
-                                              const likes = prompt('❤️ Likes:', String(s.likes || 0));
-                                              if (likes === null) return;
-                                              const shares = prompt('🔁 Shares:', String(s.shares || 0));
-                                              if (shares === null) return;
-                                              const comments = prompt('💬 Comments:', String(s.comments || 0));
-                                              if (comments === null) return;
-                                              handleManualStats(li, {
-                                                views: parseInt(views) || 0,
-                                                likes: parseInt(likes) || 0,
-                                                shares: parseInt(shares) || 0,
-                                                comments: parseInt(comments) || 0,
+                                              setManualStatsIndex(li);
+                                              setManualStatsValues({
+                                                views: String(s.views || 0),
+                                                likes: String(s.likes || 0),
+                                                shares: String(s.shares || 0),
+                                                comments: String(s.comments || 0),
                                               });
                                             }}
                                             className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
@@ -711,6 +759,25 @@ const TaskModal = ({
                                           </button>
                                         </div>
                                       </div>
+                                      {/* Stats history */}
+                                      {link.stats_history?.length > 0 && (
+                                        <details className="mt-1.5">
+                                          <summary className="text-[10px] text-gray-400 cursor-pointer hover:text-gray-600">
+                                            📈 Lịch sử ({link.stats_history.length} lần)
+                                          </summary>
+                                          <div className="mt-1 max-h-32 overflow-y-auto space-y-1">
+                                            {link.stats_history.slice().reverse().map((h, i) => (
+                                              <div key={i} className="flex gap-3 text-[10px] text-gray-500 border-b border-gray-100 py-0.5">
+                                                <span>{new Date(h.updated_at).toLocaleDateString('vi-VN')}</span>
+                                                {h.views != null && <span>👁 {Number(h.views).toLocaleString('vi-VN')}</span>}
+                                                <span>❤️ {Number(h.likes || 0).toLocaleString('vi-VN')}</span>
+                                                <span>💬 {Number(h.comments || 0).toLocaleString('vi-VN')}</span>
+                                                <span>🔁 {Number(h.shares || 0).toLocaleString('vi-VN')}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </details>
+                                      )}
                                     </div>
                                   ) : (
                                     <div className="flex items-center justify-between">
@@ -727,25 +794,51 @@ const TaskModal = ({
                                         )}
                                         <button
                                           onClick={() => {
-                                            const views = prompt('👁 Views:', '0');
-                                            if (views === null) return;
-                                            const likes = prompt('❤️ Likes:', '0');
-                                            if (likes === null) return;
-                                            const shares = prompt('🔁 Shares:', '0');
-                                            if (shares === null) return;
-                                            const comments = prompt('💬 Comments:', '0');
-                                            if (comments === null) return;
-                                            handleManualStats(li, {
-                                              views: parseInt(views) || 0,
-                                              likes: parseInt(likes) || 0,
-                                              shares: parseInt(shares) || 0,
-                                              comments: parseInt(comments) || 0,
-                                            });
+                                            setManualStatsIndex(li);
+                                            setManualStatsValues({ views: '0', likes: '0', shares: '0', comments: '0' });
                                           }}
                                           className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
                                         >
                                           ✏️ Nhập tay
                                         </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Inline manual stats form */}
+                                  {manualStatsIndex === li && (
+                                    <div className="mt-2 p-2 bg-gray-50 rounded-lg border border-gray-300">
+                                      <div className="grid grid-cols-2 gap-2 mb-2">
+                                        <div>
+                                          <label className="text-[10px] text-gray-500">👁 Views</label>
+                                          <input type="number" value={manualStatsValues.views} onChange={e => setManualStatsValues(v => ({ ...v, views: e.target.value }))} className="w-full px-2 py-1 border rounded text-xs" />
+                                        </div>
+                                        <div>
+                                          <label className="text-[10px] text-gray-500">❤️ Likes</label>
+                                          <input type="number" value={manualStatsValues.likes} onChange={e => setManualStatsValues(v => ({ ...v, likes: e.target.value }))} className="w-full px-2 py-1 border rounded text-xs" />
+                                        </div>
+                                        <div>
+                                          <label className="text-[10px] text-gray-500">🔁 Shares</label>
+                                          <input type="number" value={manualStatsValues.shares} onChange={e => setManualStatsValues(v => ({ ...v, shares: e.target.value }))} className="w-full px-2 py-1 border rounded text-xs" />
+                                        </div>
+                                        <div>
+                                          <label className="text-[10px] text-gray-500">💬 Comments</label>
+                                          <input type="number" value={manualStatsValues.comments} onChange={e => setManualStatsValues(v => ({ ...v, comments: e.target.value }))} className="w-full px-2 py-1 border rounded text-xs" />
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-2 justify-end">
+                                        <button onClick={() => setManualStatsIndex(null)} className="text-xs px-3 py-1 bg-gray-200 text-gray-600 rounded hover:bg-gray-300">Hủy</button>
+                                        <button
+                                          onClick={() => {
+                                            handleManualStats(li, {
+                                              views: parseInt(manualStatsValues.views) || 0,
+                                              likes: parseInt(manualStatsValues.likes) || 0,
+                                              shares: parseInt(manualStatsValues.shares) || 0,
+                                              comments: parseInt(manualStatsValues.comments) || 0,
+                                            });
+                                            setManualStatsIndex(null);
+                                          }}
+                                          className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                                        >Lưu</button>
                                       </div>
                                     </div>
                                   )}

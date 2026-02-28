@@ -127,50 +127,86 @@ async function safeParseJSON(resp) {
 }
 
 /**
+ * Detect loại URL Facebook: reel, video, hay post
+ */
+export function detectFacebookUrlType(url) {
+  if (/\/reel\//.test(url)) return 'reel';
+  if (/\/videos\//.test(url) || /\/watch/.test(url)) return 'video';
+  if (/\/posts\//.test(url) || /\/permalink\.php/.test(url) || /\/share\//.test(url)) return 'post';
+  return 'video'; // fallback
+}
+
+/**
  * Fetch stats Facebook qua /api/fb-stats proxy
+ * Detect URL type để chọn action phù hợp
  */
 export async function fetchFacebookStats(url, pageConfigId, tenantId) {
   if (!url || !pageConfigId || !tenantId) {
     throw new Error('Thiếu url, pageConfigId hoặc tenantId');
   }
 
-  // Thử reel insights trước
-  const reelResp = await fetch('/api/fb-stats', {
+  const urlType = detectFacebookUrlType(url);
+
+  // Post: chỉ gọi get_post_stats, không fallback
+  if (urlType === 'post') {
+    const resp = await fetch('/api/fb-stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get_post_stats',
+        url,
+        page_config_id: pageConfigId,
+        tenant_id: tenantId,
+      }),
+    });
+    const data = await safeParseJSON(resp);
+    if (!resp.ok) {
+      throw new Error(data.error || 'Lỗi gọi Facebook API');
+    }
+    return { stats: data.stats, source: 'facebook_post' };
+  }
+
+  // Reel: thử reel trước, fallback video
+  // Video: thử video trước, fallback reel
+  const primaryAction = urlType === 'reel' ? 'get_reel_stats' : 'get_video_stats';
+  const fallbackAction = urlType === 'reel' ? 'get_video_stats' : 'get_reel_stats';
+
+  const primaryResp = await fetch('/api/fb-stats', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      action: 'get_reel_stats',
+      action: primaryAction,
       url,
       page_config_id: pageConfigId,
       tenant_id: tenantId,
     }),
   });
 
-  const reelData = await safeParseJSON(reelResp);
+  const primaryData = await safeParseJSON(primaryResp);
 
-  if (reelResp.ok && reelData.stats) {
-    return { stats: reelData.stats, source: 'facebook_insights' };
+  if (primaryResp.ok && primaryData.stats) {
+    return { stats: primaryData.stats, source: primaryAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph' };
   }
 
-  // Fallback: lấy stats thường
-  const videoResp = await fetch('/api/fb-stats', {
+  // Fallback
+  const fallbackResp = await fetch('/api/fb-stats', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      action: 'get_video_stats',
+      action: fallbackAction,
       url,
       page_config_id: pageConfigId,
       tenant_id: tenantId,
     }),
   });
 
-  const videoData = await safeParseJSON(videoResp);
+  const fallbackData = await safeParseJSON(fallbackResp);
 
-  if (!videoResp.ok) {
-    throw new Error(videoData.error || 'Lỗi gọi Facebook API');
+  if (!fallbackResp.ok) {
+    throw new Error(fallbackData.error || 'Lỗi gọi Facebook API');
   }
 
-  return { stats: videoData.stats, source: 'facebook_graph' };
+  return { stats: fallbackData.stats, source: fallbackAction === 'get_reel_stats' ? 'facebook_insights' : 'facebook_graph' };
 }
 
 /**
@@ -208,10 +244,18 @@ export async function fetchStatsForLink(url, pageConfigs, tenantId) {
  */
 export async function saveStatsToTask(taskId, linkIndex, stats, postLinks) {
   const updated = [...postLinks];
-  updated[linkIndex] = {
-    ...updated[linkIndex],
-    stats,
-  };
+  const link = { ...updated[linkIndex] };
+
+  // Lưu history (max 30 entries)
+  const history = [...(link.stats_history || [])];
+  if (link.stats && link.stats.updated_at) {
+    history.push({ ...link.stats });
+    if (history.length > 30) history.splice(0, history.length - 30);
+  }
+
+  link.stats = stats;
+  link.stats_history = history;
+  updated[linkIndex] = link;
 
   const { error } = await supabase
     .from('tasks')
