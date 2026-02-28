@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { getStatusColor, getTeamColor, formatMoney } from '../../utils/formatUtils';
 import { getVietnamDate } from '../../utils/dateUtils';
+import { validateFacebookUrl, validateTikTokUrl } from '../../services/socialStatsService';
 
 const TasksView = ({
   visibleTasks,
@@ -164,11 +165,15 @@ const TasksView = ({
     if (filterCrew !== 'all' && !(t.crew || []).includes(filterCrew)) return false;
     if (filterActor !== 'all' && !(t.actors || []).includes(filterActor)) return false;
     if (filterProducts.length > 0 && !(t.product_ids || []).some(pid => filterProducts.includes(pid))) return false;
-    if (filterLinkIssue === 'invalid' && !(t.postLinks || []).some(l => l.link_valid === false)) return false;
+    if (filterLinkIssue === 'invalid' && !(t.postLinks || []).some(l =>
+      (l.type === 'Facebook' && !validateFacebookUrl(l.url)) ||
+      (l.type === 'TikTok' && !validateTikTokUrl(l.url))
+    )) return false;
     if (filterLinkIssue === 'missing') {
-      const platforms = (t.platform || '').split(', ').filter(Boolean);
-      const links = (t.postLinks || []).map(l => l.type);
-      if (!platforms.some(p => !links.includes(p))) return false;
+      const links = (t.postLinks || []);
+      const hasFb = links.some(l => l.type === 'Facebook' && validateFacebookUrl(l.url));
+      const hasTT = links.some(l => l.type === 'TikTok' && validateTikTokUrl(l.url));
+      if (hasFb && hasTT) return false;
     }
 
     // Date filter (Vietnam timezone)
@@ -223,12 +228,16 @@ const TasksView = ({
   const uniqueProductIds = [...new Set(visibleTasks.flatMap(t => t.product_ids || []))];
 
   const invalidLinkCount = visibleTasks.filter(t =>
-    (t.postLinks || []).some(l => l.link_valid === false)
+    (t.postLinks || []).some(l =>
+      (l.type === 'Facebook' && !validateFacebookUrl(l.url)) ||
+      (l.type === 'TikTok' && !validateTikTokUrl(l.url))
+    )
   ).length;
   const missingLinkCount = visibleTasks.filter(t => {
-    const platforms = (t.platform || '').split(', ').filter(Boolean);
-    const links = (t.postLinks || []).map(l => l.type);
-    return platforms.length > 0 && platforms.some(p => !links.includes(p));
+    const links = (t.postLinks || []);
+    const hasFb = links.some(l => l.type === 'Facebook' && validateFacebookUrl(l.url));
+    const hasTT = links.some(l => l.type === 'TikTok' && validateTikTokUrl(l.url));
+    return !hasFb || !hasTT;
   }).length;
 
   const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
