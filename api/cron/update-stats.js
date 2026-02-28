@@ -64,7 +64,7 @@ function isFacebookUrl(url) {
  */
 async function fetchPageVideos(pageId, accessToken) {
   try {
-    const url = `https://graph.facebook.com/v21.0/${pageId}/videos?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),created_time&limit=100&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/v21.0/${pageId}/videos?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),created_time&limit=25&access_token=${accessToken}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) {
@@ -92,7 +92,7 @@ async function fetchPageVideos(pageId, accessToken) {
  */
 async function fetchPageReels(pageId, accessToken) {
   try {
-    const url = `https://graph.facebook.com/v21.0/${pageId}/video_reels?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),created_time&limit=100&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/v21.0/${pageId}/video_reels?fields=id,title,permalink_url,views,likes.summary(true),comments.summary(true),created_time&limit=25&access_token=${accessToken}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) {
@@ -116,11 +116,11 @@ async function fetchPageReels(pageId, accessToken) {
 }
 
 /**
- * Lấy published posts của Page (50 gần nhất)
+ * Lấy published posts của Page (25 gần nhất)
  */
 async function fetchPagePosts(pageId, accessToken) {
   try {
-    const url = `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,permalink_url,message,reactions.summary(true),comments.summary(true),created_time&limit=50&access_token=${accessToken}`;
+    const url = `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,permalink_url,message,reactions.summary(true),comments.summary(true),created_time&limit=25&access_token=${accessToken}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) {
