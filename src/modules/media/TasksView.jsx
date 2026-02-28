@@ -170,11 +170,9 @@ const TasksView = ({
       (l.type === 'TikTok' && !validateTikTokUrl(l.url))
     )) return false;
     if (filterLinkIssue === 'missing') {
-      if (t.status !== 'Hoàn Thành') return false;
-      const links = (t.postLinks || []);
-      const hasFb = links.some(l => l.type === 'Facebook' && validateFacebookUrl(l.url));
-      const hasTT = links.some(l => l.type === 'TikTok' && validateTikTokUrl(l.url));
-      if (hasFb && hasTT) return false;
+      const platforms = (t.platform || '').split(', ').filter(Boolean);
+      const linkTypes = (t.postLinks || []).map(l => l.type);
+      if (platforms.length === 0 || !platforms.some(p => !linkTypes.includes(p))) return false;
     }
 
     // Date filter (Vietnam timezone)
@@ -235,11 +233,10 @@ const TasksView = ({
     )
   ).length;
   const missingLinkCount = visibleTasks.filter(t => {
-    if (t.status !== 'Hoàn Thành') return false;
-    const links = (t.postLinks || []);
-    const hasFb = links.some(l => l.type === 'Facebook' && validateFacebookUrl(l.url));
-    const hasTT = links.some(l => l.type === 'TikTok' && validateTikTokUrl(l.url));
-    return !hasFb || !hasTT;
+    const platforms = (t.platform || '').split(', ').filter(Boolean);
+    if (platforms.length === 0) return false;
+    const linkTypes = (t.postLinks || []).map(l => l.type);
+    return platforms.some(p => !linkTypes.includes(p));
   }).length;
 
   const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';

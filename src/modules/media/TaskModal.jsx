@@ -521,11 +521,16 @@ const TaskModal = ({
                           const existingLinks = selectedTask.postLinks || [];
                           if (taskPlatforms.length > 0) {
                             const missing = taskPlatforms.filter(plat => !existingLinks.find(l => l.type === plat));
-                            if (missing.length > 0) {
-                              setMissingLinks(taskPlatforms.map(plat => ({
-                                platform: plat,
-                                hasLink: !!existingLinks.find(l => l.type === plat),
-                              })));
+                            const invalid = taskPlatforms.filter(plat => {
+                              const link = existingLinks.find(l => l.type === plat);
+                              return link && !validateLinkForPlatform(link.url, plat);
+                            });
+                            if (missing.length > 0 || invalid.length > 0) {
+                              setMissingLinks(taskPlatforms.map(plat => {
+                                const link = existingLinks.find(l => l.type === plat);
+                                const isValid = link ? validateLinkForPlatform(link.url, plat) : false;
+                                return { platform: plat, hasLink: !!link, isValid };
+                              }));
                               setShowLinkWarning(true);
                               return;
                             }
@@ -1224,19 +1229,31 @@ const TaskModal = ({
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
             <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-4">
               <h3 className="text-lg font-bold text-yellow-800">⚠️ Chưa thể hoàn thành!</h3>
-              <p className="text-sm text-yellow-700 mt-1">Vui lòng điền đủ link cho các platform đã chọn:</p>
+              <p className="text-sm text-yellow-700 mt-1">
+                {missingLinks.some(i => !i.hasLink) && missingLinks.some(i => i.hasLink && !i.isValid)
+                  ? 'Có platform chưa điền link và link sai định dạng:'
+                  : missingLinks.some(i => !i.hasLink)
+                    ? 'Vui lòng điền đủ link cho các platform đã chọn:'
+                    : 'Link không đúng định dạng. Vui lòng sửa lại:'}
+              </p>
             </div>
             <div className="px-6 py-4 space-y-2">
               {missingLinks.map(item => (
                 <div key={item.platform} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border ${
-                  item.hasLink ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+                  item.hasLink && item.isValid ? 'bg-green-50 border-green-200' :
+                  item.hasLink && !item.isValid ? 'bg-amber-50 border-amber-200' :
+                  'bg-red-50 border-red-200'
                 }`}>
-                  <span className="text-lg">{item.hasLink ? '✅' : '❌'}</span>
-                  <span className={`font-medium text-sm ${item.hasLink ? 'text-green-700' : 'text-red-700'}`}>
+                  <span className="text-lg">{item.hasLink && item.isValid ? '✅' : item.hasLink ? '⚠️' : '❌'}</span>
+                  <span className={`font-medium text-sm ${
+                    item.hasLink && item.isValid ? 'text-green-700' : item.hasLink ? 'text-amber-700' : 'text-red-700'
+                  }`}>
                     {item.platform}
                   </span>
-                  <span className={`ml-auto text-xs ${item.hasLink ? 'text-green-600' : 'text-red-600'}`}>
-                    {item.hasLink ? 'Đã có link' : 'Chưa có link'}
+                  <span className={`ml-auto text-xs ${
+                    item.hasLink && item.isValid ? 'text-green-600' : item.hasLink ? 'text-amber-600' : 'text-red-600'
+                  }`}>
+                    {item.hasLink && item.isValid ? 'Đã có link' : item.hasLink ? 'Link sai định dạng' : 'Chưa có link'}
                   </span>
                 </div>
               ))}
