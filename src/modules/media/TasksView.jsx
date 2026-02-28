@@ -4,6 +4,44 @@ import { getStatusColor, getTeamColor, formatMoney } from '../../utils/formatUti
 import { getVietnamDate } from '../../utils/dateUtils';
 import { validateFacebookUrl, validateTikTokUrl } from '../../services/socialStatsService';
 
+// Format số gọn: 1000→1K, 15000→15K, 1500000→1.5M
+function formatCompactNumber(num) {
+  if (num == null) return '—';
+  if (num === 0) return '0';
+  if (num >= 1000000) return (Math.round(num / 100000) / 10) + 'M';
+  if (num >= 1000) return (Math.round(num / 100) / 10) + 'K';
+  return num.toString();
+}
+
+// Tổng hợp stats từ tất cả links trong task
+function getTaskStats(task) {
+  const links = task.postLinks || [];
+  let totalViews = 0, totalLikes = 0, totalComments = 0, totalShares = 0;
+  let hasStats = false;
+  let hasViews = false;
+
+  for (const link of links) {
+    if (link.stats) {
+      hasStats = true;
+      if (link.stats.views != null) {
+        hasViews = true;
+        totalViews += link.stats.views;
+      }
+      totalLikes += link.stats.likes || 0;
+      totalComments += link.stats.comments || 0;
+      totalShares += link.stats.shares || 0;
+    }
+  }
+
+  if (!hasStats) return null;
+  return {
+    views: hasViews ? totalViews : null,
+    likes: totalLikes,
+    comments: totalComments,
+    shares: totalShares,
+  };
+}
+
 const TasksView = ({
   visibleTasks,
   setSelectedTask,
@@ -598,17 +636,39 @@ const TasksView = ({
             }}
             className="bg-white p-4 md:p-6 rounded-xl shadow hover:shadow-lg transition-all cursor-pointer"
           >
-            {/* Title row: tiêu đề bên trái, tổng tiền SP bên phải */}
+            {/* Title row: tiêu đề bên trái, giá + stats bên phải */}
             <div className="flex justify-between items-start gap-3 mb-2">
-              <h3 className="text-base md:text-xl font-bold flex-1">{task.title}</h3>
-              {(task.product_ids || []).length > 0 && (() => {
-                const total = task.product_ids.reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
-                return total > 0 ? (
-                  <span className="text-base md:text-lg font-bold text-blue-600 whitespace-nowrap shrink-0">
-                    💰 {formatMoney(total)}
-                  </span>
-                ) : null;
-              })()}
+              <h3 className="text-base md:text-xl font-bold flex-1 min-w-0">{task.title}</h3>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                {(task.product_ids || []).length > 0 && (() => {
+                  const total = task.product_ids.reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
+                  return total > 0 ? (
+                    <span className="text-base md:text-lg font-bold text-blue-600 whitespace-nowrap">
+                      💰 {formatMoney(total)}
+                    </span>
+                  ) : null;
+                })()}
+                {(() => {
+                  const stats = getTaskStats(task);
+                  if (!stats) return null;
+                  return (
+                    <div className="flex gap-1.5 md:gap-2.5 text-[11px] md:text-xs">
+                      <span className={`font-semibold ${stats.views > 0 ? 'text-gray-700' : 'text-gray-300'}`}>
+                        👁 {formatCompactNumber(stats.views)}
+                      </span>
+                      <span className={stats.likes > 0 ? 'text-gray-500' : 'text-gray-300'}>
+                        ❤️ {formatCompactNumber(stats.likes)}
+                      </span>
+                      <span className={stats.comments > 0 ? 'text-gray-500' : 'text-gray-300'}>
+                        💬 {formatCompactNumber(stats.comments)}
+                      </span>
+                      <span className={stats.shares > 0 ? 'text-gray-500' : 'text-gray-300'}>
+                        🔗 {formatCompactNumber(stats.shares)}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
             <div className="flex gap-1.5 md:gap-2 mb-2 md:mb-3 flex-wrap">
               <span className={`px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs md:text-sm font-medium ${getStatusColor(task.status)}`}>
