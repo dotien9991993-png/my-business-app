@@ -84,7 +84,7 @@ export default function SalesModule() {
       {activeTab === 'report' && canAccessTab('sales', 'report') && (
         <SalesReportView
           orders={orders} products={products} customers={customers}
-          currentUser={currentUser}
+          currentUser={currentUser} tenant={tenant}
         />
       )}
       {activeTab === 'shipping' && canAccessTab('sales', 'shipping') && (

@@ -3,9 +3,9 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { supabase } from '../../supabaseClient';
 import { formatMoney } from '../../utils/formatUtils';
 import { getVietnamDate } from '../../utils/dateUtils';
-import { orderStatuses } from '../../constants/salesConstants';
+import { orderStatuses, paymentMethods } from '../../constants/salesConstants';
 
-export default function SalesReportView({ orders, products }) {
+export default function SalesReportView({ orders, products, tenant }) {
   // Period selector
   const [period, setPeriod] = useState('month');
   const [customStart, setCustomStart] = useState('');
@@ -68,17 +68,37 @@ export default function SalesReportView({ orders, products }) {
     });
   }, [orders, dateRange]);
 
+  // ---- Load refunds ----
+  const [refundTotal, setRefundTotal] = useState(0);
+  useEffect(() => {
+    if (!tenant?.id) return;
+    const loadRefunds = async () => {
+      try {
+        const { data } = await supabase.from('order_returns')
+          .select('total_refund')
+          .eq('tenant_id', tenant.id)
+          .eq('status', 'completed')
+          .gte('created_at', dateRange.start)
+          .lte('created_at', dateRange.end);
+        setRefundTotal((data || []).reduce((s, r) => s + parseFloat(r.total_refund || 0), 0));
+      } catch (_e) { setRefundTotal(0); }
+    };
+    loadRefunds();
+  }, [tenant, dateRange.start, dateRange.end]);
+
   // ---- Stats ----
+  const isRevenueOrder = (o) => ['completed', 'delivered'].includes(o.order_status || o.status);
   const stats = useMemo(() => {
-    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
+    const completed = periodOrders.filter(isRevenueOrder);
     const cancelled = periodOrders.filter(o => (o.order_status || o.status) === 'cancelled');
-    const revenue = completed.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
+    const grossRevenue = completed.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
+    const revenue = grossRevenue - refundTotal;
     const avgOrder = completed.length > 0 ? revenue / completed.length : 0;
     const cancelRate = periodOrders.length > 0 ? (cancelled.length / periodOrders.length * 100) : 0;
     const posOrders = periodOrders.filter(o => o.order_type === 'pos');
     const onlineOrders = periodOrders.filter(o => o.order_type === 'online');
-    const posRevenue = posOrders.filter(o => (o.order_status || o.status) === 'completed').reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
-    const onlineRevenue = onlineOrders.filter(o => (o.order_status || o.status) === 'completed').reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
+    const posRevenue = posOrders.filter(isRevenueOrder).reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
+    const onlineRevenue = onlineOrders.filter(isRevenueOrder).reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
     const unpaid = periodOrders.filter(o => o.payment_status === 'unpaid' || o.payment_status === 'partial' || o.payment_status === 'partial_paid');
     const debtTotal = unpaid.reduce((s, o) => s + (parseFloat(o.total_amount || 0) - parseFloat(o.paid_amount || 0)), 0);
 
@@ -86,15 +106,15 @@ export default function SalesReportView({ orders, products }) {
       totalOrders: periodOrders.length,
       completedOrders: completed.length,
       cancelledOrders: cancelled.length,
-      revenue, avgOrder, cancelRate,
+      revenue, grossRevenue, avgOrder, cancelRate, refundTotal,
       posCount: posOrders.length, onlineCount: onlineOrders.length,
       posRevenue, onlineRevenue, debtTotal,
     };
-  }, [periodOrders]);
+  }, [periodOrders, refundTotal]);
 
   // ---- Revenue by day/month chart ----
   const revenueChartData = useMemo(() => {
-    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
+    const completed = periodOrders.filter(isRevenueOrder);
     const map = {};
     const isDaysView = period === 'month' || period === 'lastMonth' || period === 'custom';
 
@@ -109,7 +129,6 @@ export default function SalesReportView({ orders, products }) {
     return Object.entries(map)
       .map(([name, revenue]) => ({ name, revenue }))
       .sort((a, b) => {
-        // Sort by date part
         const numA = parseInt(a.name.replace(/[^\d]/g, ''));
         const numB = parseInt(b.name.replace(/[^\d]/g, ''));
         return numA - numB;
@@ -131,7 +150,7 @@ export default function SalesReportView({ orders, products }) {
 
   // ---- Top employees ----
   const topEmployees = useMemo(() => {
-    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
+    const completed = periodOrders.filter(isRevenueOrder);
     const map = {};
     completed.forEach(o => {
       const name = o.created_by || 'Không rõ';
@@ -144,7 +163,7 @@ export default function SalesReportView({ orders, products }) {
 
   // ---- Top customers ----
   const topCustomers = useMemo(() => {
-    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
+    const completed = periodOrders.filter(isRevenueOrder);
     const map = {};
     completed.forEach(o => {
       const name = o.customer_name || 'Khách lẻ';
@@ -221,7 +240,7 @@ export default function SalesReportView({ orders, products }) {
     const ps = prevStart.toISOString().split('T')[0];
     const pe = prevEnd.toISOString().split('T')[0] + 'T23:59:59';
     const prev = (orders || []).filter(o => o.created_at >= ps && o.created_at <= pe);
-    const completed = prev.filter(o => (o.order_status || o.status) === 'completed');
+    const completed = prev.filter(isRevenueOrder);
     const revenue = completed.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
     return { revenue, orders: prev.length, completed: completed.length };
   }, [orders, period]);
@@ -243,6 +262,39 @@ export default function SalesReportView({ orders, products }) {
     const a = document.createElement('a'); a.href = url; a.download = `bao-cao-ban-hang.csv`; a.click();
     URL.revokeObjectURL(url);
   };
+
+  // ---- Daily revenue table ----
+  const dailyRevenueData = useMemo(() => {
+    const completed = periodOrders.filter(isRevenueOrder);
+    const map = {};
+    completed.forEach(o => {
+      const date = o.created_at?.split('T')[0] || '';
+      if (!map[date]) map[date] = { date, orders: 0, revenue: 0 };
+      map[date].orders += 1;
+      map[date].revenue += parseFloat(o.total_amount || 0);
+    });
+    const sorted = Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
+    return sorted.map((d, idx) => {
+      const prev = sorted[idx + 1];
+      const change = prev && prev.revenue > 0 ? ((d.revenue - prev.revenue) / prev.revenue * 100) : null;
+      return { ...d, change };
+    });
+  }, [periodOrders]);
+
+  // ---- Payment method breakdown ----
+  const paymentMethodData = useMemo(() => {
+    const completed = periodOrders.filter(isRevenueOrder);
+    const map = {};
+    completed.forEach(o => {
+      const method = o.payment_method || 'cash';
+      if (!map[method]) map[method] = { method, label: paymentMethods[method]?.label || method, count: 0, revenue: 0 };
+      map[method].count += 1;
+      map[method].revenue += parseFloat(o.total_amount || 0);
+    });
+    const result = Object.values(map).sort((a, b) => b.revenue - a.revenue);
+    const total = result.reduce((s, d) => s + d.revenue, 0);
+    return result.map(d => ({ ...d, percent: total > 0 ? (d.revenue / total * 100) : 0 }));
+  }, [periodOrders]);
 
   const formatTooltipValue = (value) => formatMoney(value);
 
@@ -285,9 +337,10 @@ export default function SalesReportView({ orders, products }) {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border p-4 border-l-4 border-l-green-500">
-          <div className="text-sm text-gray-500">Doanh thu</div>
+          <div className="text-sm text-gray-500">Doanh thu {refundTotal > 0 ? '(đã trừ hoàn)' : ''}</div>
           <div className="text-xl font-bold text-green-700">{formatMoney(stats.revenue)}</div>
           <div className="text-xs text-gray-400 mt-1">{stats.completedOrders} đơn hoàn thành</div>
+          {refundTotal > 0 && <div className="text-xs text-red-500 mt-0.5">Hoàn trả: -{formatMoney(refundTotal)}</div>}
           {prevStats && prevStats.revenue > 0 && (
             <div className={`text-xs mt-1 font-medium ${stats.revenue >= prevStats.revenue ? 'text-green-600' : 'text-red-500'}`}>
               {stats.revenue >= prevStats.revenue ? '↑' : '↓'} {Math.abs(((stats.revenue - prevStats.revenue) / prevStats.revenue) * 100).toFixed(1)}% vs kỳ trước
@@ -483,6 +536,91 @@ export default function SalesReportView({ orders, products }) {
               <Bar dataKey="value" name="Doanh thu" fill="#16a34a" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Payment method breakdown */}
+      {paymentMethodData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl border p-4">
+            <h3 className="font-bold text-sm mb-3">Phương thức thanh toán</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie data={paymentMethodData} cx="50%" cy="50%" outerRadius={80} dataKey="revenue" nameKey="label" label={({ label, percent }) => `${label}: ${percent.toFixed(1)}%`}>
+                  {paymentMethodData.map((_, idx) => <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={formatTooltipValue} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="bg-white rounded-xl border p-4">
+            <h3 className="font-bold text-sm mb-3">Chi tiết PTTT</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2 text-gray-600 font-medium">PTTT</th>
+                    <th className="text-right py-2 px-2 text-gray-600 font-medium">Số đơn</th>
+                    <th className="text-right py-2 px-2 text-gray-600 font-medium">Doanh thu</th>
+                    <th className="text-right py-2 px-2 text-gray-600 font-medium">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentMethodData.map((d, idx) => (
+                    <tr key={d.method} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="py-2 px-2 font-medium">{d.label}</td>
+                      <td className="py-2 px-2 text-right">{d.count}</td>
+                      <td className="py-2 px-2 text-right text-green-700 font-medium">{formatMoney(d.revenue)}</td>
+                      <td className="py-2 px-2 text-right text-gray-500">{d.percent.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily revenue table */}
+      {dailyRevenueData.length > 0 && (
+        <div className="bg-white rounded-xl border p-4">
+          <h3 className="font-bold text-sm mb-3">Doanh thu theo ngày</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left py-2 px-3 text-gray-600 font-medium">Ngày</th>
+                  <th className="text-right py-2 px-3 text-gray-600 font-medium">Số đơn</th>
+                  <th className="text-right py-2 px-3 text-gray-600 font-medium">Doanh thu</th>
+                  <th className="text-right py-2 px-3 text-gray-600 font-medium">% thay đổi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyRevenueData.map((d, idx) => (
+                  <tr key={d.date} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="py-2 px-3">{new Date(d.date).toLocaleDateString('vi-VN')}</td>
+                    <td className="py-2 px-3 text-right">{d.orders}</td>
+                    <td className="py-2 px-3 text-right font-medium text-green-700">{formatMoney(d.revenue)}</td>
+                    <td className="py-2 px-3 text-right">
+                      {d.change !== null ? (
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${d.change >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {d.change >= 0 ? '↑' : '↓'} {Math.abs(d.change).toFixed(1)}%
+                        </span>
+                      ) : <span className="text-gray-400">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 font-semibold bg-gray-100">
+                  <td className="py-2 px-3">Tổng</td>
+                  <td className="py-2 px-3 text-right">{dailyRevenueData.reduce((s, d) => s + d.orders, 0)}</td>
+                  <td className="py-2 px-3 text-right text-green-700">{formatMoney(dailyRevenueData.reduce((s, d) => s + d.revenue, 0))}</td>
+                  <td className="py-2 px-3"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
     </div>
