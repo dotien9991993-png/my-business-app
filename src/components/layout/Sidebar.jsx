@@ -179,6 +179,14 @@ const Sidebar = ({
               )}
             </button>
             <button
+              onClick={() => { navigateTo('media', 'overview'); setShowMobileSidebar(false); }}
+              className={`w-full px-3 py-2.5 rounded-lg mt-1.5 font-medium text-left text-sm ${
+                activeTab === 'overview' ? 'bg-purple-600 text-white' : 'bg-white hover:bg-purple-100'
+              }`}
+            >
+              📊 Tổng Quan
+            </button>
+            <button
               onClick={() => { navigateTo('settings', 'company'); setShowMobileSidebar(false); }}
               className={`w-full px-3 py-2.5 rounded-lg mt-1.5 font-medium text-left text-sm ${
                 activeModule === 'settings' ? 'bg-purple-600 text-white' : 'bg-white hover:bg-purple-100'

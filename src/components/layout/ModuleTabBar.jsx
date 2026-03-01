@@ -134,7 +134,8 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'calendar', l: '📅 Lịch', tabKey: 'calendar' },
             { id: 'report', l: '📈 Báo Cáo', tabKey: 'report' },
             { id: 'performance', l: '📊 Hiệu Suất' },
-            { id: 'ekips', l: '👥 Ekip' }
+            { id: 'ekips', l: '👥 Ekip' },
+            ...(isAdmin ? [{ id: 'overview', l: '📊 Tổng Quan' }] : [])
           ] : activeModule === 'warehouse' ? [
             { id: 'inventory', l: '📦 Tồn Kho', tabKey: 'inventory' },
             { id: 'import', l: '📥 Nhập', tabKey: 'import' },
