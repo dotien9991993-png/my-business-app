@@ -25,7 +25,7 @@ const BACKUP_TABLES = [
 ];
 
 export default function BackupSettings({ tenant }) {
-  const { currentUser } = useApp();
+  const { currentUser: _currentUser } = useApp();
   const [backingUp, setBackingUp] = useState(false);
   const [backupProgress, setBackupProgress] = useState('');
   const [toast, setToast] = useState(null);

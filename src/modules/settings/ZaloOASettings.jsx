@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
   getZaloConfig, getTemplates, fillTemplate,
@@ -9,19 +9,9 @@ import {
   checkWarrantyReminders, checkBirthdayGreetings, checkWinBackCustomers
 } from '../../utils/zaloAutomation';
 
-const formatMoney = (amount) => {
-  const num = parseFloat(amount) || 0;
-  return new Intl.NumberFormat('vi-VN').format(num) + 'đ';
-};
-
 const formatDateTimeVN = (dateStr) => {
   if (!dateStr) return '';
   return new Date(dateStr).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-};
-
-const formatDateVN = (dateStr) => {
-  if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 };
 
 // ================================================================
@@ -663,7 +653,7 @@ function HistoryView({ tenant, setToast }) {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const pendingCount = messages.filter(m => m.status === 'pending').length;
+  const _pendingCount = messages.filter(m => m.status === 'pending').length;
 
   return (
     <div className="space-y-4">
@@ -734,7 +724,7 @@ function HistoryView({ tenant, setToast }) {
               <tbody className="divide-y divide-gray-50">
                 {messages.map(msg => {
                   const typeInfo = ZALO_MSG_TYPES[msg.type] || { icon: '📝', label: msg.type };
-                  const statusInfo = ZALO_MSG_STATUSES[msg.status] || { icon: '❓', label: msg.status };
+                  const _statusInfo = ZALO_MSG_STATUSES[msg.status] || { icon: '❓', label: msg.status };
                   return (
                     <tr key={msg.id} className="hover:bg-gray-50/50">
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">

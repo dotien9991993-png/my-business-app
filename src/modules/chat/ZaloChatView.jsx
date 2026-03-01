@@ -96,7 +96,7 @@ export default function ZaloChatView() {
       if (currentActive?.zalo_user_id) {
         try {
           await pullNewMessages(tenant.id, currentActive.zalo_user_id, currentActive.id);
-        } catch (err) {
+        } catch (_err) {
           // Bỏ qua lỗi poll
         }
       }

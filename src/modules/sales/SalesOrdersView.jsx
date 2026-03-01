@@ -12,10 +12,10 @@ import HaravanImportModal from './HaravanImportModal';
 import { logActivity } from '../../lib/activityLog';
 import { sendOrderConfirmation, sendShippingNotification } from '../../utils/zaloAutomation';
 
-export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
+export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob: _createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
   const { pendingOpenRecord, setPendingOpenRecord, allUsers } = useApp();
   const permLevel = getPermissionLevel('sales');
-  const effectiveShippingProviders = dynamicShippingProviders || shippingProviders;
+  const _effectiveShippingProviders = dynamicShippingProviders || shippingProviders;
   const vtpConfig = (shippingConfigs || []).find(c => c.provider === 'viettel_post' && c.is_active && c.api_token);
   const vtpToken = vtpConfig?.api_token;
   // ---- View state ----
@@ -230,12 +230,12 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [shippingAddress, setShippingAddress] = useState('');
   const [shippingProvider, setShippingProvider] = useState('');
   const [shippingFee, setShippingFee] = useState('');
-  const [shippingPayer, setShippingPayer] = useState('customer');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [discountAmount, setDiscountAmount] = useState('');
-  const [discountNote, setDiscountNote] = useState('');
-  const [note, setNote] = useState('');
-  const [needsInstallation, setNeedsInstallation] = useState(false);
+  const [shippingPayer, _setShippingPayer] = useState('customer');
+  const [_paymentMethod, _setPaymentMethod] = useState('cash');
+  const [discountAmount, _setDiscountAmount] = useState('');
+  const [_discountNote, _setDiscountNote] = useState('');
+  const [_note, _setNote] = useState('');
+  const [_needsInstallation, _setNeedsInstallation] = useState(false);
   const [cartItems, setCartItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
@@ -245,8 +245,8 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [showScanner, setShowScanner] = useState(false);
 
   // Product grid state
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [productSortBy, setProductSortBy] = useState('name');
+  const [categoryFilter, _setCategoryFilter] = useState('');
+  const [productSortBy, _setProductSortBy] = useState('name');
 
   // Multi-payment state
   const [paymentSplits, setPaymentSplits] = useState([{ method: 'cash', amount: '' }]);
@@ -254,17 +254,17 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   // VTP-specific state
   const [shippingAddressData, setShippingAddressData] = useState(null);
   const [shippingAddressDetail, setShippingAddressDetail] = useState('');
-  const [calculatingFee, setCalculatingFee] = useState(false);
+  const [_calculatingFee, setCalculatingFee] = useState(false);
   const [sendingVtp, setSendingVtp] = useState(false);
   const [_vtpTracking, setVtpTracking] = useState(null);
 
   // New form fields
-  const [orderSource, setOrderSource] = useState('manual');
+  const [_orderSource, _setOrderSource] = useState('manual');
   const [internalNote, setInternalNote] = useState('');
-  const [totalWeight, setTotalWeight] = useState('');
-  const [shippingService, setShippingService] = useState('VCN');
+  const [totalWeight, _setTotalWeight] = useState('');
+  const [shippingService, _setShippingService] = useState('VCN');
 
-  const isVTP = shippingProvider === 'Viettel Post' && !!vtpToken;
+  const _isVTP = shippingProvider === 'Viettel Post' && !!vtpToken;
 
   // ---- Helpers: unique number generators ----
   const genOrderNumber = async () => {
@@ -295,7 +295,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   };
 
   // ---- VTP: Calculate shipping fee ----
-  const handleCalcVtpFee = async () => {
+  const _handleCalcVtpFee = async () => {
     if (!vtpToken || !shippingAddressData?.district_id) return alert('Vui lòng chọn đầy đủ tỉnh/quận/phường');
     const sender = getSettingValue ? getSettingValue('shipping', 'vtp_sender_address', null) : null;
     if (!sender?.province_id) return alert('Chưa cấu hình địa chỉ lấy hàng VTP trong Cài đặt > Vận chuyển');
@@ -422,7 +422,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const totalAmount = subtotal - discount + shipForShop;
 
   // ---- Product categories ----
-  const productCategories = useMemo(() => {
+  const _productCategories = useMemo(() => {
     const cats = new Set();
     (products || []).forEach(p => { if (p.category) cats.add(p.category); });
     return Array.from(cats).sort();
@@ -1211,18 +1211,18 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
   }, [showCreateModal, products, tenant]);
 
   // ---- Multi-payment helpers ----
-  const addPaymentSplit = () => {
+  const _addPaymentSplit = () => {
     setPaymentSplits(prev => [...prev, { method: 'transfer', amount: '' }]);
   };
-  const removePaymentSplit = (idx) => {
+  const _removePaymentSplit = (idx) => {
     if (paymentSplits.length <= 1) return;
     setPaymentSplits(prev => prev.filter((_, i) => i !== idx));
   };
-  const updatePaymentSplit = (idx, field, value) => {
+  const _updatePaymentSplit = (idx, field, value) => {
     setPaymentSplits(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   };
   const totalPaid = paymentSplits.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-  const paymentRemaining = totalAmount - totalPaid;
+  const _paymentRemaining = totalAmount - totalPaid;
 
   // ---- Export CSV (server-side fetch all matching) ----
   const exportOrdersCSV = async () => {

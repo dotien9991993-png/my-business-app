@@ -98,4 +98,8 @@ function vtpDevProxy() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), vtpDevProxy()],
+  esbuild: {
+    drop: ['debugger'],
+    pure: ['console.log', 'console.debug'],
+  },
 })

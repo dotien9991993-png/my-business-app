@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 
-export default function SocialPagesSettings({ tenant, currentUser }) {
+export default function SocialPagesSettings({ tenant, currentUser: _currentUser }) {
   const [configs, setConfigs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

@@ -76,10 +76,17 @@ export default async function handler(req, res) {
 
   try {
     // === Bước 2: Đổi code → short-lived user token ===
-    const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${APP_ID}&client_secret=${APP_SECRET}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&code=${encodeURIComponent(code)}`;
-    const tokenResp = await fetch(tokenUrl);
+    const tokenResp = await fetch('https://graph.facebook.com/v21.0/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: APP_ID,
+        client_secret: APP_SECRET,
+        redirect_uri: REDIRECT_URI,
+        code,
+      }),
+    });
     const tokenData = await safeFbJson(tokenResp, 'Step 2 - code exchange');
-    console.log('[fb-callback] Step 2 - code exchange:', { hasToken: !!tokenData.access_token, error: tokenData.error });
 
     if (tokenData.error || !tokenData.access_token) {
       const errMsg = tokenData.error?.message || 'Không lấy được token từ Facebook';
@@ -92,10 +99,17 @@ export default async function handler(req, res) {
     const shortLivedToken = tokenData.access_token;
 
     // === Bước 3: Đổi short-lived → long-lived user token (~60 ngày) ===
-    const longLivedUrl = `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${encodeURIComponent(shortLivedToken)}`;
-    const longLivedResp = await fetch(longLivedUrl);
+    const longLivedResp = await fetch('https://graph.facebook.com/v21.0/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'fb_exchange_token',
+        client_id: APP_ID,
+        client_secret: APP_SECRET,
+        fb_exchange_token: shortLivedToken,
+      }),
+    });
     const longLivedData = await safeFbJson(longLivedResp, 'Step 3 - long-lived token');
-    console.log('[fb-callback] Step 3 - long-lived token:', { hasToken: !!longLivedData.access_token, expiresIn: longLivedData.expires_in });
 
     if (longLivedData.error || !longLivedData.access_token) {
       const errMsg = longLivedData.error?.message || 'Không đổi được long-lived token';
@@ -108,10 +122,11 @@ export default async function handler(req, res) {
     const longLivedToken = longLivedData.access_token;
 
     // === Bước 4: Lấy tất cả Pages + permanent page tokens ===
-    const pagesUrl = `https://graph.facebook.com/v21.0/me/accounts?access_token=${encodeURIComponent(longLivedToken)}&fields=id,name,access_token,username,link&limit=100`;
-    const pagesResp = await fetch(pagesUrl);
+    const pagesResp = await fetch(
+      'https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,username,link&limit=100',
+      { headers: { 'Authorization': `Bearer ${longLivedToken}` } }
+    );
     const pagesData = await safeFbJson(pagesResp, 'Step 4 - pages');
-    console.log('[fb-callback] Step 4 - pages:', { count: pagesData.data?.length, error: pagesData.error });
 
     if (pagesData.error) {
       const errMsg = pagesData.error.message || 'Không lấy được danh sách Pages';
@@ -177,7 +192,7 @@ export default async function handler(req, res) {
       upsertCount++;
     }
 
-    console.log(`[fb-callback] Upserted ${upsertCount} pages for tenant ${tenantId}`);
+    console.log(`[fb-callback] Upserted ${upsertCount} pages`);
 
     // === Redirect về app với thông báo thành công ===
     return res.redirect(

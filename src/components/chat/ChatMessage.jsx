@@ -122,9 +122,9 @@ const ReadReceipt = ({ readBy, isOwn, isDirectChat }) => {
 };
 
 export default function ChatMessage({
-  message, isOwn, isGroup, onReply, replyMessage, onContextMenu, onNavigate,
+  message, isOwn, isGroup, onReply: _onReply, replyMessage, onContextMenu, onNavigate,
   reactions, currentUserId, onToggleReaction, onShowReactionPicker,
-  readBy, isDirectChat, roomMembers
+  readBy, isDirectChat, roomMembers: _roomMembers
 }) {
   const [previewUrl, setPreviewUrl] = useState(null);
   const longPressTimer = useRef(null);

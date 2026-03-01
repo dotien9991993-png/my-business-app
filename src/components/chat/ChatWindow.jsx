@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
-import { uploadImage, uploadImages } from '../../utils/cloudinaryUpload';
+import { uploadImage } from '../../utils/cloudinaryUpload';
 import ChatMessage from './ChatMessage';
 import AttachmentPicker from './AttachmentPicker';
 import MessageContextMenu from './MessageContextMenu';

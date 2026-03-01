@@ -5,7 +5,7 @@ import { getNowISOVN } from '../../utils/dateUtils';
 import { orderStatuses } from '../../constants/salesConstants';
 import * as vtpApi from '../../utils/viettelpostApi';
 
-export default function SalesShippingView({ tenant, currentUser, loadSalesData, shippingConfigs, getSettingValue, hasPermission }) {
+export default function SalesShippingView({ tenant, currentUser: _currentUser, loadSalesData, shippingConfigs, getSettingValue, hasPermission }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');

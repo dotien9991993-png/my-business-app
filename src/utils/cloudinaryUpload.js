@@ -1,5 +1,5 @@
-const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhvn5cueh';
-const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'hoangnam_unsigned';
+const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 // Nén ảnh trước khi upload
 const compressImage = (file, maxWidth = 1920, quality = 0.7) => {
@@ -37,11 +37,7 @@ const compressImage = (file, maxWidth = 1920, quality = 0.7) => {
 
 // Upload 1 ảnh lên Cloudinary
 export const uploadImage = async (file, folder = 'chat') => {
-  console.log('[Cloudinary] Uploading:', file.name, 'size:', file.size, 'type:', file.type);
-  console.log('[Cloudinary] Config - cloud:', CLOUD_NAME, 'preset:', UPLOAD_PRESET);
-
   const compressed = await compressImage(file);
-  console.log('[Cloudinary] After compress:', compressed.name, 'size:', compressed.size);
 
   const formData = new FormData();
   formData.append('file', compressed);
@@ -49,11 +45,9 @@ export const uploadImage = async (file, folder = 'chat') => {
   formData.append('folder', `hoangnam/${folder}`);
 
   const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
-  console.log('[Cloudinary] POST:', url);
 
   const response = await fetch(url, { method: 'POST', body: formData });
   const data = await response.json();
-  console.log('[Cloudinary] Response status:', response.status, 'data:', data);
 
   if (data.error) {
     const errMsg = data.error.message || JSON.stringify(data.error);

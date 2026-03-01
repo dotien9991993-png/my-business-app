@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import { formatMoney } from '../../utils/formatUtils';
 import { isAdmin } from '../../utils/permissionUtils';
-import { getTodayVN, formatDateVN } from '../../utils/dateUtils';
+import { getTodayVN } from '../../utils/dateUtils';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 import {

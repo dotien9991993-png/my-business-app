@@ -62,6 +62,8 @@ const TaskModal = ({
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, errors: [] });
   const [debugResult, setDebugResult] = useState(null);
   const [debugLoading, setDebugLoading] = useState(false);
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [headerExpanded, setHeaderExpanded] = useState(false);
 
   useEffect(() => {
     if (tenant?.id) {
@@ -504,8 +506,6 @@ const TaskModal = ({
 
   const taskCrew = selectedTask.crew || [];
   const taskActors = selectedTask.actors || [];
-  const [titleExpanded, setTitleExpanded] = useState(false);
-  const [headerExpanded, setHeaderExpanded] = useState(false);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 md:p-4">

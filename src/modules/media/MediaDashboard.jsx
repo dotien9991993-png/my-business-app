@@ -51,7 +51,7 @@ const CATEGORY_LABELS = {
   video_review: '⭐ Review',
 };
 
-const MediaDashboard = ({ tasks, allUsers, products, setSelectedTask, setShowModal }) => {
+const MediaDashboard = ({ tasks, allUsers: _allUsers, products, setSelectedTask, setShowModal }) => {
   const [timeFilter, setTimeFilter] = useState('30d');
   const [showAllProducts, setShowAllProducts] = useState(false);
 

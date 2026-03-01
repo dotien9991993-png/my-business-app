@@ -95,9 +95,6 @@ export default async function handler(req, res) {
       }
 
       const vtpUrl = BASE_URL + '/order/createOrder';
-      console.log('[VTP createOrder] URL:', vtpUrl);
-      console.log('[VTP createOrder] Token length:', token?.length);
-      console.log('[VTP createOrder] Body:', JSON.stringify(orderBody).substring(0, 2000));
 
       try {
         const vtpResp = await fetch(vtpUrl, {
@@ -107,8 +104,6 @@ export default async function handler(req, res) {
         });
 
         const rawText = await vtpResp.text();
-        console.log('[VTP createOrder] Status:', vtpResp.status);
-        console.log('[VTP createOrder] Response:', rawText.substring(0, 2000));
 
         if (!rawText || rawText.trim() === '') {
           return res.status(200).json({
