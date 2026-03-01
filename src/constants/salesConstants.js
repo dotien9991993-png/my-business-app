@@ -37,6 +37,7 @@ export const orderTypes = {
 export const paymentMethods = {
   cash: { label: 'Tiền mặt', icon: '💵' },
   transfer: { label: 'Chuyển khoản', icon: '🏦' },
+  cod: { label: 'COD (nhận hàng trả tiền)', icon: '🚚' },
   debt: { label: 'Công nợ', icon: '📋' },
 };
 

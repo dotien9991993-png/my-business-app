@@ -231,7 +231,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [shippingProvider, setShippingProvider] = useState('');
   const [shippingFee, setShippingFee] = useState('');
   const [shippingPayer, _setShippingPayer] = useState('customer');
-  const [_paymentMethod, _setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('cod');
   const [discountAmount, _setDiscountAmount] = useState('');
   const [_discountNote, _setDiscountNote] = useState('');
   const [_note, _setNote] = useState('');
@@ -290,6 +290,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     setShippingAddress(''); setShippingAddressData(null); setShippingAddressDetail('');
     setCartItems([]); setProductSearch(''); setCustomerSearch('');
     setShowCustomerDropdown(false); setInternalNote('');
+    setPaymentMethod('cod');
     const defaultWh = (warehouses || []).find(w => w.is_default) || (warehouses || [])[0];
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
   };
@@ -545,7 +546,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         shipping_metadata: finalShippingMetadata,
         discount_amount: 0, discount_note: '',
         subtotal, total_amount: totalAmount,
-        payment_method: 'cod', payment_status: 'unpaid',
+        payment_method: paymentMethod, payment_status: 'unpaid',
         paid_amount: 0,
         payment_splits: [],
         note: '', needs_installation: false,
@@ -878,6 +879,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
       discount_amount: selectedOrder.discount_amount || 0,
       discount_note: selectedOrder.discount_note || '',
       note: selectedOrder.note || '',
+      payment_method: selectedOrder.payment_method || 'cod',
     });
     setEditMode(true);
   };
@@ -894,6 +896,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         customer_name: editData.customer_name, customer_phone: editData.customer_phone,
         shipping_address: editData.shipping_address, discount_amount: newDiscount,
         discount_note: editData.discount_note, note: editData.note,
+        payment_method: editData.payment_method || selectedOrder.payment_method,
         total_amount: newTotal, updated_at: getNowISOVN()
       };
       const { error } = await supabase.from('orders').update(updates).eq('id', selectedOrder.id);
@@ -1640,7 +1643,20 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 )}
               </div>
 
-              {/* D. Ghi chú */}
+              {/* D. Thanh toán */}
+              <div className="bg-blue-50 rounded-lg p-3 space-y-2">
+                <label className="text-sm font-medium text-blue-700">Phương thức thanh toán</label>
+                <div className="flex gap-2 flex-wrap">
+                  {Object.entries(paymentMethods).map(([key, pm]) => (
+                    <button key={key} type="button" onClick={() => setPaymentMethod(key)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border-2 transition ${paymentMethod === key ? 'border-blue-500 bg-blue-100 text-blue-700' : 'border-gray-200 bg-white text-gray-600'}`}>
+                      {pm.icon} {pm.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* E. Ghi chú */}
               <textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Ghi chú nội bộ..."
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
 
@@ -1735,6 +1751,15 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                     <input value={editData.discount_note} onChange={e => setEditData(d => ({ ...d, discount_note: e.target.value }))} placeholder="Lý do CK" className="border rounded-lg px-3 py-1.5 text-sm" />
                   </div>
                   <textarea value={editData.note} onChange={e => setEditData(d => ({ ...d, note: e.target.value }))} rows={2} placeholder="Ghi chú..." className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                  <div>
+                    <label className="text-xs text-blue-600 mb-1 block">Phương thức thanh toán</label>
+                    <select value={editData.payment_method} onChange={e => setEditData(d => ({ ...d, payment_method: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-1.5 text-sm">
+                      {Object.entries(paymentMethods).map(([key, pm]) => (
+                        <option key={key} value={key}>{pm.icon} {pm.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => setEditMode(false)} className="flex-1 px-3 py-1.5 bg-gray-200 rounded-lg text-xs font-medium">Hủy</button>
                     <button onClick={handleSaveEdit} disabled={submitting} className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white ${submitting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
