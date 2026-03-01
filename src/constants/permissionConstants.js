@@ -53,6 +53,7 @@ export const moduleTabs = {
     { id: 'shipping', name: '🚚 Vận chuyển', desc: 'Quản lý vận chuyển' },
     { id: 'cod', name: '💰 Đối soát COD', desc: 'Đối soát tiền thu hộ' },
     { id: 'reconciliation', name: '📊 Đối soát', desc: 'Đối soát đơn hàng' },
+    { id: 'coupons', name: '🎟️ Mã giảm giá', desc: 'Quản lý mã giảm giá / khuyến mãi' },
     { id: 'report', name: '📈 Báo cáo', desc: 'Báo cáo bán hàng' }
   ],
   warranty: [

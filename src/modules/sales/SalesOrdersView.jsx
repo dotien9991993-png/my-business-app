@@ -296,6 +296,12 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [totalWeight, _setTotalWeight] = useState('');
   const [shippingService, _setShippingService] = useState('VCN');
 
+  // Coupon state
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponError, setCouponError] = useState('');
+
   const _isVTP = shippingProvider === 'Viettel Post' && !!vtpToken;
 
   // ---- Helpers: unique number generators ----
@@ -323,8 +329,69 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     setCartItems([]); setProductSearch(''); setCustomerSearch('');
     setShowCustomerDropdown(false); setInternalNote('');
     setPaymentMethod('cod'); setShippingProvider(''); setShippingFee(''); setShippingPayer('customer'); setSelectedAddressId('');
+    setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setCouponError('');
     const defaultWh = (warehouses || []).find(w => w.is_default) || (warehouses || [])[0];
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
+  };
+
+  // ---- Coupon validation ----
+  const validateAndApplyCoupon = async () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) { setCouponError('Vui lòng nhập mã giảm giá'); return; }
+    setCouponError('');
+    try {
+      const { data: coupon, error } = await supabase.from('coupons').select('*')
+        .eq('tenant_id', tenant.id).eq('code', code).eq('is_active', true).maybeSingle();
+      if (error) throw error;
+      if (!coupon) { setCouponError('Mã không tồn tại hoặc đã tắt'); return; }
+
+      // Check dates
+      const today = getTodayVN();
+      if (coupon.start_date && today < coupon.start_date) { setCouponError('Mã chưa có hiệu lực'); return; }
+      if (coupon.end_date && today > coupon.end_date) { setCouponError('Mã đã hết hạn'); return; }
+
+      // Check usage limit
+      if (coupon.usage_limit > 0 && coupon.usage_count >= coupon.usage_limit) { setCouponError('Mã đã hết lượt sử dụng'); return; }
+
+      // Check per-customer limit
+      if (coupon.per_customer_limit > 0 && customerPhone.trim()) {
+        const { count } = await supabase.from('coupon_usage').select('id', { count: 'exact', head: true })
+          .eq('coupon_id', coupon.id).eq('customer_phone', customerPhone.trim());
+        if ((count || 0) >= coupon.per_customer_limit) { setCouponError('Bạn đã dùng hết lượt cho mã này'); return; }
+      }
+
+      // Check min order value
+      if (coupon.min_order_value > 0 && subtotal < coupon.min_order_value) {
+        setCouponError(`Đơn tối thiểu ${formatMoney(coupon.min_order_value)}`); return;
+      }
+
+      // Check applicable products
+      if (coupon.applicable_products?.length > 0) {
+        const cartProductIds = cartItems.map(i => i.product_id);
+        const hasApplicable = cartProductIds.some(pid => coupon.applicable_products.includes(pid));
+        if (!hasApplicable) { setCouponError('Mã không áp dụng cho sản phẩm trong giỏ'); return; }
+      }
+
+      // Calculate discount
+      let disc = 0;
+      if (coupon.type === 'percentage') {
+        disc = subtotal * (coupon.value / 100);
+        if (coupon.max_discount > 0) disc = Math.min(disc, coupon.max_discount);
+      } else if (coupon.type === 'fixed') {
+        disc = coupon.value;
+      } else if (coupon.type === 'free_shipping') {
+        disc = shipFee; // discount equals shipping fee
+      }
+      disc = Math.min(disc, subtotal); // don't exceed subtotal
+
+      setAppliedCoupon(coupon);
+      setCouponDiscount(disc);
+      setCouponError('');
+    } catch (err) { console.error(err); setCouponError('Lỗi kiểm tra mã'); }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null); setCouponDiscount(0); setCouponCode(''); setCouponError('');
   };
 
   // ---- VTP: Calculate shipping fee ----
@@ -471,7 +538,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const discount = parseFloat(discountAmount || 0);
   const shipFee = parseFloat(shippingFee || 0);
   const shipForCustomer = shippingPayer === 'customer' ? shipFee : 0;
-  const totalAmount = subtotal - discount + shipForCustomer;
+  const totalAmount = subtotal - discount - couponDiscount + shipForCustomer;
 
   // ---- Product categories ----
   const _productCategories = useMemo(() => {
@@ -597,7 +664,8 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         shipping_provider: shippingProvider || null,
         shipping_fee: shipFee, shipping_payer: shippingPayer,
         shipping_metadata: finalShippingMetadata,
-        discount_amount: 0, discount_note: '',
+        discount_amount: couponDiscount, discount_note: appliedCoupon ? `Mã: ${appliedCoupon.code}` : '',
+        coupon_id: appliedCoupon?.id || null, coupon_code: appliedCoupon?.code || null,
         subtotal, total_amount: totalAmount,
         payment_method: paymentMethod, payment_status: 'unpaid',
         paid_amount: 0,
@@ -658,6 +726,15 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
             if (stockErr) throw new Error(`Không đủ tồn kho: ${item.product_name}`);
           }
         }
+      }
+
+      // Increment coupon usage
+      if (appliedCoupon) {
+        await supabase.rpc('increment_coupon_usage', { p_coupon_id: appliedCoupon.id });
+        await supabase.from('coupon_usage').insert([{
+          tenant_id: tenant.id, coupon_id: appliedCoupon.id, order_id: order.id,
+          customer_phone: customerPhone.trim() || null, discount_amount: couponDiscount
+        }]);
       }
 
       showToast('Tạo đơn thành công! ' + orderNumber);
@@ -794,6 +871,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         await supabase.from('warranty_cards').update({
           status: 'voided', void_reason: 'Đơn hàng đã hủy', updated_at: getNowISOVN()
         }).eq('order_id', orderId);
+        // Decrement coupon usage if order used a coupon
+        if (order.coupon_id) {
+          await supabase.rpc('decrement_coupon_usage', { p_coupon_id: order.coupon_id });
+        }
       }
 
       // Returned → restore stock to order's warehouse + create refund receipt + restore serials
@@ -2038,16 +2119,43 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 </div>
               </div>
 
-              {/* E. Ghi chú */}
+              {/* E. Mã giảm giá */}
+              <div>
+                <label className="text-sm font-medium text-blue-700">Mã giảm giá</label>
+                {appliedCoupon ? (
+                  <div className="flex items-center gap-2 mt-1 p-2 bg-green-50 border border-green-200 rounded-lg">
+                    <span className="text-green-700 font-medium text-sm">
+                      {appliedCoupon.code} — Giảm {formatMoney(couponDiscount)}
+                    </span>
+                    <button type="button" onClick={removeCoupon} className="ml-auto text-red-500 text-xs hover:text-red-700">Bỏ</button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 mt-1">
+                    <input value={couponCode} onChange={e => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
+                      placeholder="Nhập mã..." className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+                    <button type="button" onClick={validateAndApplyCoupon}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Áp dụng</button>
+                  </div>
+                )}
+                {couponError && <p className="text-red-500 text-xs mt-1">{couponError}</p>}
+              </div>
+
+              {/* F. Ghi chú */}
               <textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Ghi chú nội bộ..."
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
 
-              {/* F. Footer: Tổng SP + Tổng tiền + Tạo đơn */}
+              {/* G. Footer: Tổng SP + Tổng tiền + Tạo đơn */}
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
                 <div className="flex justify-between text-sm text-gray-600">
                   <span>{cartItems.reduce((s, i) => s + parseInt(i.quantity || 0), 0)} sản phẩm</span>
                   <span>{formatMoney(subtotal)}</span>
                 </div>
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-sm text-red-600">
+                    <span>Mã giảm giá ({appliedCoupon?.code})</span>
+                    <span>-{formatMoney(couponDiscount)}</span>
+                  </div>
+                )}
                 {shipFee > 0 && (
                   <div className="flex justify-between text-sm text-purple-600">
                     <span>Phí vận chuyển ({shippingPayers[shippingPayer]})</span>
@@ -2280,7 +2388,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               {/* Totals */}
               <div className="bg-green-50 rounded-lg p-3 space-y-1 text-sm">
                 <div className="flex justify-between"><span>Tạm tính</span><span>{formatMoney(selectedOrder.subtotal)}</span></div>
-                {selectedOrder.discount_amount > 0 && <div className="flex justify-between text-red-600"><span>Chiết khấu</span><span>-{formatMoney(selectedOrder.discount_amount)}</span></div>}
+                {selectedOrder.discount_amount > 0 && <div className="flex justify-between text-red-600"><span>{selectedOrder.coupon_code ? `Mã: ${selectedOrder.coupon_code}` : 'Chiết khấu'}</span><span>-{formatMoney(selectedOrder.discount_amount)}</span></div>}
                 {selectedOrder.shipping_fee > 0 && selectedOrder.shipping_payer === 'shop' && <div className="flex justify-between"><span>Phí ship (shop)</span><span>{formatMoney(selectedOrder.shipping_fee)}</span></div>}
                 <div className="flex justify-between text-lg font-bold text-green-700 pt-1 border-t"><span>TỔNG</span><span>{formatMoney(selectedOrder.total_amount)}</span></div>
                 <div className="text-xs pt-1 space-y-0.5">
