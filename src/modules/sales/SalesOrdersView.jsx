@@ -862,6 +862,14 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
             status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
           }]).select().single();
           if (receipt) updates.receipt_id = receipt.id;
+          // Auto cash_book entry for completed order remaining
+          await supabase.from('cash_book_entries').insert([{
+            tenant_id: tenant.id, type: 'receipt', category: 'sales',
+            amount: remaining, description: `Bán hàng - ${order.order_number}` + (order.customer_name ? ` - ${order.customer_name}` : ''),
+            reference_type: 'order', reference_id: orderId,
+            payment_method: order.payment_method || 'cash',
+            created_by: currentUser.name, created_at: getNowISOVN()
+          }]).then(() => {}).catch(() => {});
         }
         updates.payment_status = 'paid';
         updates.paid_amount = order.total_amount;
@@ -941,6 +949,14 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
             category: 'Khác', receipt_date: getTodayVN(), note: `Hoàn tiền đơn hàng: ${order.order_number}`,
             status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
           }]);
+          // Auto cash_book entry for refund
+          await supabase.from('cash_book_entries').insert([{
+            tenant_id: tenant.id, type: 'payment', category: 'refund',
+            amount: refundAmount, description: `Hoàn tiền trả hàng - ${order.order_number}`,
+            reference_type: 'order', reference_id: orderId,
+            payment_method: order.payment_method || 'cash',
+            created_by: currentUser.name, created_at: getNowISOVN()
+          }]).then(() => {}).catch(() => {});
         }
         // Restore serials + void warranty
         await supabase.from('product_serials').update({
@@ -1180,6 +1196,14 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
         note: paymentNoteInput || `Thanh toán đơn hàng: ${selectedOrder.order_number}`,
         status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
       }]);
+      // Auto cash_book entry
+      await supabase.from('cash_book_entries').insert([{
+        tenant_id: tenant.id, type: 'receipt', category: 'sales',
+        amount, description: `Thanh toán (${ptttLabel}) - ${selectedOrder.order_number}${selectedOrder.customer_name ? ' - ' + selectedOrder.customer_name : ''}`,
+        reference_type: 'order', reference_id: selectedOrder.id,
+        payment_method: paymentMethodInput || 'cash',
+        created_by: currentUser.name, created_at: getNowISOVN()
+      }]).then(() => {}).catch(() => {});
       showToast(`Đã ghi nhận thanh toán ${formatMoney(amount)}!`);
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'payment', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Thanh toán ${formatMoney(amount)} (${ptttLabel}) cho đơn ${selectedOrder.order_number} (${newStatus === 'paid' ? 'Đã thanh toán đủ' : 'Thanh toán 1 phần'})` });
       setSelectedOrder(prev => ({ ...prev, paid_amount: newPaid, payment_status: newStatus }));
@@ -1268,6 +1292,14 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
           note: `Trả hàng: ${returnCode}, Lý do: ${returnReason || 'Không ghi'}`,
           status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
         }]);
+        // Auto cash_book entry for partial return refund
+        await supabase.from('cash_book_entries').insert([{
+          tenant_id: tenant.id, type: 'payment', category: 'refund',
+          amount: totalRefund, description: `Hoàn tiền trả hàng - ${selectedOrder.order_number} - ${returnCode}`,
+          reference_type: 'return', reference_id: returnRecord.id,
+          payment_method: refundMethod || 'cash',
+          created_by: currentUser.name, created_at: getNowISOVN()
+        }]).then(() => {}).catch(() => {});
       }
 
       showToast(`Trả hàng thành công! ${returnCode} - Hoàn ${formatMoney(totalRefund)}`);

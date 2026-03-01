@@ -54,6 +54,7 @@ export const moduleTabs = {
     { id: 'cod', name: '💰 Đối soát COD', desc: 'Đối soát tiền thu hộ' },
     { id: 'reconciliation', name: '📊 Đối soát', desc: 'Đối soát đơn hàng' },
     { id: 'coupons', name: '🎟️ Mã giảm giá', desc: 'Quản lý mã giảm giá / khuyến mãi' },
+    { id: 'cashbook', name: '📒 Sổ quỹ', desc: 'Sổ quỹ thu chi bán hàng' },
     { id: 'report', name: '📈 Báo cáo', desc: 'Báo cáo bán hàng' }
   ],
   warranty: [

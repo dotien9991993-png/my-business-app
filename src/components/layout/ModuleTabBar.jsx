@@ -151,6 +151,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'reconciliation', l: '📊 Đối Soát' },
             { id: 'customers', l: '👥 Khách Hàng' },
             { id: 'products', l: '📱 Sản Phẩm' },
+            { id: 'cashbook', l: '📒 Sổ Quỹ' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
             { id: 'today', l: '📅 Hôm Nay' },
@@ -247,6 +248,7 @@ const ModuleTabBar = ({ currentUser, activeModule, activeTab, navigateTo, canAcc
             { id: 'reconciliation', l: '📊 Đối Soát' },
             { id: 'customers', l: '👥 Khách Hàng' },
             { id: 'products', l: '📱 Sản Phẩm' },
+            { id: 'cashbook', l: '📒 Sổ Quỹ' },
             { id: 'report', l: '📈 Báo Cáo' }
           ] : activeModule === 'technical' ? [
             { id: 'today', l: '📅 Hôm Nay' },

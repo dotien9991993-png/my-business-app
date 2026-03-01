@@ -11,6 +11,7 @@ import SalesReconciliationView from './SalesReconciliationView';
 import SalesShippingView from './SalesShippingView';
 import SalesCodView from './SalesCodView';
 import SalesCouponsView from './SalesCouponsView';
+import SalesCashBookView from './SalesCashBookView';
 
 const NoAccess = () => (
   <div className="p-6">
@@ -106,6 +107,13 @@ export default function SalesModule() {
         <SalesCouponsView
           tenant={tenant} currentUser={currentUser}
           hasPermission={hasPermission} getPermissionLevel={getPermissionLevel}
+        />
+      )}
+      {activeTab === 'cashbook' && canAccessTab('sales', 'cashbook') && (
+        <SalesCashBookView
+          tenant={tenant} currentUser={currentUser}
+          hasPermission={hasPermission}
+          getPermissionLevel={getPermissionLevel}
         />
       )}
       {activeTab === 'reconciliation' && (

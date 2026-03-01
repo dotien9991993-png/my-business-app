@@ -42,7 +42,12 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
   const [editMode, setEditMode] = useState(false);
   const [filterType, setFilterType] = useState('all');
   const [viewMode, setViewMode] = useState('list'); // list | churn | birthday
-  const [detailTab, setDetailTab] = useState('orders'); // orders | interactions | warranty | addresses
+  const [detailTab, setDetailTab] = useState('orders'); // orders | interactions | warranty | addresses | debt
+  const [debtPaymentOrderId, setDebtPaymentOrderId] = useState(null);
+  const [debtPaymentAmount, setDebtPaymentAmount] = useState('');
+  const [debtPaymentMethod, setDebtPaymentMethod] = useState('cash');
+  const [debtPaymentNote, setDebtPaymentNote] = useState('');
+  const [debtPaymentHistory, setDebtPaymentHistory] = useState([]);
   // Address form state
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [editingAddress, setEditingAddress] = useState(null);
@@ -130,6 +135,53 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
     const lastOrder = custOrders.length > 0 ? custOrders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] : null;
     return { orderCount: custOrders.length, completedCount: completed.length, totalSpent, debtAmount, unpaidCount: unpaid.length, lastOrder };
   }, [orders]);
+
+  // Debt tab helpers
+  const getUnpaidOrders = useCallback((customerId) => {
+    return (orders || []).filter(o => o.customer_id === customerId && (o.payment_status === 'unpaid' || o.payment_status === 'partial') && o.status !== 'cancelled' && o.status !== 'returned');
+  }, [orders]);
+
+  const loadDebtPaymentHistory = useCallback(async (orderId) => {
+    try {
+      const { data } = await supabase.from('payment_transactions').select('*').eq('order_id', orderId).order('created_at', { ascending: false });
+      setDebtPaymentHistory(data || []);
+    } catch (err) { console.error(err); }
+  }, []);
+
+  const handleDebtPayment = async (order) => {
+    if (!hasPermission('sales', 2)) return alert('Bạn không có quyền thực hiện thao tác này');
+    const amount = parseFloat(debtPaymentAmount);
+    if (!amount || amount <= 0) return alert('Vui lòng nhập số tiền hợp lệ');
+    const currentPaid = parseFloat(order.paid_amount || 0);
+    const total = parseFloat(order.total_amount || 0);
+    const remaining = total - currentPaid;
+    if (amount > remaining) return alert(`Số tiền vượt quá còn lại: ${formatMoney(remaining)}`);
+    const newPaid = currentPaid + amount;
+    const newStatus = newPaid >= total ? 'paid' : 'partial';
+    setSubmitting(true);
+    try {
+      await supabase.from('orders').update({
+        paid_amount: newPaid, payment_status: newStatus, updated_at: getNowISOVN()
+      }).eq('id', order.id);
+      await supabase.from('payment_transactions').insert([{
+        tenant_id: tenant.id, order_id: order.id,
+        amount, payment_method: debtPaymentMethod || 'cash',
+        note: debtPaymentNote || null, created_by: currentUser.name, created_at: getNowISOVN()
+      }]);
+      // Auto cash_book entry
+      await supabase.from('cash_book_entries').insert([{
+        tenant_id: tenant.id, type: 'receipt', category: 'sales',
+        amount, description: `Thu nợ KH - ${order.order_number}${order.customer_name ? ' - ' + order.customer_name : ''}`,
+        reference_type: 'order', reference_id: order.id,
+        payment_method: debtPaymentMethod || 'cash',
+        created_by: currentUser.name, created_at: getNowISOVN()
+      }]).then(() => {}).catch(() => {});
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'payment', entityType: 'order', entityId: order.order_number, entityName: order.order_number, description: `Thu nợ ${formatMoney(amount)} cho đơn ${order.order_number}` });
+      setDebtPaymentOrderId(null); setDebtPaymentAmount(''); setDebtPaymentMethod('cash'); setDebtPaymentNote('');
+      await loadSalesData();
+    } catch (err) { console.error(err); alert('Lỗi: ' + err.message); }
+    finally { setSubmitting(false); }
+  };
 
   // Dashboard stats
   const dashboardStats = useMemo(() => {
@@ -1025,6 +1077,7 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
               <div className="flex border-b overflow-x-auto">
                 {[
                   { key: 'orders', label: `Đơn hàng (${customerOrders.length})` },
+                  { key: 'debt', label: `Công nợ (${getUnpaidOrders(selectedCustomer.id).length})` },
                   { key: 'addresses', label: `Địa chỉ (${getCustomerAddresses(selectedCustomer.id).length})` },
                   { key: 'interactions', label: 'Tương tác' },
                   { key: 'warranty', label: `Bảo hành (${customerWarranty.cards.length})` },
@@ -1055,6 +1108,112 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Tab: Debt */}
+              {detailTab === 'debt' && (
+                <div className="space-y-3">
+                  {/* Summary */}
+                  {(() => {
+                    const stats = getCustomerStats(selectedCustomer.id);
+                    return (
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-blue-50 rounded-lg p-2.5 text-center">
+                          <div className="text-xs text-blue-600">Tổng mua</div>
+                          <div className="text-sm font-bold text-blue-700">{formatMoney(stats.totalSpent)}</div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-2.5 text-center">
+                          <div className="text-xs text-green-600">Đã TT</div>
+                          <div className="text-sm font-bold text-green-700">{formatMoney(stats.totalSpent - stats.debtAmount)}</div>
+                        </div>
+                        <div className="bg-red-50 rounded-lg p-2.5 text-center">
+                          <div className="text-xs text-red-600">Còn nợ</div>
+                          <div className="text-sm font-bold text-red-700">{formatMoney(stats.debtAmount)}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {/* Unpaid orders list */}
+                  {(() => {
+                    const unpaidOrders = getUnpaidOrders(selectedCustomer.id);
+                    if (unpaidOrders.length === 0) return <p className="text-sm text-gray-400 text-center py-4">Không có công nợ</p>;
+                    return (
+                      <div className="space-y-2 max-h-72 overflow-y-auto">
+                        {unpaidOrders.map(o => {
+                          const remaining = parseFloat(o.total_amount || 0) - parseFloat(o.paid_amount || 0);
+                          const isExpanded = debtPaymentOrderId === o.id;
+                          return (
+                            <div key={o.id} className="bg-gray-50 rounded-lg p-3 space-y-2">
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <span className="font-medium text-sm">{o.order_number}</span>
+                                  <span className="text-xs text-gray-400 ml-2">{new Date(o.created_at).toLocaleDateString('vi-VN')}</span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-gray-500">Tổng: {formatMoney(o.total_amount)}</div>
+                                  <div className="text-xs text-red-600 font-medium">Nợ: {formatMoney(remaining)}</div>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="text-xs text-gray-500">
+                                  Đã trả: {formatMoney(o.paid_amount || 0)}
+                                  <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${o.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                    {o.payment_status === 'partial' ? 'TT 1 phần' : 'Chưa TT'}
+                                  </span>
+                                </div>
+                                {canEditSales('sales') && (
+                                  <button onClick={() => {
+                                    if (isExpanded) { setDebtPaymentOrderId(null); } else {
+                                      setDebtPaymentOrderId(o.id); setDebtPaymentAmount(''); setDebtPaymentMethod('cash'); setDebtPaymentNote('');
+                                      loadDebtPaymentHistory(o.id);
+                                    }
+                                  }} className="px-2.5 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200">
+                                    {isExpanded ? 'Đóng' : 'Thu tiền'}
+                                  </button>
+                                )}
+                              </div>
+                              {/* Inline payment form */}
+                              {isExpanded && (
+                                <div className="bg-white border border-green-200 rounded-lg p-2.5 space-y-2">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input type="number" min="0" max={remaining} value={debtPaymentAmount}
+                                      onChange={e => setDebtPaymentAmount(e.target.value)}
+                                      placeholder={`Tối đa ${formatMoney(remaining)}`}
+                                      className="border rounded-lg px-2.5 py-1.5 text-sm" />
+                                    <select value={debtPaymentMethod} onChange={e => setDebtPaymentMethod(e.target.value)}
+                                      className="border rounded-lg px-2.5 py-1.5 text-sm">
+                                      <option value="cash">Tiền mặt</option>
+                                      <option value="bank_transfer">Chuyển khoản</option>
+                                      <option value="momo">MoMo</option>
+                                    </select>
+                                  </div>
+                                  <input value={debtPaymentNote} onChange={e => setDebtPaymentNote(e.target.value)}
+                                    placeholder="Ghi chú..." className="w-full border rounded-lg px-2.5 py-1.5 text-sm" />
+                                  <button onClick={() => handleDebtPayment(o)} disabled={submitting}
+                                    className={`w-full py-1.5 rounded-lg text-sm font-medium text-white ${submitting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
+                                    {submitting ? 'Đang xử lý...' : 'Xác nhận thu'}
+                                  </button>
+                                  {/* Payment history */}
+                                  {debtPaymentHistory.length > 0 && (
+                                    <div className="border-t pt-2 mt-2">
+                                      <div className="text-xs font-medium text-gray-500 mb-1">Lịch sử thanh toán</div>
+                                      {debtPaymentHistory.map(ph => (
+                                        <div key={ph.id} className="flex justify-between text-xs text-gray-500 py-0.5">
+                                          <span>{new Date(ph.created_at).toLocaleDateString('vi-VN')} - {ph.payment_method}</span>
+                                          <span className="text-green-600 font-medium">{formatMoney(ph.amount)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
