@@ -569,38 +569,36 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsData);
       if (itemsErr) throw itemsErr;
 
-      // Deduct stock atomically (POS only — online deducts on confirm)
-      if (isPOS) {
-        for (const item of cartItems) {
-          if (item.is_combo) {
-            // Combo: trừ kho từng SP con
-            const children = (comboItems || []).filter(ci => ci.combo_product_id === item.product_id);
-            for (const child of children) {
-              const delta = -(child.quantity * parseInt(item.quantity));
-              if (selectedWarehouseId) {
-                const { error: stockErr } = await supabase.rpc('adjust_warehouse_stock', {
-                  p_warehouse_id: selectedWarehouseId, p_product_id: child.child_product_id, p_delta: delta
-                });
-                if (stockErr) throw new Error(`Không đủ tồn kho SP con trong combo: ${item.product_name}`);
-              } else {
-                const { error: stockErr } = await supabase.rpc('adjust_stock', {
-                  p_product_id: child.child_product_id, p_delta: delta
-                });
-                if (stockErr) throw new Error(`Không đủ tồn kho SP con trong combo: ${item.product_name}`);
-              }
-            }
-          } else {
+      // Deduct stock atomically for all orders (POS + online đều tạo với status 'confirmed')
+      for (const item of cartItems) {
+        if (item.is_combo) {
+          // Combo: trừ kho từng SP con
+          const children = (comboItems || []).filter(ci => ci.combo_product_id === item.product_id);
+          for (const child of children) {
+            const delta = -(child.quantity * parseInt(item.quantity));
             if (selectedWarehouseId) {
               const { error: stockErr } = await supabase.rpc('adjust_warehouse_stock', {
-                p_warehouse_id: selectedWarehouseId, p_product_id: item.product_id, p_delta: -parseInt(item.quantity)
+                p_warehouse_id: selectedWarehouseId, p_product_id: child.child_product_id, p_delta: delta
               });
-              if (stockErr) throw new Error(`Không đủ tồn kho: ${item.product_name}`);
+              if (stockErr) throw new Error(`Không đủ tồn kho SP con trong combo: ${item.product_name}`);
             } else {
               const { error: stockErr } = await supabase.rpc('adjust_stock', {
-                p_product_id: item.product_id, p_delta: -parseInt(item.quantity)
+                p_product_id: child.child_product_id, p_delta: delta
               });
-              if (stockErr) throw new Error(`Không đủ tồn kho: ${item.product_name}`);
+              if (stockErr) throw new Error(`Không đủ tồn kho SP con trong combo: ${item.product_name}`);
             }
+          }
+        } else {
+          if (selectedWarehouseId) {
+            const { error: stockErr } = await supabase.rpc('adjust_warehouse_stock', {
+              p_warehouse_id: selectedWarehouseId, p_product_id: item.product_id, p_delta: -parseInt(item.quantity)
+            });
+            if (stockErr) throw new Error(`Không đủ tồn kho: ${item.product_name}`);
+          } else {
+            const { error: stockErr } = await supabase.rpc('adjust_stock', {
+              p_product_id: item.product_id, p_delta: -parseInt(item.quantity)
+            });
+            if (stockErr) throw new Error(`Không đủ tồn kho: ${item.product_name}`);
           }
         }
       }
@@ -660,34 +658,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     try {
       const updates = { status: newStatus, updated_at: getNowISOVN() };
 
-      // Online: confirmed → deduct stock atomically from order's warehouse
-      if (newStatus === 'confirmed' && order.order_type === 'online') {
-        const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
-        for (const item of (items || [])) {
-          // Check if combo
-          const { data: comboChildren } = await supabase.from('product_combo_items').select('*').eq('combo_product_id', item.product_id);
-          if (comboChildren && comboChildren.length > 0) {
-            for (const child of comboChildren) {
-              const delta = -(child.quantity * item.quantity);
-              if (order.warehouse_id) {
-                const { error: stockErr } = await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: order.warehouse_id, p_product_id: child.child_product_id, p_delta: delta });
-                if (stockErr) { setSubmitting(false); return alert(`Không đủ tồn kho SP con trong combo: ${item.product_name}`); }
-              } else {
-                const { error: stockErr } = await supabase.rpc('adjust_stock', { p_product_id: child.child_product_id, p_delta: delta });
-                if (stockErr) { setSubmitting(false); return alert(`Không đủ tồn kho SP con trong combo: ${item.product_name}`); }
-              }
-            }
-          } else {
-            if (order.warehouse_id) {
-              const { error: stockErr } = await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: order.warehouse_id, p_product_id: item.product_id, p_delta: -item.quantity });
-              if (stockErr) { setSubmitting(false); return alert(`Không đủ tồn kho: ${item.product_name}`); }
-            } else {
-              const { error: stockErr } = await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: -item.quantity });
-              if (stockErr) { setSubmitting(false); return alert(`Không đủ tồn kho: ${item.product_name}`); }
-            }
-          }
-        }
-      }
+      // (Stock đã được trừ khi tạo đơn — không trừ lại ở đây)
 
       // Completed → create receipt
       if (newStatus === 'completed' && !order.receipt_id) {
@@ -705,8 +676,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       }
 
       // Cancelled → restore stock to order's warehouse + restore serials
+      // Haravan import không trừ kho nên không cần cộng lại
       if (newStatus === 'cancelled') {
-        const stockDeducted = order.order_type === 'pos' || (order.order_type === 'online' && ['confirmed', 'packing', 'shipping', 'delivered'].includes(order.status));
+        const isImported = order.order_source === 'haravan_import' || order.source === 'haravan_import';
+        const stockDeducted = !isImported && ['confirmed', 'packing', 'shipping', 'delivered'].includes(order.status);
         if (stockDeducted) {
           const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
           for (const item of (items || [])) {

@@ -184,20 +184,27 @@ export default function SalesReconciliationView({
     }
     setSubmitting(true);
     try {
-      // Restore stock
+      // Restore stock (xử lý cả combo: cộng lại SP con thay vì SP combo)
       const { data: items } = await supabase.from('order_items').select('*').eq('order_id', scannedOrder.id);
       for (const item of (items || [])) {
-        if (scannedOrder.warehouse_id) {
-          await supabase.rpc('adjust_warehouse_stock', {
-            p_warehouse_id: scannedOrder.warehouse_id,
-            p_product_id: item.product_id,
-            p_delta: item.quantity
-          });
+        const { data: comboChildren } = await supabase.from('product_combo_items').select('*').eq('combo_product_id', item.product_id);
+        if (comboChildren && comboChildren.length > 0) {
+          // Combo: restore từng SP con
+          for (const child of comboChildren) {
+            const delta = child.quantity * item.quantity;
+            if (scannedOrder.warehouse_id) {
+              await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: scannedOrder.warehouse_id, p_product_id: child.child_product_id, p_delta: delta });
+            } else {
+              await supabase.rpc('adjust_stock', { p_product_id: child.child_product_id, p_delta: delta });
+            }
+          }
         } else {
-          await supabase.rpc('adjust_stock', {
-            p_product_id: item.product_id,
-            p_delta: item.quantity
-          });
+          // SP thường
+          if (scannedOrder.warehouse_id) {
+            await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: scannedOrder.warehouse_id, p_product_id: item.product_id, p_delta: item.quantity });
+          } else {
+            await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: item.quantity });
+          }
         }
       }
 
