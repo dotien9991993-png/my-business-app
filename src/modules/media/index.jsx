@@ -35,7 +35,8 @@ export default function MediaModule() {
     taskCustomEndDate, setTaskCustomEndDate,
     taskFilterCrew, setTaskFilterCrew, taskFilterActor, setTaskFilterActor,
     taskFilterProduct, setTaskFilterProduct,
-    integrations, setIntegrations, automations, setAutomations, templates, createFromTemplate
+    integrations, setIntegrations, automations, setAutomations, templates, createFromTemplate,
+    products
   } = useData();
 
   // Open task detail from chat attachment
@@ -62,7 +63,7 @@ export default function MediaModule() {
       {activeTab === 'users' && <UserManagementView currentUser={currentUser} allUsers={allUsers} changeUserRole={changeUserRole} deleteUser={deleteUser} loadUsers={loadUsers} />}
       {activeTab === 'performance' && <PerformanceView tasks={tasks} visibleTasks={visibleTasks} currentUser={currentUser} allUsers={allUsers} />}
       {activeTab === 'ekips' && <EkipManagementView />}
-      {activeTab === 'overview' && currentUser?.role === 'Admin' && <MediaDashboard tasks={tasks} allUsers={allUsers} setSelectedTask={setSelectedTask} setShowModal={setShowModal} />}
+      {activeTab === 'overview' && currentUser?.role === 'Admin' && <MediaDashboard tasks={tasks} allUsers={allUsers} products={products} setSelectedTask={setSelectedTask} setShowModal={setShowModal} />}
       {((activeTab === 'tasks' && !canAccessTab('media', 'videos')) ||
         (activeTab === 'calendar' && !canAccessTab('media', 'calendar')) ||
         (activeTab === 'report' && !canAccessTab('media', 'report'))) && <NoAccess />}

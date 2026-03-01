@@ -131,6 +131,7 @@ export function DataProvider({ children }) {
         cameramen: task.cameramen || [], editors: task.editors || [], actors: task.actors || [],
         crew: [...new Set([...(task.cameramen || []), ...(task.editors || [])])],
         product_ids: task.product_ids || [],
+        media_salary: task.media_salary || null,
         filmed_at: task.filmed_at || null, edited_at: task.edited_at || null, edit_started_at: task.edit_started_at || null,
         created_at: task.created_at, updated_at: task.updated_at, completed_at: task.completed_at || null
       }));

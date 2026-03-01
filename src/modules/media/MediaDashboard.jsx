@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { getVietnamDate } from '../../utils/dateUtils';
+import { formatMoney } from '../../utils/formatUtils';
 
 // Format số gọn: 1000→1K, 15000→15K, 1500000→1.5M
 function formatCompactNumber(num) {
@@ -15,8 +16,47 @@ function getTaskDate(task) {
   return (task.completed_at || task.updated_at || task.created_at || '').substring(0, 10);
 }
 
-const MediaDashboard = ({ tasks, allUsers, setSelectedTask, setShowModal }) => {
+// Lấy tổng views của task (cộng tất cả platform)
+function getTaskTotalViews(task) {
+  let views = 0;
+  for (const link of (task.postLinks || [])) {
+    if (link.stats?.views) views += link.stats.views;
+  }
+  return views;
+}
+
+// Lấy tổng stats của task
+function getTaskTotalStats(task) {
+  let views = 0, likes = 0, comments = 0;
+  for (const link of (task.postLinks || [])) {
+    if (!link.stats) continue;
+    views += link.stats.views || 0;
+    likes += link.stats.likes || 0;
+    comments += link.stats.comments || 0;
+  }
+  return { views, likes, comments };
+}
+
+const CATEGORY_LABELS = {
+  video_dan: '🎬 Video dàn',
+  video_hangngay: '📅 Hàng ngày',
+  video_huongdan: '📚 Hướng dẫn',
+  video_quangcao: '📢 Quảng cáo',
+  video_review: '⭐ Review',
+};
+
+const MediaDashboard = ({ tasks, allUsers, products, setSelectedTask, setShowModal }) => {
   const [timeFilter, setTimeFilter] = useState('30d');
+  const [showAllProducts, setShowAllProducts] = useState(false);
+
+  // Build product name map
+  const productMap = useMemo(() => {
+    const map = {};
+    for (const p of (products || [])) {
+      map[p.id] = p;
+    }
+    return map;
+  }, [products]);
 
   // Lọc tasks theo thời gian
   const filteredTasks = useMemo(() => {
@@ -101,7 +141,6 @@ const MediaDashboard = ({ tasks, allUsers, setSelectedTask, setShowModal }) => {
       for (const link of links) {
         if (!link.stats) continue;
         const platform = link.type || 'unknown';
-        // Dùng label từ URL để phân biệt page
         const pageName = link.pageName || platform;
         const key = pageName;
         if (!map[key]) map[key] = { name: pageName, platform, videos: 0, views: 0, likes: 0, comments: 0 };
@@ -138,6 +177,98 @@ const MediaDashboard = ({ tasks, allUsers, setSelectedTask, setShowModal }) => {
     return videos.sort((a, b) => b.views - a.views).slice(0, 10);
   }, [filteredTasks]);
 
+  // ── Phần mới 1: ROI - Chi phí/view ──
+  const roiData = useMemo(() => {
+    const items = [];
+    let totalCost = 0, totalViews = 0;
+
+    for (const task of filteredTasks) {
+      const cost = task.media_salary;
+      if (!cost || cost <= 0) continue;
+      const views = getTaskTotalViews(task);
+      if (views <= 0) continue;
+
+      totalCost += cost;
+      totalViews += views;
+      items.push({
+        task,
+        cost,
+        views,
+        costPerView: Math.round(cost / views),
+      });
+    }
+
+    items.sort((a, b) => a.costPerView - b.costPerView);
+
+    const avgCostPerView = totalViews > 0 ? Math.round(totalCost / totalViews) : 0;
+    const bestVideo = items.length > 0 ? items[0] : null;
+
+    return { items, avgCostPerView, bestVideo, totalCost, totalViews };
+  }, [filteredTasks]);
+
+  // ── Phần mới 2: Hiệu suất theo loại video ──
+  const categoryStats = useMemo(() => {
+    const map = {};
+
+    for (const task of filteredTasks) {
+      const cat = task.category || '';
+      if (!cat) continue;
+      if (!map[cat]) map[cat] = { category: cat, label: CATEGORY_LABELS[cat] || cat, videos: 0, views: 0, likes: 0, comments: 0 };
+      map[cat].videos++;
+      const stats = getTaskTotalStats(task);
+      map[cat].views += stats.views;
+      map[cat].likes += stats.likes;
+      map[cat].comments += stats.comments;
+    }
+
+    const result = Object.values(map).map(c => ({
+      ...c,
+      avgViews: c.videos > 0 ? Math.round(c.views / c.videos) : 0,
+      engagementRate: c.views > 0 ? ((c.likes + c.comments) / c.views * 100) : 0,
+    }));
+
+    result.sort((a, b) => b.avgViews - a.avgViews);
+    return result;
+  }, [filteredTasks]);
+
+  // ── Phần mới 3: Hiệu suất theo sản phẩm ──
+  const productStats = useMemo(() => {
+    const map = {};
+
+    for (const task of filteredTasks) {
+      const pids = task.product_ids || [];
+      if (pids.length === 0) continue;
+
+      const stats = getTaskTotalStats(task);
+      const cost = task.media_salary || 0;
+
+      for (const pid of pids) {
+        if (!map[pid]) map[pid] = { productId: pid, videos: 0, views: 0, likes: 0, comments: 0, totalCost: 0, hasCost: false };
+        map[pid].videos++;
+        map[pid].views += stats.views;
+        map[pid].likes += stats.likes;
+        map[pid].comments += stats.comments;
+        if (cost > 0) {
+          map[pid].totalCost += cost;
+          map[pid].hasCost = true;
+        }
+      }
+    }
+
+    const result = Object.values(map).map(p => {
+      const product = productMap[p.productId];
+      return {
+        ...p,
+        name: product?.sku || product?.name || 'SP không xác định',
+        avgViews: p.videos > 0 ? Math.round(p.views / p.videos) : 0,
+        avgCost: p.hasCost && p.videos > 0 ? Math.round(p.totalCost / p.videos) : null,
+      };
+    });
+
+    result.sort((a, b) => b.views - a.views);
+    return result;
+  }, [filteredTasks, productMap]);
+
   const medals = ['🥇', '🥈', '🥉'];
 
   const timeFilterOptions = [
@@ -147,6 +278,14 @@ const MediaDashboard = ({ tasks, allUsers, setSelectedTask, setShowModal }) => {
     { id: 'last_month', label: 'Tháng trước' },
     { id: 'all', label: 'Tất cả' },
   ];
+
+  function getRoiColor(costPerView) {
+    if (costPerView < 500) return { bg: 'bg-green-100 text-green-700', label: '🟢 Tốt' };
+    if (costPerView <= 2000) return { bg: 'bg-yellow-100 text-yellow-700', label: '🟡 TB' };
+    return { bg: 'bg-red-100 text-red-700', label: '🔴 Kém' };
+  }
+
+  const displayProducts = showAllProducts ? productStats : productStats.slice(0, 20);
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 space-y-4 md:space-y-6">
@@ -326,6 +465,173 @@ const MediaDashboard = ({ tasks, allUsers, setSelectedTask, setShowModal }) => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════ */}
+      {/* Phần 5: ROI - Chi phí/view */}
+      {/* ══════════════════════════════════════════════ */}
+      {roiData.items.length > 0 && (
+        <div className="bg-white rounded-xl shadow border overflow-hidden">
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b bg-gray-50">
+            <h3 className="text-sm md:text-lg font-bold">💰 ROI - Chi Phí / View</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Hiệu quả đầu tư cho từng video (thấp = tốt)</p>
+          </div>
+
+          {/* 2 mini cards */}
+          <div className="grid grid-cols-2 gap-3 px-4 md:px-6 py-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="text-xs text-gray-500 mb-1">💰 Chi phí TB/view</div>
+              <div className="text-lg md:text-xl font-bold">{roiData.avgCostPerView.toLocaleString('vi-VN')}đ</div>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="text-xs text-gray-500 mb-1">🏆 Video hiệu quả nhất</div>
+              <div className="text-xs md:text-sm font-bold truncate">{roiData.bestVideo?.task.title || '—'}</div>
+              <div className="text-xs text-green-600 mt-0.5">{roiData.bestVideo ? roiData.bestVideo.costPerView.toLocaleString('vi-VN') + 'đ/view' : ''}</div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs md:text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-gray-500">
+                  <th className="text-left px-3 md:px-4 py-2 font-medium">Video</th>
+                  <th className="text-left px-3 md:px-4 py-2 font-medium hidden md:table-cell">Nhân viên</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Chi phí</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Views</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">đ/view</th>
+                  <th className="text-center px-3 md:px-4 py-2 font-medium">Đánh giá</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roiData.items.map((item, i) => {
+                  const roi = getRoiColor(item.costPerView);
+                  return (
+                    <tr
+                      key={i}
+                      className="border-t hover:bg-gray-50 cursor-pointer"
+                      onClick={() => { setSelectedTask(item.task); setShowModal(true); }}
+                    >
+                      <td className="px-3 md:px-4 py-2.5 font-medium max-w-[150px] md:max-w-[250px] truncate">{item.task.title || '—'}</td>
+                      <td className="px-3 md:px-4 py-2.5 hidden md:table-cell text-gray-600">{item.task.assignee || '—'}</td>
+                      <td className="px-3 md:px-4 py-2.5 text-right whitespace-nowrap">{formatMoney(item.cost)}</td>
+                      <td className="px-3 md:px-4 py-2.5 text-right font-semibold text-blue-600">{formatCompactNumber(item.views)}</td>
+                      <td className="px-3 md:px-4 py-2.5 text-right whitespace-nowrap">{item.costPerView.toLocaleString('vi-VN')}đ</td>
+                      <td className="px-3 md:px-4 py-2.5 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${roi.bg}`}>{roi.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════ */}
+      {/* Phần 6: Hiệu suất theo loại video */}
+      {/* ══════════════════════════════════════════════ */}
+      {categoryStats.length > 0 && (
+        <div className="bg-white rounded-xl shadow border overflow-hidden">
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b bg-gray-50">
+            <h3 className="text-sm md:text-lg font-bold">🎯 Hiệu Suất Theo Loại Video</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              So sánh hiệu quả từng loại video • Loại tốt nhất: <span className="font-semibold text-green-600">{categoryStats[0]?.label}</span> ({formatCompactNumber(categoryStats[0]?.avgViews)} views TB)
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs md:text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-gray-500">
+                  <th className="text-left px-3 md:px-4 py-2 font-medium">Loại video</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Số video</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Tổng views</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Views TB</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium hidden md:table-cell">Tổng likes</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium hidden md:table-cell">Engagement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categoryStats.map((cat, i) => (
+                  <tr key={cat.category} className={`border-t hover:bg-gray-50 ${i === 0 ? 'bg-green-50/50' : ''}`}>
+                    <td className="px-3 md:px-4 py-2.5 font-medium whitespace-nowrap">
+                      {i === 0 && <span className="text-xs mr-1">🏆</span>}
+                      {cat.label}
+                    </td>
+                    <td className="px-3 md:px-4 py-2.5 text-right">{cat.videos}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right font-semibold text-blue-600">{formatCompactNumber(cat.views)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right font-semibold">{formatCompactNumber(cat.avgViews)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right hidden md:table-cell">{formatCompactNumber(cat.likes)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right hidden md:table-cell">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                        cat.engagementRate >= 1 ? 'bg-green-100 text-green-700' :
+                        cat.engagementRate >= 0.5 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {cat.engagementRate.toFixed(2)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════ */}
+      {/* Phần 7: Hiệu suất theo sản phẩm */}
+      {/* ══════════════════════════════════════════════ */}
+      {productStats.length > 0 && (
+        <div className="bg-white rounded-xl shadow border overflow-hidden">
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b bg-gray-50">
+            <h3 className="text-sm md:text-lg font-bold">🏷️ Hiệu Suất Theo Sản Phẩm</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Top sản phẩm theo tổng lượt xem ({productStats.length} sản phẩm)</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs md:text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-gray-500">
+                  <th className="text-left px-3 md:px-4 py-2 font-medium">Sản phẩm</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Số video</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Tổng views</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium">Views TB</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium hidden md:table-cell">Tổng likes</th>
+                  <th className="text-right px-3 md:px-4 py-2 font-medium hidden md:table-cell">Chi phí TB</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayProducts.map((p, i) => (
+                  <tr key={p.productId} className={`border-t hover:bg-gray-50 ${i < 3 ? 'bg-yellow-50/30' : ''}`}>
+                    <td className="px-3 md:px-4 py-2.5 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        {i < 3 && <span className="text-sm">{medals[i]}</span>}
+                        <span className="truncate max-w-[120px] md:max-w-[200px]">📦 {p.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 md:px-4 py-2.5 text-right">{p.videos}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right font-semibold text-blue-600">{formatCompactNumber(p.views)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right font-semibold">{formatCompactNumber(p.avgViews)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right hidden md:table-cell">{formatCompactNumber(p.likes)}</td>
+                    <td className="px-3 md:px-4 py-2.5 text-right hidden md:table-cell whitespace-nowrap">
+                      {p.avgCost != null ? formatMoney(p.avgCost) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {productStats.length > 20 && (
+            <div className="px-4 md:px-6 py-3 border-t text-center">
+              <button
+                onClick={() => setShowAllProducts(!showAllProducts)}
+                className="text-sm text-green-600 hover:text-green-700 font-medium"
+              >
+                {showAllProducts ? 'Thu gọn' : `Xem thêm (${productStats.length - 20} sản phẩm)`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
