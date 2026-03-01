@@ -957,75 +957,107 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     } catch (err) { alert('❌ Lỗi: ' + err.message); }
   };
 
-  // ---- Print invoice ----
+  // ---- Print invoice (A5 layout) ----
   const printInvoice = async () => {
     if (!selectedOrder) return;
     const items = orderItems;
     let qrHtml = '';
     try {
-      const qrDataUrl = await QRCode.toDataURL(selectedOrder.order_number, { width: 120, margin: 1 });
-      qrHtml = `<div class="center" style="margin:8px 0"><img src="${qrDataUrl}" style="width:80px;height:80px"></div>`;
+      const qrDataUrl = await QRCode.toDataURL(selectedOrder.order_number, { width: 200, margin: 1 });
+      qrHtml = `<div style="margin-top:12px"><img src="${qrDataUrl}" style="width:100px;height:100px"><p style="font-size:10px;color:#888;margin:2px 0">Quét mã để tra cứu</p></div>`;
     } catch (_e) { /* ignore QR error */ }
+    const logoHtml = tenant.logo_url ? `<img src="${tenant.logo_url}" style="max-height:50px;max-width:150px;object-fit:contain;margin-bottom:6px" crossorigin="anonymous">` : '';
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hóa đơn ${selectedOrder.order_number}</title>
-<style>body{font-family:Arial,sans-serif;max-width:80mm;margin:0 auto;padding:10px;font-size:12px}.center{text-align:center}.bold{font-weight:bold}.line{border-top:1px dashed #000;margin:8px 0}table{width:100%;border-collapse:collapse}td{padding:2px 0;vertical-align:top}.right{text-align:right}@media print{body{margin:0}}</style></head><body>
-<div class="center"><h2 style="margin:0">${tenant.name || ''}</h2>
-${tenant.address ? `<p style="margin:4px 0">${tenant.address}</p>` : ''}${tenant.phone ? `<p style="margin:4px 0">${tenant.phone}</p>` : ''}</div>
-<div class="line"></div><div class="center bold">HÓA ĐƠN BÁN HÀNG</div>
-<p>Số: ${selectedOrder.order_number}</p><p>Ngày: ${new Date(selectedOrder.created_at).toLocaleString('vi-VN')}</p>
-<p>Khách: ${selectedOrder.customer_name || 'Khách lẻ'}${selectedOrder.customer_phone ? ' - ' + selectedOrder.customer_phone : ''}</p>
-${selectedOrder.shipping_address ? `<p>Địa chỉ: ${selectedOrder.shipping_address}</p>` : ''}
-<div class="line"></div>
-<table><tr><td class="bold">Sản phẩm</td><td class="right bold">SL</td><td class="right bold">Đ.Giá</td><td class="right bold">T.Tiền</td></tr>
-${items.map(i => `<tr><td>${i.product_name}${i.warranty_months ? ` <small>(BH: ${i.warranty_months}th)</small>` : ''}</td><td class="right">${i.quantity}</td><td class="right">${formatMoney(i.unit_price)}</td><td class="right">${formatMoney(i.total_price)}</td></tr>`).join('')}</table>
-<div class="line"></div>
-<table><tr><td>Tạm tính</td><td class="right">${formatMoney(selectedOrder.subtotal)}</td></tr>
-${selectedOrder.discount_amount > 0 ? `<tr><td>Chiết khấu</td><td class="right">-${formatMoney(selectedOrder.discount_amount)}</td></tr>` : ''}
-${selectedOrder.shipping_fee > 0 && selectedOrder.shipping_payer === 'shop' ? `<tr><td>Phí ship (shop)</td><td class="right">${formatMoney(selectedOrder.shipping_fee)}</td></tr>` : ''}
-<tr class="bold"><td>TỔNG CỘNG</td><td class="right">${formatMoney(selectedOrder.total_amount)}</td></tr></table>
-<div class="line"></div>
-<p>Thanh toán: ${paymentMethods[selectedOrder.payment_method]?.label || selectedOrder.payment_method}</p>
-${selectedOrder.paid_amount > 0 && selectedOrder.paid_amount < selectedOrder.total_amount ? `<p>Đã TT: ${formatMoney(selectedOrder.paid_amount)}</p><p>Còn lại: ${formatMoney(selectedOrder.total_amount - selectedOrder.paid_amount)}</p>` : ''}
-${selectedOrder.note ? `<p>Ghi chú: ${selectedOrder.note}</p>` : ''}
-<div class="line"></div>${qrHtml}<div class="center"><p>${tenant.invoice_footer || 'Cảm ơn quý khách!'}</p><p style="font-size:10px">NV: ${selectedOrder.created_by}</p></div>
+<style>
+@page{size:A5;margin:12mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;max-width:148mm;margin:0 auto;padding:15px;font-size:13px;color:#333}
+.header{text-align:center;margin-bottom:15px;padding-bottom:12px;border-bottom:2px solid #222}
+.header h2{font-size:18px;margin:4px 0}
+.header p{font-size:11px;color:#555;margin:2px 0}
+.title{text-align:center;font-size:20px;font-weight:bold;margin:15px 0 5px;letter-spacing:1px}
+.order-info{margin:10px 0;font-size:12px;line-height:1.6}
+.order-info b{color:#222}
+table.items{width:100%;border-collapse:collapse;margin:12px 0}
+table.items th,table.items td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:12px}
+table.items th{background:#f5f5f5;font-weight:600;color:#444}
+table.items td.r{text-align:right}
+table.summary{width:100%;margin:8px 0}
+table.summary td{padding:4px 8px;font-size:13px}
+table.summary td.r{text-align:right}
+table.summary .total{font-size:16px;font-weight:bold;color:#222;border-top:2px solid #222}
+.footer{text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid #ddd;font-size:11px;color:#666}
+.footer-row{display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px}
+@media print{body{margin:0;padding:10mm}}
+</style></head><body>
+<div class="header">${logoHtml}<h2>${tenant.name || ''}</h2>
+${tenant.address ? `<p>${tenant.address}</p>` : ''}${tenant.phone ? `<p>ĐT: ${tenant.phone}</p>` : ''}</div>
+<div class="title">ĐƠN HÀNG #${selectedOrder.order_number}</div>
+<div class="order-info">
+<p><b>Ngày:</b> ${new Date(selectedOrder.created_at).toLocaleString('vi-VN')}</p>
+<p><b>Khách hàng:</b> ${selectedOrder.customer_name || 'Khách lẻ'}${selectedOrder.customer_phone ? ' - ' + selectedOrder.customer_phone : ''}</p>
+${selectedOrder.shipping_address ? `<p><b>Địa chỉ:</b> ${selectedOrder.shipping_address}</p>` : ''}
+</div>
+<table class="items"><thead><tr><th>STT</th><th>Sản phẩm</th><th class="r">SL</th><th class="r">Đơn giá</th><th class="r">Thành tiền</th></tr></thead><tbody>
+${items.map((i, idx) => `<tr><td>${idx + 1}</td><td>${i.product_name}${i.warranty_months ? ` <small>(BH: ${i.warranty_months}th)</small>` : ''}</td><td class="r">${i.quantity}</td><td class="r">${formatMoney(i.unit_price)}</td><td class="r">${formatMoney(i.total_price)}</td></tr>`).join('')}</tbody></table>
+<table class="summary"><tr><td>Tạm tính</td><td class="r">${formatMoney(selectedOrder.subtotal)}</td></tr>
+${selectedOrder.discount_amount > 0 ? `<tr><td>Chiết khấu</td><td class="r">-${formatMoney(selectedOrder.discount_amount)}</td></tr>` : ''}
+${selectedOrder.shipping_fee > 0 && selectedOrder.shipping_payer === 'shop' ? `<tr><td>Phí ship (shop)</td><td class="r">${formatMoney(selectedOrder.shipping_fee)}</td></tr>` : ''}
+<tr class="total"><td><b>TỔNG CỘNG</b></td><td class="r"><b>${formatMoney(selectedOrder.total_amount)}</b></td></tr></table>
+<p style="font-size:12px;margin:6px 0">Thanh toán: ${paymentMethods[selectedOrder.payment_method]?.label || selectedOrder.payment_method}</p>
+${selectedOrder.paid_amount > 0 && selectedOrder.paid_amount < selectedOrder.total_amount ? `<p style="font-size:12px">Đã TT: ${formatMoney(selectedOrder.paid_amount)} | Còn lại: ${formatMoney(selectedOrder.total_amount - selectedOrder.paid_amount)}</p>` : ''}
+${selectedOrder.note ? `<p style="font-size:12px;margin:4px 0">Ghi chú: ${selectedOrder.note}</p>` : ''}
+<div class="footer-row"><div>${qrHtml}</div><div style="text-align:right"><p>${tenant.invoice_footer || 'Cảm ơn quý khách!'}</p><p style="margin-top:4px">NV: ${selectedOrder.created_by}</p></div></div>
 <script>window.onload=function(){window.print()}</script></body></html>`;
-    const win = window.open('', '_blank', 'width=400,height=600');
+    const win = window.open('', '_blank', 'width=600,height=800');
     win.document.write(html);
     win.document.close();
   };
 
-  // ---- Print delivery note (online orders) ----
-  const printDeliveryNote = async () => {
+  // ---- Print packing slip (for warehouse - no prices) ----
+  const printPackingSlip = async () => {
     if (!selectedOrder) return;
     const items = orderItems;
+    const totalItems = items.reduce((s, i) => s + i.quantity, 0);
     let qrHtml = '';
     try {
       const qrDataUrl = await QRCode.toDataURL(selectedOrder.order_number, { width: 200, margin: 1 });
-      qrHtml = `<div class="center" style="margin:15px 0"><img src="${qrDataUrl}" style="width:120px;height:120px"><p style="font-size:11px;color:#666;margin:4px 0">Quét mã để đối soát</p></div>`;
+      qrHtml = `<div style="text-align:center;margin:15px 0"><img src="${qrDataUrl}" style="width:100px;height:100px"><p style="font-size:10px;color:#888;margin:2px 0">Quét mã để đối soát</p></div>`;
     } catch (_e) { /* ignore QR error */ }
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Phiếu giao hàng ${selectedOrder.order_number}</title>
-<style>body{font-family:Arial,sans-serif;max-width:210mm;margin:0 auto;padding:20px;font-size:13px}
-.center{text-align:center}.bold{font-weight:bold}table{width:100%;border-collapse:collapse;margin:10px 0}
-th,td{border:1px solid #000;padding:6px 8px;text-align:left}th{background:#f5f5f5}.right{text-align:right}
-.ship-box{border:2px dashed #666;padding:15px;margin:15px 0;border-radius:8px}
-.sig{display:flex;justify-content:space-between;margin-top:40px}
-.sig div{text-align:center;width:45%}@media print{body{margin:0}}</style></head><body>
-<div class="center"><h2 style="margin:0">${tenant.name || 'HOANG NAM AUDIO'}</h2>
-${tenant.address ? `<p style="margin:2px 0;font-size:12px">${tenant.address}</p>` : ''}
-<h3 style="margin:8px 0">PHIẾU GIAO HÀNG</h3></div>
-<p><b>Mã đơn:</b> ${selectedOrder.order_number} &nbsp;|&nbsp; <b>Ngày:</b> ${new Date(selectedOrder.created_at).toLocaleDateString('vi-VN')}</p>
-<div class="ship-box"><p class="bold">THÔNG TIN GIAO HÀNG</p>
-<p>Người nhận: <b>${selectedOrder.customer_name || 'Khách lẻ'}</b></p>
-${selectedOrder.customer_phone ? `<p>SĐT: <b>${selectedOrder.customer_phone}</b></p>` : ''}
-<p>Địa chỉ: <b>${selectedOrder.shipping_address || ''}</b></p>
-<p>Đơn vị VC: <b>${selectedOrder.shipping_provider || ''}</b>${selectedOrder.tracking_number ? ` &nbsp;|&nbsp; Mã vận đơn: <b>${selectedOrder.tracking_number}</b>` : ''}</p></div>
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Phiếu đóng gói ${selectedOrder.order_number}</title>
+<style>
+@page{size:A5;margin:10mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;max-width:148mm;margin:0 auto;padding:15px;font-size:13px;color:#333}
+.header{text-align:center;padding-bottom:10px;border-bottom:2px solid #222;margin-bottom:12px}
+.header h3{font-size:16px;letter-spacing:1px;margin-top:6px}
+.info{margin:10px 0;font-size:12px;line-height:1.7}
+.info b{color:#222}
+.ship-box{border:2px dashed #666;padding:12px;margin:10px 0;border-radius:8px;background:#fafafa}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:12px}
+th{background:#f0f0f0;font-weight:600}
+td.r{text-align:right}
+td.c{text-align:center}
+.check-col{width:60px;text-align:center}
+.summary{margin:10px 0;font-size:13px;font-weight:bold}
+.pack-by{margin-top:30px;font-size:12px}
+@media print{body{margin:0;padding:8mm}}
+</style></head><body>
+<div class="header"><h3>PHIẾU ĐÓNG GÓI</h3><p style="font-size:14px;font-weight:bold;margin-top:4px">${selectedOrder.order_number}</p></div>
+<div class="ship-box">
+<p><b>Khách hàng:</b> ${selectedOrder.customer_name || 'Khách lẻ'}</p>
+${selectedOrder.customer_phone ? `<p><b>SĐT:</b> ${selectedOrder.customer_phone}</p>` : ''}
+${selectedOrder.shipping_address ? `<p><b>Địa chỉ:</b> ${selectedOrder.shipping_address}</p>` : ''}
+</div>
+<table><thead><tr><th>STT</th><th>Sản phẩm</th><th>SKU</th><th class="r">SL</th><th class="check-col">Đã kiểm</th></tr></thead><tbody>
+${items.map((i, idx) => `<tr><td>${idx + 1}</td><td>${i.product_name}</td><td>${i.product_sku || '—'}</td><td class="r">${i.quantity}</td><td class="c">☐</td></tr>`).join('')}</tbody></table>
+<div class="summary">Tổng số item: ${totalItems}</div>
 ${qrHtml}
-<table><tr><th>STT</th><th>Sản phẩm</th><th>Mã SP</th><th class="right">SL</th><th>Bảo hành</th></tr>
-${items.map((i, idx) => `<tr><td>${idx + 1}</td><td>${i.product_name}</td><td>${i.product_sku || ''}</td><td class="right">${i.quantity}</td><td>${i.warranty_months ? i.warranty_months + ' tháng' : '—'}</td></tr>`).join('')}</table>
-<p><b>Tổng tiền:</b> ${formatMoney(selectedOrder.total_amount)} &nbsp;|&nbsp; <b>Phí ship:</b> ${formatMoney(selectedOrder.shipping_fee || 0)} (${selectedOrder.shipping_payer === 'shop' ? 'Shop trả' : 'KH trả'})</p>
-${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
-<div class="sig"><div><p>Người gửi</p><br><br><p>___________</p></div><div><p>Người nhận</p><br><br><p>___________</p></div></div>
+${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
+<div class="pack-by">Đóng gói bởi: _________________________ &nbsp;&nbsp; Ngày: ${new Date().toLocaleDateString('vi-VN')}</div>
 <script>window.onload=function(){window.print()}</script></body></html>`;
-    const win = window.open('', '_blank', 'width=800,height=600');
+    const win = window.open('', '_blank', 'width=600,height=800');
     win.document.write(html); win.document.close();
   };
 
@@ -1400,6 +1432,61 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
 
   const checkedOrders = serverOrders.filter(o => checkedOrderIds.has(o.id));
   const checkedTotal = checkedOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
+
+  // ---- Bulk print invoices ----
+  const handleBulkPrint = async () => {
+    if (checkedOrderIds.size === 0) return;
+    const orderIds = [...checkedOrderIds];
+    const pages = [];
+    for (const oid of orderIds) {
+      const order = serverOrders.find(o => o.id === oid);
+      if (!order) continue;
+      const { data: items } = await supabase.from('order_items').select('*').eq('order_id', oid);
+      const oItems = items || [];
+      let qrHtml = '';
+      try {
+        const qrDataUrl = await QRCode.toDataURL(order.order_number, { width: 200, margin: 1 });
+        qrHtml = `<div style="margin-top:8px"><img src="${qrDataUrl}" style="width:80px;height:80px"></div>`;
+      } catch (_e) { /* ignore */ }
+      const logoHtml = tenant.logo_url ? `<img src="${tenant.logo_url}" style="max-height:40px;max-width:120px;object-fit:contain;margin-bottom:4px" crossorigin="anonymous">` : '';
+      pages.push(`<div class="page">
+<div class="header">${logoHtml}<h2>${tenant.name || ''}</h2></div>
+<div class="title">ĐƠN HÀNG #${order.order_number}</div>
+<div class="order-info">
+<p><b>Ngày:</b> ${new Date(order.created_at).toLocaleString('vi-VN')}</p>
+<p><b>Khách:</b> ${order.customer_name || 'Khách lẻ'}${order.customer_phone ? ' - ' + order.customer_phone : ''}</p>
+${order.shipping_address ? `<p><b>Địa chỉ:</b> ${order.shipping_address}</p>` : ''}
+</div>
+<table class="items"><thead><tr><th>STT</th><th>Sản phẩm</th><th class="r">SL</th><th class="r">Đơn giá</th><th class="r">Thành tiền</th></tr></thead><tbody>
+${oItems.map((i, idx) => `<tr><td>${idx + 1}</td><td>${i.product_name}</td><td class="r">${i.quantity}</td><td class="r">${formatMoney(i.unit_price)}</td><td class="r">${formatMoney(i.total_price)}</td></tr>`).join('')}</tbody></table>
+<table class="summary"><tr class="total"><td><b>TỔNG CỘNG</b></td><td class="r"><b>${formatMoney(order.total_amount)}</b></td></tr></table>
+<div class="footer-row"><div>${qrHtml}</div><div style="text-align:right;font-size:11px"><p>NV: ${order.created_by || ''}</p></div></div>
+</div>`);
+    }
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>In hàng loạt (${pages.length} đơn)</title>
+<style>
+@page{size:A5;margin:10mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#333}
+.page{max-width:148mm;margin:0 auto;padding:12px;page-break-after:always}
+.page:last-child{page-break-after:auto}
+.header{text-align:center;padding-bottom:8px;border-bottom:2px solid #222;margin-bottom:10px}
+.header h2{font-size:16px;margin:4px 0}
+.title{text-align:center;font-size:17px;font-weight:bold;margin:10px 0 5px;letter-spacing:1px}
+.order-info{margin:8px 0;font-size:11px;line-height:1.5}
+table.items{width:100%;border-collapse:collapse;margin:10px 0}
+table.items th,table.items td{border:1px solid #ccc;padding:5px 6px;text-align:left;font-size:11px}
+table.items th{background:#f5f5f5;font-weight:600}
+.r{text-align:right}
+table.summary{width:100%;margin:6px 0}
+table.summary td{padding:3px 6px;font-size:12px}
+.total{border-top:2px solid #222}
+.footer-row{display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px}
+</style></head><body>${pages.join('')}
+<script>window.onload=function(){window.print()}</script></body></html>`;
+    const win = window.open('', '_blank', 'width=600,height=800');
+    win.document.write(html); win.document.close();
+  };
 
   // ---- Bulk VTP: validate + push ----
   const handleBulkVtpOpen = async () => {
@@ -2200,7 +2287,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {selectedOrder.order_type === 'online' && <button onClick={printDeliveryNote} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-medium">📦 Phiếu giao</button>}
+                <button onClick={printPackingSlip} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-medium">📦 Phiếu đóng gói</button>
                 <button onClick={printInvoice} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-medium">🖨️ In</button>
                 <button onClick={() => { setShowDetailModal(false); setSelectedOrder(null); setEditMode(false); setShowPaymentInput(false); }} className="text-white/80 hover:text-white text-xl">✕</button>
               </div>
@@ -2745,6 +2832,10 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               {formatMoney(checkedTotal)}
             </span>
             <div className="flex-1" />
+            <button onClick={handleBulkPrint}
+              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
+              🖨️ In ({checkedOrderIds.size})
+            </button>
             {vtpToken && hasPermission('sales', 2) && (
               <button onClick={handleBulkVtpOpen}
                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
