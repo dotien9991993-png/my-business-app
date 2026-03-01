@@ -924,6 +924,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         await supabase.from('warranty_cards').update({
           status: 'voided', void_reason: 'Trả hàng', updated_at: getNowISOVN()
         }).eq('order_id', orderId);
+        // Decrement coupon usage if order used a coupon
+        if (order.coupon_id) {
+          await supabase.rpc('decrement_coupon_usage', { p_coupon_id: order.coupon_id });
+        }
       }
 
       const { error } = await supabase.from('orders').update(updates).eq('id', orderId);
@@ -974,7 +978,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       const qrDataUrl = await QRCode.toDataURL(selectedOrder.order_number, { width: 200, margin: 1 });
       qrHtml = `<div style="margin-top:12px"><img src="${qrDataUrl}" style="width:100px;height:100px"><p style="font-size:10px;color:#888;margin:2px 0">Quét mã để tra cứu</p></div>`;
     } catch (_e) { /* ignore QR error */ }
-    const logoHtml = tenant.logo_url ? `<img src="${tenant.logo_url}" style="max-height:50px;max-width:150px;object-fit:contain;margin-bottom:6px" crossorigin="anonymous">` : '';
+    const logoHtml = tenant.logo_url ? `<img src="${tenant.logo_url}" style="max-height:50px;max-width:150px;object-fit:contain;margin-bottom:6px" crossorigin="anonymous" onerror="this.style.display='none'">` : '';
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hóa đơn ${selectedOrder.order_number}</title>
 <style>
 @page{size:A5;margin:12mm}
@@ -1317,7 +1321,8 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
       const orderNumber = await genOrderNumber();
       const { data: newOrder, error: orderErr } = await supabase.from('orders').insert([{
         tenant_id: tenant.id, order_number: orderNumber, order_type: selectedOrder.order_type,
-        status: 'confirmed', customer_id: selectedOrder.customer_id,
+        status: 'confirmed', order_status: 'confirmed', shipping_status: 'pending',
+        customer_id: selectedOrder.customer_id,
         customer_name: selectedOrder.customer_name, customer_phone: selectedOrder.customer_phone,
         shipping_address: selectedOrder.shipping_address,
         subtotal: newTotal, total_amount: Math.abs(diff) < 1 ? 0 : diff,
@@ -1336,7 +1341,8 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
         order_id: newOrder.id, product_id: item.product_id, product_name: item.product_name,
         product_sku: item.product_sku, quantity: item.quantity,
         unit_price: parseFloat(item.unit_price), discount: 0,
-        total_price: parseFloat(item.unit_price) * item.quantity
+        total_price: parseFloat(item.unit_price) * item.quantity,
+        variant_id: item.variant_id || null, variant_name: item.variant_name || null
       }));
       await supabase.from('order_items').insert(newItemsData);
 
@@ -1454,12 +1460,13 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
       if (!order) continue;
       const { data: items } = await supabase.from('order_items').select('*').eq('order_id', oid);
       const oItems = items || [];
+      if (oItems.length === 0) continue;
       let qrHtml = '';
       try {
         const qrDataUrl = await QRCode.toDataURL(order.order_number, { width: 200, margin: 1 });
         qrHtml = `<div style="margin-top:8px"><img src="${qrDataUrl}" style="width:80px;height:80px"></div>`;
       } catch (_e) { /* ignore */ }
-      const logoHtml = tenant.logo_url ? `<img src="${tenant.logo_url}" style="max-height:40px;max-width:120px;object-fit:contain;margin-bottom:4px" crossorigin="anonymous">` : '';
+      const logoHtml = tenant.logo_url ? `<img src="${tenant.logo_url}" style="max-height:40px;max-width:120px;object-fit:contain;margin-bottom:4px" crossorigin="anonymous" onerror="this.style.display='none'">` : '';
       pages.push(`<div class="page">
 <div class="header">${logoHtml}<h2>${tenant.name || ''}</h2></div>
 <div class="title">ĐƠN HÀNG #${order.order_number}</div>

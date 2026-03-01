@@ -334,6 +334,11 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
     if (reportType === 'history') loadHistory();
   }, [reportType, loadHistory]);
 
+  // Reset history page when warehouse filter changes
+  useEffect(() => {
+    setHistoryPage(0);
+  }, [filterWarehouse]);
+
   // Entire view guard (placed after all hooks to comply with rules-of-hooks)
   if (!hasPermission('warehouse', 2)) {
     return (

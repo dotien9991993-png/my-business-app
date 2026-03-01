@@ -273,7 +273,7 @@ export default function SalesReportView({ orders, products, tenant }) {
       map[date].orders += 1;
       map[date].revenue += parseFloat(o.total_amount || 0);
     });
-    const sorted = Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
+    const sorted = Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
     return sorted.map((d, idx) => {
       const prev = sorted[idx + 1];
       const change = prev && prev.revenue > 0 ? ((d.revenue - prev.revenue) / prev.revenue * 100) : null;
