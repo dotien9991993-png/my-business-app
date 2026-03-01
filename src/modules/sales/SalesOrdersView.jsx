@@ -70,6 +70,9 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [bulkVtpPayer, setBulkVtpPayer] = useState('receiver');
   const [bulkVtpCod, setBulkVtpCod] = useState('cod');
   const [bulkVtpProgress, setBulkVtpProgress] = useState(null); // { current, total, results: [] }
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergePreview, setMergePreview] = useState(null); // { orders, allItems, customer, address, totalAmount, totalPaid }
+  const [mergingOrders, setMergingOrders] = useState(false);
   const [vtpServicesList, setVtpServicesList] = useState([]); // real services from API
   const [loadingVtpServices, setLoadingVtpServices] = useState(false);
 
@@ -1468,6 +1471,212 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
     setShowDetailModal(false);
     setShowCreateModal(true);
     logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'create', entityType: 'order', entityId: selectedOrder.order_number, description: `Sao chép đơn hàng từ #${selectedOrder.order_number}` });
+  };
+
+  // ---- Merge Orders (Feature 20) ----
+  const handleMergeOrders = async () => {
+    if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
+    if (checkedOrderIds.size < 2) { alert('Cần chọn ít nhất 2 đơn để gộp'); return; }
+    const selected = serverOrders.filter(o => checkedOrderIds.has(o.id));
+    // Validate: same customer
+    const customerIds = [...new Set(selected.map(o => o.customer_id).filter(Boolean))];
+    const customerPhones = [...new Set(selected.map(o => o.customer_phone).filter(Boolean))];
+    if (customerIds.length > 1 || (customerIds.length === 0 && customerPhones.length > 1)) {
+      alert('Chỉ gộp được các đơn cùng 1 khách hàng!'); return;
+    }
+    // Validate: status open/confirmed only
+    const invalidStatus = selected.filter(o => !['open', 'confirmed'].includes(o.order_status || o.status));
+    if (invalidStatus.length > 0) {
+      alert('Chỉ gộp được đơn ở trạng thái Mới/Đã xác nhận.\nCác đơn không hợp lệ: ' + invalidStatus.map(o => o.order_number).join(', '));
+      return;
+    }
+    // Validate: not shipped/delivered
+    const shippedOrders = selected.filter(o => ['shipped', 'delivered', 'returned_to_sender'].includes(o.shipping_status));
+    if (shippedOrders.length > 0) {
+      alert('Không thể gộp đơn đang giao/đã giao: ' + shippedOrders.map(o => o.order_number).join(', '));
+      return;
+    }
+    // Load items for all selected orders
+    setMergingOrders(true);
+    try {
+      const allItems = [];
+      for (const ord of selected) {
+        const { data: items } = await supabase.from('order_items').select('*').eq('order_id', ord.id);
+        (items || []).forEach(it => allItems.push({ ...it, source_order_number: ord.order_number }));
+      }
+      // Merge same products: combine quantities
+      const mergedMap = {};
+      for (const item of allItems) {
+        const key = item.variant_id ? `${item.product_id}_${item.variant_id}` : item.product_id;
+        if (mergedMap[key]) {
+          mergedMap[key].quantity += item.quantity;
+          mergedMap[key].total_price += item.total_price || 0;
+          if (!mergedMap[key].sources.includes(item.source_order_number)) {
+            mergedMap[key].sources.push(item.source_order_number);
+          }
+        } else {
+          mergedMap[key] = { ...item, sources: [item.source_order_number] };
+        }
+      }
+      const mergedItems = Object.values(mergedMap);
+      // Find best coupon among selected orders
+      const ordersWithCoupon = selected.filter(o => o.coupon_id && o.discount_amount > 0);
+      let bestCoupon = null;
+      if (ordersWithCoupon.length > 0) {
+        bestCoupon = ordersWithCoupon.reduce((best, o) => (o.discount_amount > (best?.discount_amount || 0)) ? o : best, null);
+      }
+      const totalPaid = selected.reduce((s, o) => s + parseFloat(o.paid_amount || 0), 0);
+      const subtotal = mergedItems.reduce((s, it) => s + (it.total_price || 0), 0);
+      const discount = bestCoupon ? parseFloat(bestCoupon.discount_amount || 0) : 0;
+      const shippingFee = Math.max(...selected.map(o => parseFloat(o.shipping_fee || 0)));
+      const totalAmount = subtotal - discount + shippingFee;
+      // Use first order's address/shipping info
+      const baseOrder = selected[0];
+      setMergePreview({
+        orders: selected,
+        allItems: mergedItems,
+        originalItems: allItems,
+        customer: { id: baseOrder.customer_id, name: baseOrder.customer_name, phone: baseOrder.customer_phone },
+        address: baseOrder.shipping_address,
+        shippingProvider: baseOrder.shipping_provider,
+        shippingFee,
+        shippingPayer: baseOrder.shipping_payer || 'customer',
+        paymentMethod: baseOrder.payment_method || 'cod',
+        bestCoupon,
+        discount,
+        subtotal,
+        totalAmount,
+        totalPaid,
+        warehouseId: baseOrder.warehouse_id || selectedWarehouseId
+      });
+      setShowMergeModal(true);
+    } catch (err) {
+      alert('Lỗi tải dữ liệu: ' + (err.message || ''));
+    } finally {
+      setMergingOrders(false);
+    }
+  };
+
+  const handleConfirmMerge = async () => {
+    if (!mergePreview || mergingOrders) return;
+    setMergingOrders(true);
+    try {
+      const { orders: oldOrders, allItems, customer, address, shippingProvider: mShipProvider, shippingFee: mShipFee, shippingPayer: mShipPayer, paymentMethod: mPayMethod, bestCoupon: mBestCoupon, discount: mDiscount, subtotal: mSubtotal, totalAmount: mTotal, totalPaid: mTotalPaid, warehouseId: mWhId } = mergePreview;
+      // 1. Create new order
+      const orderNumber = await genOrderNumber();
+      const mergedNote = `Gộp từ: ${oldOrders.map(o => o.order_number).join(', ')}`;
+      const { data: newOrder, error: orderErr } = await supabase.from('orders').insert([{
+        tenant_id: tenant.id, order_number: orderNumber, order_type: oldOrders[0].order_type || 'online',
+        status: 'confirmed', order_status: 'confirmed', shipping_status: 'pending',
+        customer_id: customer.id || null,
+        customer_name: customer.name || '', customer_phone: customer.phone || '',
+        shipping_address: address || null,
+        shipping_provider: mShipProvider || null,
+        shipping_fee: mShipFee, shipping_payer: mShipPayer,
+        discount_amount: mDiscount, discount_note: mBestCoupon ? `Mã: ${mBestCoupon.coupon_code}` : '',
+        coupon_id: mBestCoupon?.coupon_id || null, coupon_code: mBestCoupon?.coupon_code || null,
+        subtotal: mSubtotal, total_amount: mTotal,
+        payment_method: mPayMethod, payment_status: mTotalPaid >= mTotal ? 'paid' : mTotalPaid > 0 ? 'partial' : 'unpaid',
+        paid_amount: mTotalPaid,
+        note: mergedNote, internal_note: mergedNote,
+        created_by: currentUser.name,
+        warehouse_id: mWhId || null,
+        order_source: 'manual'
+      }]).select().single();
+      if (orderErr) throw orderErr;
+
+      // 2. Insert merged items
+      const itemsData = allItems.map(item => ({
+        order_id: newOrder.id, product_id: item.product_id,
+        product_name: item.product_name,
+        product_sku: item.product_sku || '', quantity: item.quantity,
+        unit_price: parseFloat(item.unit_price), discount: parseFloat(item.discount || 0),
+        total_price: item.total_price || 0,
+        warranty_months: item.warranty_months || null,
+        variant_id: item.variant_id || null,
+        variant_name: item.variant_name || null
+      }));
+      const { error: itemsErr } = await supabase.from('order_items').insert(itemsData);
+      if (itemsErr) throw itemsErr;
+
+      // 3. Cancel old orders (stock is net-zero: cancel restores, new order confirmed deducts)
+      // But since old orders already deducted stock and new order items are the same combined quantity,
+      // we need to: restore stock from old orders, then deduct for new order
+      // Simpler: old orders cancel → restores stock, new order deducts stock
+      for (const old of oldOrders) {
+        const isImported = old.order_source === 'haravan_import' || old.source === 'haravan_import';
+        const stockDeducted = !isImported && ['confirmed', 'packing'].includes(old.status || old.order_status);
+        if (stockDeducted) {
+          // Restore stock from cancelled order
+          const { data: oldItems } = await supabase.from('order_items').select('*').eq('order_id', old.id);
+          for (const item of (oldItems || [])) {
+            const { data: comboChildren } = await supabase.from('product_combo_items').select('*').eq('combo_product_id', item.product_id);
+            if (comboChildren && comboChildren.length > 0) {
+              for (const child of comboChildren) {
+                const delta = child.quantity * item.quantity;
+                if (old.warehouse_id) {
+                  await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: old.warehouse_id, p_product_id: child.child_product_id, p_delta: delta });
+                } else {
+                  await supabase.rpc('adjust_stock', { p_product_id: child.child_product_id, p_delta: delta });
+                }
+              }
+            } else {
+              if (old.warehouse_id) {
+                await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: old.warehouse_id, p_product_id: item.product_id, p_delta: item.quantity });
+              } else {
+                await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: item.quantity });
+              }
+            }
+          }
+        }
+        // Mark old order as cancelled
+        await supabase.from('orders').update({
+          status: 'cancelled', order_status: 'cancelled',
+          internal_note: `Đã gộp vào đơn ${orderNumber}`, updated_at: getNowISOVN()
+        }).eq('id', old.id);
+      }
+
+      // 4. Deduct stock for new merged order
+      for (const item of allItems) {
+        const { data: comboChildren } = await supabase.from('product_combo_items').select('*').eq('combo_product_id', item.product_id);
+        if (comboChildren && comboChildren.length > 0) {
+          for (const child of comboChildren) {
+            const delta = -(child.quantity * item.quantity);
+            if (mWhId) {
+              await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: mWhId, p_product_id: child.child_product_id, p_delta: delta });
+            } else {
+              await supabase.rpc('adjust_stock', { p_product_id: child.child_product_id, p_delta: delta });
+            }
+          }
+        } else {
+          if (mWhId) {
+            await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: mWhId, p_product_id: item.product_id, p_delta: -item.quantity });
+          } else {
+            await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: -item.quantity });
+          }
+        }
+      }
+
+      // 5. Move payment transactions to new order
+      for (const old of oldOrders) {
+        await supabase.from('payment_transactions').update({ order_id: newOrder.id }).eq('order_id', old.id);
+      }
+
+      // 6. Log activity
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'create', entityType: 'order', entityId: orderNumber, entityName: orderNumber, description: `Gộp ${oldOrders.length} đơn (${oldOrders.map(o => o.order_number).join(', ')}) → ${orderNumber}, ${formatMoney(mTotal)}` });
+
+      showToast(`Gộp ${oldOrders.length} đơn thành công → ${orderNumber}`);
+      setShowMergeModal(false);
+      setMergePreview(null);
+      setCheckedOrderIds(new Set());
+      if (loadSalesData) await loadSalesData();
+      if (loadWarehouseData) await loadWarehouseData();
+      await loadOrders();
+    } catch (err) {
+      alert('Lỗi gộp đơn: ' + (err.message || ''));
+    } finally {
+      setMergingOrders(false);
+    }
   };
 
   // ---- Toast ----
@@ -2995,6 +3204,12 @@ table.summary td{padding:3px 6px;font-size:12px}
                 🚚 Đẩy đơn VTP
               </button>
             )}
+            {checkedOrderIds.size >= 2 && hasPermission('sales', 2) && (
+              <button onClick={handleMergeOrders} disabled={mergingOrders}
+                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0 disabled:opacity-50">
+                {mergingOrders ? '...' : `🔗 Gộp đơn (${checkedOrderIds.size})`}
+              </button>
+            )}
             <button onClick={() => setCheckedOrderIds(new Set())}
               className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
               Hủy chọn
@@ -3167,6 +3382,97 @@ table.summary td{padding:3px 6px;font-size:12px}
           </div>
         );
       })()}
+
+      {/* ===== Merge Preview Modal ===== */}
+      {showMergeModal && mergePreview && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[70] p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-2xl w-full my-4">
+            <div className="p-4 border-b bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-t-xl flex justify-between items-center">
+              <h3 className="font-bold text-lg">🔗 Gộp đơn hàng</h3>
+              <button onClick={() => { setShowMergeModal(false); setMergePreview(null); }} className="text-white/80 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Orders being merged */}
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                <div className="text-sm font-medium text-purple-700 mb-2">Gộp {mergePreview.orders.length} đơn hàng:</div>
+                <div className="flex flex-wrap gap-2">
+                  {mergePreview.orders.map(o => (
+                    <span key={o.id} className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-purple-200 rounded text-xs font-medium">
+                      {o.order_number} <span className="text-purple-600">{formatMoney(o.total_amount)}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Customer info */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-sm font-medium text-gray-700">Khách hàng: <span className="text-gray-900">{mergePreview.customer.name || 'Khách lẻ'}</span></div>
+                {mergePreview.customer.phone && <div className="text-xs text-gray-500 mt-1">SĐT: {mergePreview.customer.phone}</div>}
+                {mergePreview.address && <div className="text-xs text-gray-500 mt-1">Địa chỉ: {mergePreview.address}</div>}
+              </div>
+
+              {/* Merged items table */}
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-2">Sản phẩm sau gộp ({mergePreview.allItems.length} dòng):</div>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left font-medium text-gray-500">Sản phẩm</th>
+                        <th className="px-2 py-1.5 text-center font-medium text-gray-500">SL</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-500">Đơn giá</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-500">Thành tiền</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-gray-500">Từ đơn</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mergePreview.allItems.map((item, i) => (
+                        <tr key={i} className="border-t">
+                          <td className="px-2 py-1.5 font-medium">{item.product_name}</td>
+                          <td className="px-2 py-1.5 text-center">{item.quantity}</td>
+                          <td className="px-2 py-1.5 text-right">{formatMoney(item.unit_price)}</td>
+                          <td className="px-2 py-1.5 text-right text-green-700">{formatMoney(item.total_price)}</td>
+                          <td className="px-2 py-1.5 text-gray-500">{item.sources.join(', ')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                <div className="flex justify-between text-sm"><span>Tạm tính:</span><span>{formatMoney(mergePreview.subtotal)}</span></div>
+                {mergePreview.discount > 0 && (
+                  <div className="flex justify-between text-sm text-red-600"><span>Giảm giá ({mergePreview.bestCoupon?.coupon_code}):</span><span>-{formatMoney(mergePreview.discount)}</span></div>
+                )}
+                {mergePreview.shippingFee > 0 && (
+                  <div className="flex justify-between text-sm"><span>Phí vận chuyển:</span><span>{formatMoney(mergePreview.shippingFee)}</span></div>
+                )}
+                <div className="flex justify-between text-sm font-bold pt-1 border-t"><span>Tổng cộng:</span><span className="text-green-700">{formatMoney(mergePreview.totalAmount)}</span></div>
+                {mergePreview.totalPaid > 0 && (
+                  <div className="flex justify-between text-sm text-blue-600"><span>Đã thanh toán:</span><span>{formatMoney(mergePreview.totalPaid)}</span></div>
+                )}
+              </div>
+
+              {/* Warning */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+                <b>Lưu ý:</b> Sau khi gộp, {mergePreview.orders.length} đơn cũ sẽ bị hủy và tạo 1 đơn mới. Thao tác này không thể hoàn tác.
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => { setShowMergeModal(false); setMergePreview(null); }}
+                  className="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium text-sm">Hủy</button>
+                <button onClick={handleConfirmMerge} disabled={mergingOrders}
+                  className={`flex-1 py-2.5 rounded-lg font-medium text-sm text-white ${mergingOrders ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}>
+                  {mergingOrders ? 'Đang gộp...' : `🔗 Xác nhận gộp ${mergePreview.orders.length} đơn`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
