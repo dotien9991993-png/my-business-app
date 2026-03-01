@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/update-stats",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/check-shipping",
+      "schedule": "0 */2 * * *"
     }
   ],
   "rewrites": [

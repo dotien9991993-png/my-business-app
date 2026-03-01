@@ -57,11 +57,21 @@ export default function SalesShippingView({ tenant, currentUser: _currentUser, l
   const loadTrackingEvents = async (orderId) => {
     setLoadingEvents(true);
     try {
-      const { data } = await supabase.from('shipping_tracking_events')
-        .select('*').eq('order_id', orderId)
-        .order('event_time', { ascending: false });
-      setTrackingEvents(data || []);
-    } catch (err) { console.error(err); }
+      const [eventsRes, logsRes] = await Promise.all([
+        supabase.from('shipping_tracking_events').select('*').eq('order_id', orderId).order('event_time', { ascending: false }),
+        supabase.from('order_status_logs').select('*').eq('order_id', orderId).eq('field_name', 'shipping_status').order('created_at', { ascending: false }).limit(50),
+      ]);
+      const events = (eventsRes.data || []).map(e => ({ ...e, _type: 'event', _time: e.event_time || e.created_at }));
+      const logs = (logsRes.data || []).map(l => ({
+        ...l, _type: 'log', _time: l.created_at,
+        status: `${l.old_status} → ${l.new_status}`,
+        description: `${l.old_status} → ${l.new_status}`,
+        source: l.source === 'webhook' ? 'vtp_webhook' : l.source === 'polling' ? 'vtp_polling' : l.source,
+      }));
+      // Merge and deduplicate by time proximity, sort desc
+      const all = [...events, ...logs].sort((a, b) => new Date(b._time) - new Date(a._time));
+      setTrackingEvents(all);
+    } catch (err) { console.error(err); setTrackingEvents([]); }
     finally { setLoadingEvents(false); }
   };
 
@@ -370,9 +380,12 @@ export default function SalesShippingView({ tenant, currentUser: _currentUser, l
                       <div className="flex-1 pb-3">
                         <div className="text-sm font-medium">{event.description || event.status}</div>
                         {event.location && <div className="text-xs text-gray-500">{event.location}</div>}
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {new Date(event.event_time).toLocaleString('vi-VN')}
-                          {event.source === 'vtp_api' && <span className="ml-1 text-red-500">(VTP)</span>}
+                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                          {new Date(event._time || event.event_time).toLocaleString('vi-VN')}
+                          {event.source === 'vtp_api' && <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded text-[10px]">API</span>}
+                          {event.source === 'vtp_webhook' && <span className="px-1 py-0.5 bg-green-100 text-green-600 rounded text-[10px]">Auto</span>}
+                          {event.source === 'vtp_polling' && <span className="px-1 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px]">Polling</span>}
+                          {event.source === 'manual' && <span className="px-1 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px]">Thủ công</span>}
                         </div>
                       </div>
                     </div>

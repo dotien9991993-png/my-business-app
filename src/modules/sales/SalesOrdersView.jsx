@@ -41,6 +41,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [refundMethod, setRefundMethod] = useState('cash');
   const [orderReturns, setOrderReturns] = useState([]);
   // Exchange state
+  const [statusLogs, setStatusLogs] = useState([]);
   const [showExchangeModal, setShowExchangeModal] = useState(false);
   const [exchangeReturnItems, setExchangeReturnItems] = useState([]);
   const [exchangeNewItems, setExchangeNewItems] = useState([]);
@@ -688,6 +689,14 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     finally { setLoadingItems(false); }
   };
 
+  const loadStatusLogs = async (orderId) => {
+    try {
+      const { data } = await supabase.from('order_status_logs').select('*')
+        .eq('order_id', orderId).order('created_at', { ascending: false }).limit(50);
+      setStatusLogs(data || []);
+    } catch (err) { console.warn('order_status_logs not ready:', err.message); setStatusLogs([]); }
+  };
+
   // Open order detail from chat attachment
   useEffect(() => {
     if (pendingOpenRecord?.type === 'order' && pendingOpenRecord.id) {
@@ -696,6 +705,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         setSelectedOrder(order);
         loadOrderItems(order.id);
         loadOrderReturns(order.id);
+        loadStatusLogs(order.id);
         setEditMode(false);
         setShowPaymentInput(false);
         setShowDetailModal(true);
@@ -1712,7 +1722,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                   )}
                 </div>
                 {/* Card content */}
-                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
+                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); loadStatusLogs(o.id); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
                   {/* Line 1: Mã đơn, loại, trạng thái, tổng tiền */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -2349,6 +2359,36 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                       <div className="text-xs text-gray-400">{new Date(ret.created_at).toLocaleString('vi-VN')} - {paymentMethods[ret.refund_method]?.label || ret.refund_method}</div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Status timeline */}
+              {statusLogs.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                  <div className="text-sm font-medium text-gray-700">Lịch sử trạng thái ({statusLogs.length})</div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {statusLogs.map(log => {
+                      const sourceBadge = {
+                        webhook: { label: 'Auto', color: 'bg-green-100 text-green-700' },
+                        polling: { label: 'Polling', color: 'bg-blue-100 text-blue-700' },
+                        manual: { label: 'Thủ công', color: 'bg-gray-100 text-gray-600' },
+                      }[log.source] || { label: log.source, color: 'bg-gray-100 text-gray-600' };
+                      const statusLabel = (field) => {
+                        if (log.field_name === 'shipping_status') return shippingStatusValues[field]?.label || field;
+                        if (log.field_name === 'order_status') return orderStatusValues[field]?.label || field;
+                        return paymentStatusValues[field]?.label || field;
+                      };
+                      return (
+                        <div key={log.id} className="flex items-center gap-2 text-xs bg-white rounded px-2 py-1.5 border">
+                          <span className="text-gray-400 shrink-0">{new Date(log.created_at).toLocaleString('vi-VN')}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${sourceBadge.color}`}>{sourceBadge.label}</span>
+                          <span className="text-gray-500">{statusLabel(log.old_status)}</span>
+                          <span className="text-gray-400">&rarr;</span>
+                          <span className="font-medium text-gray-800">{statusLabel(log.new_status)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
