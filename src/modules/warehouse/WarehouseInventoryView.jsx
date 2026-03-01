@@ -6,7 +6,7 @@ import { warehouseCategories, warehouseUnits } from '../../constants/warehouseCo
 import { logActivity } from '../../lib/activityLog';
 import { uploadImage, getThumbnailUrl } from '../../utils/cloudinaryUpload';
 
-export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, orders, hasPermission, canEdit, getPermissionLevel }) {
+export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, productVariants, orders, hasPermission, canEdit, getPermissionLevel }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const permLevel = getPermissionLevel('warehouse');
   const effectiveCategories = dynamicCategories || warehouseCategories;
@@ -99,6 +99,10 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   const [comboChildSearch, setComboChildSearch] = useState('');
   const [formImageUrl, setFormImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  // Variant states
+  const [formHasVariants, setFormHasVariants] = useState(false);
+  const [formVariantOptions, setFormVariantOptions] = useState([]); // [{ name: 'Màu', values: ['Đỏ','Xanh'] }]
+  const [formVariants, setFormVariants] = useState([]); // [{ variant_name, attributes, sku, price, cost_price, barcode }]
   const imageInputRef = useRef(null);
 
   // Adjust stock states
@@ -116,6 +120,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     setFormDescription(''); setFormBrand(''); setFormWarranty(''); setFormHasSerial(false);
     setFormIsCombo(false); setFormComboItems([]); setComboChildSearch('');
     setFormImageUrl('');
+    setFormHasVariants(false); setFormVariantOptions([]); setFormVariants([]);
   };
 
   const handleImageUpload = async (e) => {
@@ -153,6 +158,42 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
       return Math.floor(childStock / (ci.quantity || 1));
     }));
   };
+
+  // Generate variants from options (Cartesian product)
+  const generateVariantsFromOptions = (options, baseSku, basePrice, baseCost) => {
+    if (!options || options.length === 0) return [];
+    const validOptions = options.filter(o => o.name && o.values && o.values.length > 0);
+    if (validOptions.length === 0) return [];
+    // Cartesian product
+    const combos = validOptions.reduce((acc, opt) => {
+      if (acc.length === 0) return opt.values.map(v => [{ name: opt.name, value: v }]);
+      const result = [];
+      acc.forEach(combo => {
+        opt.values.forEach(v => {
+          result.push([...combo, { name: opt.name, value: v }]);
+        });
+      });
+      return result;
+    }, []);
+    return combos.map((combo, idx) => {
+      const variant_name = combo.map(c => c.value).join(' / ');
+      const attributes = {};
+      combo.forEach(c => { attributes[c.name] = c.value; });
+      const skuSuffix = combo.map(c => c.value.replace(/\s+/g, '').slice(0, 3).toUpperCase()).join('-');
+      return {
+        variant_name,
+        attributes,
+        sku: baseSku ? `${baseSku}-${skuSuffix}` : skuSuffix,
+        price: parseFloat(basePrice) || 0,
+        cost_price: parseFloat(baseCost) || 0,
+        barcode: '',
+        sort_order: idx,
+      };
+    });
+  };
+
+  // Get variant count for a product
+  const getVariantCount = (productId) => (productVariants || []).filter(v => v.product_id === productId).length;
 
   // SP con có thể chọn (không phải combo, active, chưa được chọn)
   const comboChildOptions = useMemo(() => {
@@ -218,6 +259,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     if (!hasPermission('warehouse', 2)) { alert('Bạn không có quyền thêm sản phẩm'); return; }
     if (!formName) { alert('Vui lòng nhập tên sản phẩm!'); return; }
     if (formIsCombo && formComboItems.length === 0) { alert('Vui lòng thêm ít nhất 1 sản phẩm con cho combo!'); return; }
+    if (formHasVariants && formVariants.length === 0) { alert('Vui lòng tạo ít nhất 1 biến thể!'); return; }
     try {
       const { data: newProd, error } = await supabase.from('products').insert([{
         tenant_id: tenant.id, sku: formSku || generateSku(), barcode: formBarcode,
@@ -227,12 +269,25 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
         max_stock: formMaxStock ? parseInt(formMaxStock) : null,
         location: formLocation, description: formDescription,
         brand: formBrand, warranty_months: formWarranty ? parseInt(formWarranty) : null,
-        has_serial: formIsCombo ? false : formHasSerial,
+        has_serial: (formIsCombo || formHasVariants) ? false : formHasSerial,
         is_combo: formIsCombo,
+        has_variants: formHasVariants,
+        variant_options: formHasVariants ? formVariantOptions : [],
         image_url: formImageUrl || null,
         created_by: currentUser.name
       }]).select().single();
       if (error) throw error;
+      // Lưu biến thể
+      if (formHasVariants && formVariants.length > 0 && newProd) {
+        const variantRows = formVariants.map((v, idx) => ({
+          tenant_id: tenant.id, product_id: newProd.id,
+          variant_name: v.variant_name, attributes: v.attributes,
+          sku: v.sku || null, price: parseFloat(v.price) || 0,
+          cost_price: parseFloat(v.cost_price) || 0, barcode: v.barcode || null,
+          sort_order: idx
+        }));
+        await supabase.from('product_variants').insert(variantRows);
+      }
       // Lưu SP con cho combo
       if (formIsCombo && formComboItems.length > 0 && newProd) {
         const rows = formComboItems.map(ci => ({
@@ -251,6 +306,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     if (!hasPermission('warehouse', 2)) { alert('Bạn không có quyền chỉnh sửa sản phẩm'); return; }
     if (!formName) { alert('Vui lòng nhập tên sản phẩm!'); return; }
     if (formIsCombo && formComboItems.length === 0) { alert('Vui lòng thêm ít nhất 1 sản phẩm con cho combo!'); return; }
+    if (formHasVariants && formVariants.length === 0) { alert('Vui lòng tạo ít nhất 1 biến thể!'); return; }
     try {
       const { error } = await supabase.from('products').update({
         sku: formSku, barcode: formBarcode, name: formName, category: formCategory,
@@ -259,8 +315,10 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
         max_stock: formMaxStock ? parseInt(formMaxStock) : null,
         location: formLocation, description: formDescription,
         brand: formBrand, warranty_months: formWarranty ? parseInt(formWarranty) : null,
-        has_serial: formIsCombo ? false : formHasSerial,
+        has_serial: (formIsCombo || formHasVariants) ? false : formHasSerial,
         is_combo: formIsCombo,
+        has_variants: formHasVariants,
+        variant_options: formHasVariants ? formVariantOptions : [],
         image_url: formImageUrl || null,
         updated_at: getNowISOVN()
       }).eq('id', selectedProduct.id);
@@ -273,6 +331,18 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
           child_product_id: ci.product_id, quantity: ci.quantity || 1
         }));
         await supabase.from('product_combo_items').insert(rows);
+      }
+      // Cập nhật biến thể: xóa cũ, thêm mới
+      await supabase.from('product_variants').delete().eq('product_id', selectedProduct.id);
+      if (formHasVariants && formVariants.length > 0) {
+        const variantRows = formVariants.map((v, idx) => ({
+          tenant_id: tenant.id, product_id: selectedProduct.id,
+          variant_name: v.variant_name, attributes: v.attributes,
+          sku: v.sku || null, price: parseFloat(v.price) || 0,
+          cost_price: parseFloat(v.cost_price) || 0, barcode: v.barcode || null,
+          sort_order: idx
+        }));
+        await supabase.from('product_variants').insert(variantRows);
       }
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'warehouse', action: 'update', entityType: 'product', entityId: selectedProduct.id, entityName: formName, oldData: { name: selectedProduct.name, sku: selectedProduct.sku, import_price: selectedProduct.import_price, sell_price: selectedProduct.sell_price }, newData: { name: formName, sku: formSku, import_price: parseFloat(formImportPrice) || 0, sell_price: parseFloat(formSellPrice) || 0 }, description: 'Cập nhật sản phẩm: ' + formName });
       alert('✅ Cập nhật thành công!');
@@ -364,6 +434,15 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
       return { product_id: ci.child_product_id, product_name: child?.name || 'SP đã xóa', quantity: ci.quantity };
     }));
     setComboChildSearch('');
+    // Load variants
+    setFormHasVariants(product.has_variants || false);
+    setFormVariantOptions(product.variant_options || []);
+    const existingVariants = (productVariants || []).filter(v => v.product_id === product.id);
+    setFormVariants(existingVariants.map(v => ({
+      id: v.id, variant_name: v.variant_name, attributes: v.attributes || {},
+      sku: v.sku || '', price: v.price || 0, cost_price: v.cost_price || 0, barcode: v.barcode || '',
+      sort_order: v.sort_order || 0
+    })));
     setShowDetailModal(true);
   };
 
@@ -538,6 +617,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                         <div className="font-medium text-gray-900">
                           {product.name}
                           {product.is_combo && <span className="ml-1.5 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-medium align-middle">Combo</span>}
+                          {product.has_variants && <span className="ml-1.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded font-medium align-middle">{getVariantCount(product.id)} biến thể</span>}
                         </div>
                         {product.brand && <div className="text-xs text-gray-500">{product.brand}</div>}
                       </td>
@@ -621,6 +701,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                   <div className="font-medium text-gray-900 truncate" title={product.name}>
                     {product.name}
                     {product.is_combo && <span className="ml-1 px-1 py-0.5 bg-orange-100 text-orange-700 text-[9px] rounded font-medium">Combo</span>}
+                    {product.has_variants && <span className="ml-1 px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] rounded font-medium">{getVariantCount(product.id)} BT</span>}
                   </div>
                   <div className="flex justify-between items-center mt-2">
                     <span className={`font-bold ${getEffectiveStock(product) === 0 ? 'text-red-600' : 'text-gray-900'}`}>{formatNumber(getEffectiveStock(product))} {product.unit}</span>
@@ -749,15 +830,121 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                     <label htmlFor="hasSerial" className="text-sm font-medium text-gray-700">Sản phẩm có Serial Number</label>
                   </div>
                 )}
-                <div className="flex items-center gap-2 py-2">
-                  <input type="checkbox" id="isCombo" checked={formIsCombo} onChange={e => { setFormIsCombo(e.target.checked); if (e.target.checked) setFormHasSerial(false); }} className="w-4 h-4 text-orange-600 rounded" />
-                  <label htmlFor="isCombo" className="text-sm font-medium text-gray-700">Đây là sản phẩm Combo</label>
-                </div>
+                {!formHasVariants && (
+                  <div className="flex items-center gap-2 py-2">
+                    <input type="checkbox" id="isCombo" checked={formIsCombo} onChange={e => { setFormIsCombo(e.target.checked); if (e.target.checked) { setFormHasSerial(false); setFormHasVariants(false); } }} className="w-4 h-4 text-orange-600 rounded" />
+                    <label htmlFor="isCombo" className="text-sm font-medium text-gray-700">Đây là sản phẩm Combo</label>
+                  </div>
+                )}
+                {!formIsCombo && (
+                  <div className="flex items-center gap-2 py-2">
+                    <input type="checkbox" id="hasVariants" checked={formHasVariants} onChange={e => { setFormHasVariants(e.target.checked); if (e.target.checked) { setFormHasSerial(false); setFormIsCombo(false); } }} className="w-4 h-4 text-indigo-600 rounded" />
+                    <label htmlFor="hasVariants" className="text-sm font-medium text-gray-700">Sản phẩm có biến thể (màu sắc, kích thước...)</label>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả</label>
                   <textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} rows={2} placeholder="Mô tả chi tiết..." className="w-full px-3 py-2 border rounded-lg" />
                 </div>
               </div>
+
+              {/* Variant options builder */}
+              {formHasVariants && (
+                <div className="bg-indigo-50 rounded-lg p-4 space-y-3">
+                  <h3 className="font-medium text-indigo-700">Biến thể sản phẩm</h3>
+                  {/* Option groups */}
+                  {formVariantOptions.map((opt, optIdx) => (
+                    <div key={optIdx} className="bg-white rounded-lg p-3 border space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input type="text" value={opt.name} onChange={e => {
+                          const next = [...formVariantOptions]; next[optIdx] = { ...next[optIdx], name: e.target.value }; setFormVariantOptions(next);
+                        }} placeholder="Tên thuộc tính (VD: Màu sắc)" className="flex-1 px-3 py-1.5 border rounded-lg text-sm" />
+                        <button type="button" onClick={() => setFormVariantOptions(prev => prev.filter((_, i) => i !== optIdx))} className="text-red-500 hover:text-red-700 text-lg">x</button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {(opt.values || []).map((val, valIdx) => (
+                          <span key={valIdx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
+                            {val}
+                            <button type="button" onClick={() => {
+                              const next = [...formVariantOptions]; next[optIdx] = { ...next[optIdx], values: next[optIdx].values.filter((_, i) => i !== valIdx) }; setFormVariantOptions(next);
+                            }} className="text-indigo-400 hover:text-indigo-600">x</button>
+                          </span>
+                        ))}
+                        <input type="text" placeholder="+ Thêm giá trị"
+                          className="px-2 py-0.5 border rounded text-xs w-28"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              e.preventDefault();
+                              const next = [...formVariantOptions];
+                              next[optIdx] = { ...next[optIdx], values: [...(next[optIdx].values || []), e.target.value.trim()] };
+                              setFormVariantOptions(next);
+                              e.target.value = '';
+                            }
+                          }} />
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setFormVariantOptions(prev => [...prev, { name: '', values: [] }])}
+                    className="px-3 py-1.5 border-2 border-dashed border-indigo-300 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 w-full">
+                    + Thêm thuộc tính
+                  </button>
+                  {formVariantOptions.some(o => o.name && o.values?.length > 0) && (
+                    <button type="button" onClick={() => {
+                      const generated = generateVariantsFromOptions(formVariantOptions, formSku, formSellPrice, formImportPrice);
+                      setFormVariants(generated);
+                    }} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                      Tạo {formVariantOptions.reduce((t, o) => t * Math.max(1, (o.values?.length || 0)), 1)} biến thể
+                    </button>
+                  )}
+                  {/* Variants table */}
+                  {formVariants.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-indigo-100">
+                            <th className="px-2 py-1.5 text-left">Biến thể</th>
+                            <th className="px-2 py-1.5 text-left">SKU</th>
+                            <th className="px-2 py-1.5 text-right">Giá bán</th>
+                            <th className="px-2 py-1.5 text-right">Giá nhập</th>
+                            <th className="px-2 py-1.5 text-left">Barcode</th>
+                            <th className="px-2 py-1.5 w-8"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {formVariants.map((v, idx) => (
+                            <tr key={idx} className="border-b">
+                              <td className="px-2 py-1">{v.variant_name}</td>
+                              <td className="px-2 py-1">
+                                <input type="text" value={v.sku || ''} onChange={e => {
+                                  const next = [...formVariants]; next[idx] = { ...next[idx], sku: e.target.value }; setFormVariants(next);
+                                }} className="w-24 px-1 py-0.5 border rounded text-xs" />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input type="number" value={v.price || ''} onChange={e => {
+                                  const next = [...formVariants]; next[idx] = { ...next[idx], price: e.target.value }; setFormVariants(next);
+                                }} className="w-24 px-1 py-0.5 border rounded text-xs text-right" />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input type="number" value={v.cost_price || ''} onChange={e => {
+                                  const next = [...formVariants]; next[idx] = { ...next[idx], cost_price: e.target.value }; setFormVariants(next);
+                                }} className="w-24 px-1 py-0.5 border rounded text-xs text-right" />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input type="text" value={v.barcode || ''} onChange={e => {
+                                  const next = [...formVariants]; next[idx] = { ...next[idx], barcode: e.target.value }; setFormVariants(next);
+                                }} className="w-24 px-1 py-0.5 border rounded text-xs" />
+                              </td>
+                              <td className="px-2 py-1">
+                                <button type="button" onClick={() => setFormVariants(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">x</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Combo child products section */}
               {formIsCombo && (
@@ -882,6 +1069,33 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                 </div>
               )}
 
+              {/* Variants display (read-only) */}
+              {selectedProduct.has_variants && getVariantCount(selectedProduct.id) > 0 && (
+                <div className="bg-indigo-50 rounded-lg p-4">
+                  <h3 className="font-medium text-indigo-700 mb-3">Biến thể ({getVariantCount(selectedProduct.id)})</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead><tr className="bg-indigo-100">
+                        <th className="px-2 py-1.5 text-left">Tên</th>
+                        <th className="px-2 py-1.5 text-left">SKU</th>
+                        <th className="px-2 py-1.5 text-right">Giá bán</th>
+                        <th className="px-2 py-1.5 text-right">Giá nhập</th>
+                      </tr></thead>
+                      <tbody>
+                        {(productVariants || []).filter(v => v.product_id === selectedProduct.id).map(v => (
+                          <tr key={v.id} className="border-b">
+                            <td className="px-2 py-1.5 font-medium">{v.variant_name}</td>
+                            <td className="px-2 py-1.5 text-gray-500 font-mono">{v.sku}</td>
+                            <td className="px-2 py-1.5 text-right">{formatCurrency(v.price)}</td>
+                            <td className="px-2 py-1.5 text-right">{formatCurrency(v.cost_price)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-gray-50 rounded-lg p-4 space-y-4">
                 <h3 className="font-medium text-gray-700">📝 Thông tin cơ bản</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -921,11 +1135,92 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                     <label htmlFor="hasSerialEdit" className="text-sm font-medium text-gray-700">Sản phẩm có Serial Number</label>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="isComboEdit" checked={formIsCombo} onChange={e => { setFormIsCombo(e.target.checked); if (e.target.checked) setFormHasSerial(false); }} className="w-4 h-4 text-orange-600 rounded" />
-                  <label htmlFor="isComboEdit" className="text-sm font-medium text-gray-700">Đây là sản phẩm Combo</label>
-                </div>
+                {!formHasVariants && (
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="isComboEdit" checked={formIsCombo} onChange={e => { setFormIsCombo(e.target.checked); if (e.target.checked) { setFormHasSerial(false); setFormHasVariants(false); } }} className="w-4 h-4 text-orange-600 rounded" />
+                    <label htmlFor="isComboEdit" className="text-sm font-medium text-gray-700">Đây là sản phẩm Combo</label>
+                  </div>
+                )}
+                {!formIsCombo && (
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="hasVariantsEdit" checked={formHasVariants} onChange={e => { setFormHasVariants(e.target.checked); if (e.target.checked) { setFormHasSerial(false); setFormIsCombo(false); } }} className="w-4 h-4 text-indigo-600 rounded" />
+                    <label htmlFor="hasVariantsEdit" className="text-sm font-medium text-gray-700">Sản phẩm có biến thể</label>
+                  </div>
+                )}
               </div>
+
+              {/* Variant options (edit) */}
+              {formHasVariants && (
+                <div className="bg-indigo-50 rounded-lg p-4 space-y-3">
+                  <h3 className="font-medium text-indigo-700">Biến thể sản phẩm</h3>
+                  {formVariantOptions.map((opt, optIdx) => (
+                    <div key={optIdx} className="bg-white rounded-lg p-3 border space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input type="text" value={opt.name} onChange={e => {
+                          const next = [...formVariantOptions]; next[optIdx] = { ...next[optIdx], name: e.target.value }; setFormVariantOptions(next);
+                        }} placeholder="Tên thuộc tính" className="flex-1 px-3 py-1.5 border rounded-lg text-sm" />
+                        <button type="button" onClick={() => setFormVariantOptions(prev => prev.filter((_, i) => i !== optIdx))} className="text-red-500 hover:text-red-700 text-lg">x</button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {(opt.values || []).map((val, valIdx) => (
+                          <span key={valIdx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
+                            {val}
+                            <button type="button" onClick={() => {
+                              const next = [...formVariantOptions]; next[optIdx] = { ...next[optIdx], values: next[optIdx].values.filter((_, i) => i !== valIdx) }; setFormVariantOptions(next);
+                            }} className="text-indigo-400 hover:text-indigo-600">x</button>
+                          </span>
+                        ))}
+                        <input type="text" placeholder="+ Thêm" className="px-2 py-0.5 border rounded text-xs w-24"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              e.preventDefault();
+                              const next = [...formVariantOptions]; next[optIdx] = { ...next[optIdx], values: [...(next[optIdx].values || []), e.target.value.trim()] }; setFormVariantOptions(next);
+                              e.target.value = '';
+                            }
+                          }} />
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setFormVariantOptions(prev => [...prev, { name: '', values: [] }])}
+                    className="px-3 py-1.5 border-2 border-dashed border-indigo-300 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 w-full">
+                    + Thêm thuộc tính
+                  </button>
+                  {formVariantOptions.some(o => o.name && o.values?.length > 0) && (
+                    <button type="button" onClick={() => {
+                      const generated = generateVariantsFromOptions(formVariantOptions, formSku, formSellPrice, formImportPrice);
+                      setFormVariants(generated);
+                    }} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                      Tạo lại biến thể ({formVariantOptions.reduce((t, o) => t * Math.max(1, (o.values?.length || 0)), 1)})
+                    </button>
+                  )}
+                  {formVariants.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead><tr className="bg-indigo-100">
+                          <th className="px-2 py-1.5 text-left">Biến thể</th>
+                          <th className="px-2 py-1.5 text-left">SKU</th>
+                          <th className="px-2 py-1.5 text-right">Giá bán</th>
+                          <th className="px-2 py-1.5 text-right">Giá nhập</th>
+                          <th className="px-2 py-1.5 text-left">Barcode</th>
+                          <th className="px-2 py-1.5 w-8"></th>
+                        </tr></thead>
+                        <tbody>
+                          {formVariants.map((v, idx) => (
+                            <tr key={idx} className="border-b">
+                              <td className="px-2 py-1">{v.variant_name}</td>
+                              <td className="px-2 py-1"><input type="text" value={v.sku || ''} onChange={e => { const n = [...formVariants]; n[idx] = { ...n[idx], sku: e.target.value }; setFormVariants(n); }} className="w-24 px-1 py-0.5 border rounded text-xs" /></td>
+                              <td className="px-2 py-1"><input type="number" value={v.price || ''} onChange={e => { const n = [...formVariants]; n[idx] = { ...n[idx], price: e.target.value }; setFormVariants(n); }} className="w-24 px-1 py-0.5 border rounded text-xs text-right" /></td>
+                              <td className="px-2 py-1"><input type="number" value={v.cost_price || ''} onChange={e => { const n = [...formVariants]; n[idx] = { ...n[idx], cost_price: e.target.value }; setFormVariants(n); }} className="w-24 px-1 py-0.5 border rounded text-xs text-right" /></td>
+                              <td className="px-2 py-1"><input type="text" value={v.barcode || ''} onChange={e => { const n = [...formVariants]; n[idx] = { ...n[idx], barcode: e.target.value }; setFormVariants(n); }} className="w-24 px-1 py-0.5 border rounded text-xs" /></td>
+                              <td className="px-2 py-1"><button type="button" onClick={() => setFormVariants(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">x</button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Combo child products (edit) */}
               {formIsCombo && (

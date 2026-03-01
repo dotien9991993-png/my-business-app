@@ -27,6 +27,7 @@ export function DataProvider({ children }) {
   const [warehouses, setWarehouses] = useState([]);
   const [warehouseStock, setWarehouseStock] = useState([]);
   const [comboItems, setComboItems] = useState([]);
+  const [productVariants, setProductVariants] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [stocktakes, setStocktakes] = useState([]);
   const [transfers, setTransfers] = useState([]);
@@ -190,7 +191,7 @@ export function DataProvider({ children }) {
   const loadWarehouseData = useCallback(async () => {
     if (!tenant) return;
     try {
-      const [productsRes, transactionsRes, warehousesRes, warehouseStockRes, comboItemsRes, suppliersRes, stocktakesRes, transfersRes] = await Promise.all([
+      const [productsRes, transactionsRes, warehousesRes, warehouseStockRes, comboItemsRes, suppliersRes, stocktakesRes, transfersRes, variantsRes] = await Promise.all([
         supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name', { ascending: true }),
         supabase.from('stock_transactions').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100),
         supabase.from('warehouses').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order', { ascending: true }),
@@ -198,7 +199,8 @@ export function DataProvider({ children }) {
         supabase.from('product_combo_items').select('*').eq('tenant_id', tenant.id),
         supabase.from('suppliers').select('*').eq('tenant_id', tenant.id).order('name', { ascending: true }),
         supabase.from('stocktakes').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100),
-        supabase.from('warehouse_transfers').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100)
+        supabase.from('warehouse_transfers').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100),
+        supabase.from('product_variants').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order', { ascending: true })
       ]);
       if (productsRes.data) setProducts(productsRes.data);
       if (transactionsRes.data) setStockTransactions(transactionsRes.data);
@@ -211,6 +213,8 @@ export function DataProvider({ children }) {
       if (suppliersRes.data) setSuppliers(suppliersRes.data);
       if (stocktakesRes.data) setStocktakes(stocktakesRes.data);
       if (transfersRes.data) setTransfers(transfersRes.data);
+      if (variantsRes.error) { console.warn('product_variants table not ready:', variantsRes.error.message); }
+      else if (variantsRes.data) setProductVariants(variantsRes.data);
     } catch (error) { console.error('Error loading warehouse data:', error); }
   }, [tenant]);
 
@@ -581,7 +585,7 @@ export function DataProvider({ children }) {
     receiptsPayments, setReceiptsPayments, debts, setDebts, salaries, setSalaries,
     attendances, setAttendances, todayAttendances, setTodayAttendances,
     products, setProducts, stockTransactions, setStockTransactions,
-    warehouses, setWarehouses, warehouseStock, setWarehouseStock, comboItems,
+    warehouses, setWarehouses, warehouseStock, setWarehouseStock, comboItems, productVariants,
     suppliers, stocktakes, transfers,
     orders, setOrders, customers, setCustomers, customerAddresses, setCustomerAddresses,
     systemSettings, shippingConfigs, getSettingValue,

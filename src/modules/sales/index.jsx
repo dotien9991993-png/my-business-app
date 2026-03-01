@@ -23,7 +23,7 @@ const NoAccess = () => (
 
 export default function SalesModule() {
   const { activeTab, currentUser, tenant, canAccessTab, hasPermission, canEdit, getPermissionLevel, filterByPermission } = useApp();
-  const { orders, customers, customerAddresses, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, getSettingValue, shippingConfigs, warrantyCards, warrantyRepairs, comboItems } = useData();
+  const { orders, customers, customerAddresses, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, getSettingValue, shippingConfigs, warrantyCards, warrantyRepairs, comboItems, productVariants } = useData();
 
   const dynamicCategories = getSettingValue('product', 'categories', null);
 
@@ -56,7 +56,7 @@ export default function SalesModule() {
           warehouses={warehouses} warehouseStock={warehouseStock}
           dynamicShippingProviders={dynamicShippingProviders}
           shippingConfigs={shippingConfigs} getSettingValue={getSettingValue}
-          comboItems={comboItems}
+          comboItems={comboItems} productVariants={productVariants}
           hasPermission={hasPermission} canEdit={canEdit}
           getPermissionLevel={getPermissionLevel} filterByPermission={filterByPermission}
         />
@@ -76,7 +76,7 @@ export default function SalesModule() {
         <SalesProductsView
           tenant={tenant} products={products} orders={orders}
           currentUser={currentUser} dynamicCategories={dynamicCategories}
-          comboItems={comboItems}
+          comboItems={comboItems} productVariants={productVariants}
           getPermissionLevel={getPermissionLevel}
         />
       )}

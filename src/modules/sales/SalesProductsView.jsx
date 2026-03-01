@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { formatMoney } from '../../utils/formatUtils';
 import { warehouseCategories } from '../../constants/warehouseConstants';
 
-export default function SalesProductsView({ products, orders, dynamicCategories, comboItems, getPermissionLevel }) {
+export default function SalesProductsView({ products, orders, dynamicCategories, comboItems, productVariants, getPermissionLevel }) {
   const permLevel = getPermissionLevel('sales');
   const effectiveCategories = dynamicCategories || warehouseCategories;
   const [search, setSearch] = useState('');
@@ -212,6 +212,7 @@ export default function SalesProductsView({ products, orders, dynamicCategories,
                   <div className="font-medium text-sm text-gray-900 truncate mt-0.5" title={p.name}>
                     {p.name}
                     {p.is_combo && <span className="ml-1 px-1 py-0.5 bg-orange-100 text-orange-700 text-[9px] rounded font-medium">Combo</span>}
+                    {p.has_variants && <span className="ml-1 px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] rounded font-medium">{(productVariants || []).filter(v => v.product_id === p.id).length} BT</span>}
                   </div>
                   {p.brand && <div className="text-xs text-gray-400">{p.brand}</div>}
                   <div className="flex justify-between items-center mt-2">
@@ -262,6 +263,7 @@ export default function SalesProductsView({ products, orders, dynamicCategories,
                         <div className="font-medium text-gray-900">
                           {p.name}
                           {p.is_combo && <span className="ml-1.5 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-medium align-middle">Combo</span>}
+                          {p.has_variants && <span className="ml-1.5 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded font-medium align-middle">{(productVariants || []).filter(v => v.product_id === p.id).length} biến thể</span>}
                         </div>
                         {p.brand && <div className="text-xs text-gray-500">{p.brand}</div>}
                       </td>

@@ -12,7 +12,7 @@ import HaravanImportModal from './HaravanImportModal';
 import { logActivity } from '../../lib/activityLog';
 import { sendOrderConfirmation, sendShippingNotification } from '../../utils/zaloAutomation';
 
-export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, customerAddresses, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob: _createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
+export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, customerAddresses, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob: _createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, productVariants, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
   const { pendingOpenRecord, setPendingOpenRecord, allUsers } = useApp();
   const permLevel = getPermissionLevel('sales');
   const _effectiveShippingProviders = dynamicShippingProviders || shippingProviders;
@@ -424,20 +424,38 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   };
 
   // ---- Cart logic ----
-  const addToCart = (product) => {
+  // State for variant selector popup
+  const [showVariantPicker, setShowVariantPicker] = useState(null); // product object or null
+
+  const addToCart = (product, variant = null) => {
+    // If product has variants and no variant selected, show picker
+    if (product.has_variants && !variant) {
+      const variants = (productVariants || []).filter(v => v.product_id === product.id);
+      if (variants.length > 0) {
+        setShowVariantPicker(product);
+        return;
+      }
+    }
+    const cartKey = variant ? `${product.id}_${variant.id}` : product.id;
     const stock = getProductStock(product);
-    const existing = cartItems.find(i => i.product_id === product.id);
+    const existing = cartItems.find(i => (variant ? i._cartKey === cartKey : i.product_id === product.id && !i.variant_id));
     if (existing) {
-      setCartItems(prev => prev.map(i => i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i));
+      setCartItems(prev => prev.map(i => (variant ? i._cartKey === cartKey : i.product_id === product.id && !i.variant_id) ? { ...i, quantity: i.quantity + 1 } : i));
     } else {
       setCartItems(prev => [...prev, {
-        product_id: product.id, product_name: product.name, product_sku: product.sku || '',
-        unit_price: parseFloat(product.sell_price || 0), quantity: 1, discount: 0,
+        _cartKey: cartKey,
+        product_id: product.id, product_name: product.name,
+        product_sku: variant ? (variant.sku || product.sku || '') : (product.sku || ''),
+        unit_price: parseFloat(variant ? (variant.price || product.sell_price) : (product.sell_price || 0)),
+        quantity: 1, discount: 0,
         warranty_months: product.warranty_months || 0, stock,
-        is_combo: product.is_combo || false
+        is_combo: product.is_combo || false,
+        variant_id: variant?.id || null,
+        variant_name: variant?.variant_name || null
       }]);
     }
     setProductSearch('');
+    setShowVariantPicker(null);
   };
 
   const updateCartItem = (idx, field, value) => {
@@ -595,11 +613,14 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
 
       // Insert order items
       const itemsData = cartItems.map(item => ({
-        order_id: order.id, product_id: item.product_id, product_name: item.product_name,
+        order_id: order.id, product_id: item.product_id,
+        product_name: item.variant_name ? `${item.product_name} - ${item.variant_name}` : item.product_name,
         product_sku: item.product_sku, quantity: parseInt(item.quantity),
         unit_price: parseFloat(item.unit_price), discount: parseFloat(item.discount || 0),
         total_price: (parseFloat(item.unit_price) - parseFloat(item.discount || 0)) * parseInt(item.quantity),
-        warranty_months: item.warranty_months || null
+        warranty_months: item.warranty_months || null,
+        variant_id: item.variant_id || null,
+        variant_name: item.variant_name || null
       }));
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsData);
       if (itemsErr) throw itemsErr;
@@ -2537,6 +2558,27 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
         customers={customers} products={products} orders={orders}
         loadSalesData={loadSalesData} warehouses={warehouses}
       />
+
+      {/* Variant Picker Modal */}
+      {showVariantPicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+            <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white">
+              <h3 className="font-bold">Chọn biến thể - {showVariantPicker.name}</h3>
+              <button onClick={() => setShowVariantPicker(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div className="p-4 space-y-2">
+              {(productVariants || []).filter(v => v.product_id === showVariantPicker.id).map(v => (
+                <button key={v.id} onClick={() => addToCart(showVariantPicker, v)}
+                  className="w-full flex items-center justify-between px-3 py-2 border rounded-lg hover:bg-indigo-50 transition text-sm">
+                  <span className="font-medium">{v.variant_name}</span>
+                  <span className="text-green-600 font-medium">{formatMoney(v.price)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== Sticky Bulk Action Bar ===== */}
       {checkedOrderIds.size > 0 && (
