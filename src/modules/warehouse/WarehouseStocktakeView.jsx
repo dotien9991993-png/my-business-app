@@ -12,7 +12,8 @@ export default function WarehouseStocktakeView({
   tenant,
   currentUser,
   hasPermission,
-  canEdit
+  canEdit,
+  productVariants = []
 }) {
   // ── State ──────────────────────────────────────
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -239,7 +240,7 @@ export default function WarehouseStocktakeView({
         .from('stocktakes')
         .insert({
           stocktake_code: code,
-          status: 'in_progress',
+          status: 'draft',
           warehouse_id: selectedWarehouseId,
           tenant_id: tenant?.id,
           created_by: currentUser?.name,
@@ -250,17 +251,38 @@ export default function WarehouseStocktakeView({
         .single();
       if (stErr) throw stErr;
 
-      // Tạo stocktake_items cho SP đã chọn
-      const items = targetProducts
-        .map(p => ({
-          stocktake_id: newSt.id,
-          product_id: p.id,
-          product_name: p.name,
-          product_sku: p.sku || '',
-          system_qty: getWarehouseQty(p.id, selectedWarehouseId),
-          actual_qty: null,
-          note: null
-        }));
+      // Tạo stocktake_items cho SP đã chọn (bao gồm variant nếu có)
+      const items = [];
+      targetProducts.forEach(p => {
+        const pVariants = productVariants.filter(v => v.product_id === p.id && v.is_active !== false);
+        if (pVariants.length > 0) {
+          pVariants.forEach(v => {
+            items.push({
+              stocktake_id: newSt.id,
+              product_id: p.id,
+              product_name: `${p.name} - ${v.variant_name}`,
+              product_sku: v.sku || p.sku || '',
+              system_qty: getWarehouseQty(p.id, selectedWarehouseId),
+              actual_qty: null,
+              note: null,
+              variant_id: v.id,
+              variant_name: v.variant_name
+            });
+          });
+        } else {
+          items.push({
+            stocktake_id: newSt.id,
+            product_id: p.id,
+            product_name: p.name,
+            product_sku: p.sku || '',
+            system_qty: getWarehouseQty(p.id, selectedWarehouseId),
+            actual_qty: null,
+            note: null,
+            variant_id: null,
+            variant_name: null
+          });
+        }
+      });
 
       if (items.length > 0) {
         const { error: itemsErr } = await supabase
@@ -487,6 +509,23 @@ export default function WarehouseStocktakeView({
     }
   };
 
+  // ── Start audit (draft → in_progress) ─────────
+  const handleStartAudit = async () => {
+    if (!selectedStocktake) return;
+    try {
+      const { error } = await supabase.from('stocktakes')
+        .update({ status: 'in_progress' })
+        .eq('id', selectedStocktake.id);
+      if (error) throw error;
+      if (loadWarehouseData) await loadWarehouseData();
+      setSelectedStocktake(prev => ({ ...prev, status: 'in_progress' }));
+      logActivity({ tenantId: tenant?.id, userId: currentUser?.id, userName: currentUser?.name, module: 'warehouse', action: 'update', entityType: 'stocktake', entityId: selectedStocktake.id, entityName: selectedStocktake.stocktake_code, description: `Bắt đầu kiểm kê ${selectedStocktake.stocktake_code}` });
+      setToast({ type: 'success', msg: 'Đã bắt đầu kiểm kê!' });
+    } catch (err) {
+      setToast({ type: 'error', msg: 'Lỗi: ' + (err.message || '') });
+    }
+  };
+
   // ── Delete ─────────────────────────────────────
   const handleDelete = async (st, e) => {
     e.stopPropagation();
@@ -582,10 +621,11 @@ export default function WarehouseStocktakeView({
   // ── Computed: stats ────────────────────────────
   const stats = useMemo(() => {
     const total = stocktakes.length;
+    const draft = stocktakes.filter(s => s.status === 'draft').length;
     const inProgress = stocktakes.filter(s => s.status === 'in_progress').length;
     const completed = stocktakes.filter(s => s.status === 'completed').length;
     const cancelled = stocktakes.filter(s => s.status === 'cancelled').length;
-    return { total, inProgress, completed, cancelled };
+    return { total, draft, inProgress, completed, cancelled };
   }, [stocktakes]);
 
   // ── Computed: filtered list ────────────────────
@@ -665,6 +705,7 @@ export default function WarehouseStocktakeView({
       return <span className={`text-xs font-medium ${d > 0 ? 'text-blue-600' : 'text-red-600'}`}>{d > 0 ? '+' : ''}{d}</span>;
     }
     if (st.status === 'in_progress') return <span className="text-yellow-500 text-xs">Đang kiểm...</span>;
+    if (st.status === 'draft') return <span className="text-gray-400 text-xs">Nháp</span>;
     if (st.status === 'cancelled') return <span className="text-gray-300 text-xs">-</span>;
     return <span className="text-gray-300 text-xs">-</span>;
   };
@@ -711,9 +752,10 @@ export default function WarehouseStocktakeView({
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Tổng phiếu', value: stats.total, color: 'amber', border: 'border-amber-500' },
+          { label: 'Nháp', value: stats.draft, color: 'gray', border: 'border-gray-400' },
           { label: 'Đang kiểm', value: stats.inProgress, color: 'yellow', border: 'border-yellow-500' },
           { label: 'Hoàn thành', value: stats.completed, color: 'green', border: 'border-green-500' },
           { label: 'Đã hủy', value: stats.cancelled, color: 'red', border: 'border-red-500' }
@@ -1276,6 +1318,24 @@ export default function WarehouseStocktakeView({
                 Đóng
               </button>
 
+              {selectedStocktake.status === 'draft' && (
+                <div className="flex flex-wrap gap-2">
+                  {canEdit('warehouse') && (
+                    <button onClick={handleCancel}
+                      className="px-3 py-2 border border-red-300 text-red-600 rounded-xl hover:bg-red-50 font-medium text-sm">
+                      Hủy phiếu
+                    </button>
+                  )}
+                  <button onClick={handleStartAudit}
+                    className="px-3 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 font-medium text-sm shadow-sm flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M12 2a10 10 0 110 20 10 10 0 010-20z" />
+                    </svg>
+                    Bắt đầu kiểm kê
+                  </button>
+                </div>
+              )}
+
               {selectedStocktake.status === 'in_progress' && (
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => handleSaveAll(false)} disabled={saving}
@@ -1295,7 +1355,7 @@ export default function WarehouseStocktakeView({
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
-                      Hoàn thành
+                      Cân bằng kho
                     </button>
                   )}
                 </div>
