@@ -34,6 +34,9 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [editData, setEditData] = useState({});
   const [showPaymentInput, setShowPaymentInput] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethodInput, setPaymentMethodInput] = useState('cash');
+  const [paymentNoteInput, setPaymentNoteInput] = useState('');
+  const [paymentHistory, setPaymentHistory] = useState([]);
   // Return state
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [returnItems, setReturnItems] = useState([]);
@@ -781,6 +784,13 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     } catch (err) { console.warn('Timeline load error:', err.message); setStatusLogs([]); }
   };
 
+  const loadPaymentHistory = async (orderId) => {
+    try {
+      const { data } = await supabase.from('payment_transactions').select('*').eq('order_id', orderId).order('created_at', { ascending: true });
+      setPaymentHistory(data || []);
+    } catch (err) { console.warn('Payment history load error:', err.message); setPaymentHistory([]); }
+  };
+
   // Open order detail from chat attachment
   useEffect(() => {
     if (pendingOpenRecord?.type === 'order' && pendingOpenRecord.id) {
@@ -790,6 +800,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         loadOrderItems(order.id);
         loadOrderReturns(order.id);
         loadOrderTimeline(order.id, order.order_number);
+        loadPaymentHistory(order.id);
         setEditMode(false);
         setShowPaymentInput(false);
         setShowDetailModal(true);
@@ -1140,19 +1151,26 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
         paid_amount: newPaid, payment_status: newStatus, updated_at: getNowISOVN()
       }).eq('id', selectedOrder.id);
       if (error) throw error;
+      // Save payment transaction
+      await supabase.from('payment_transactions').insert([{
+        tenant_id: tenant.id, order_id: selectedOrder.id,
+        amount, payment_method: paymentMethodInput || 'cash',
+        note: paymentNoteInput || null, created_by: currentUser.name, created_at: getNowISOVN()
+      }]);
       const receiptNumber = await genReceiptNumber('thu');
+      const ptttLabel = (paymentMethods.find(p => p.value === paymentMethodInput) || {}).label || paymentMethodInput;
       await supabase.from('receipts_payments').insert([{
         tenant_id: tenant.id, receipt_number: receiptNumber, type: 'thu',
-        amount, description: `Thanh toán - ${selectedOrder.order_number}${selectedOrder.customer_name ? ' - ' + selectedOrder.customer_name : ''}`,
+        amount, description: `Thanh toán (${ptttLabel}) - ${selectedOrder.order_number}${selectedOrder.customer_name ? ' - ' + selectedOrder.customer_name : ''}`,
         category: 'Thu nợ khách hàng', receipt_date: getTodayVN(),
-        note: `Thanh toán đơn hàng: ${selectedOrder.order_number}`,
+        note: paymentNoteInput || `Thanh toán đơn hàng: ${selectedOrder.order_number}`,
         status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
       }]);
       showToast(`Đã ghi nhận thanh toán ${formatMoney(amount)}!`);
-      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'payment', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Thanh toán ${formatMoney(amount)} cho đơn ${selectedOrder.order_number} (${newStatus === 'paid' ? 'Đã thanh toán đủ' : 'Thanh toán 1 phần'})` });
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'payment', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Thanh toán ${formatMoney(amount)} (${ptttLabel}) cho đơn ${selectedOrder.order_number} (${newStatus === 'paid' ? 'Đã thanh toán đủ' : 'Thanh toán 1 phần'})` });
       setSelectedOrder(prev => ({ ...prev, paid_amount: newPaid, payment_status: newStatus }));
-      setPaymentAmount(''); setShowPaymentInput(false);
-      await Promise.all([loadSalesData(), loadFinanceData(), loadPagedOrders()]);
+      setPaymentAmount(''); setPaymentMethodInput('cash'); setPaymentNoteInput(''); setShowPaymentInput(false);
+      await Promise.all([loadSalesData(), loadFinanceData(), loadPagedOrders(), loadPaymentHistory(selectedOrder.id)]);
     } catch (err) { console.error(err); alert('❌ Lỗi: ' + err.message); } finally { setSubmitting(false); }
   };
 
@@ -1913,7 +1931,7 @@ table.summary td{padding:3px 6px;font-size:12px}
                   )}
                 </div>
                 {/* Card content */}
-                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); loadOrderTimeline(o.id, o.order_number); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
+                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); loadOrderTimeline(o.id, o.order_number); loadPaymentHistory(o.id); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
                   {/* Line 1: Mã đơn, loại, trạng thái, tổng tiền */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -2523,10 +2541,45 @@ table.summary td{padding:3px 6px;font-size:12px}
                 </div>
               </div>
 
-              {/* Partial payment */}
+              {/* Payment history */}
+              {paymentHistory.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+                  <div className="text-sm font-medium text-green-700">Lịch sử thanh toán ({paymentHistory.length})</div>
+                  {paymentHistory.map((pt, i) => (
+                    <div key={pt.id} className="flex items-center justify-between text-xs bg-white rounded px-2 py-1.5 border border-green-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 font-mono">{i + 1}.</span>
+                        <span className="font-medium text-green-700">{formatMoney(pt.amount)}</span>
+                        <span className="text-gray-500">({(paymentMethods.find(p => p.value === pt.payment_method) || {}).label || pt.payment_method})</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-400">
+                        {pt.note && <span className="text-gray-500 truncate max-w-[120px]" title={pt.note}>{pt.note}</span>}
+                        <span>{new Date(pt.created_at).toLocaleDateString('vi-VN')}</span>
+                        <span>{pt.created_by}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-sm font-medium pt-1 border-t border-green-200">
+                    <span className="text-green-700">Tổng đã TT:</span>
+                    <span className="text-green-800">{formatMoney(selectedOrder.paid_amount || 0)}</span>
+                  </div>
+                  {(selectedOrder.total_amount - (selectedOrder.paid_amount || 0)) > 0 && (
+                    <div className="flex justify-between text-sm font-medium">
+                      <span className="text-red-600">Còn lại:</span>
+                      <span className="text-red-700">{formatMoney(selectedOrder.total_amount - (selectedOrder.paid_amount || 0))}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Partial payment input */}
               {showPaymentInput && selectedOrder.payment_status !== 'paid' && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 space-y-2">
-                  <div className="text-sm font-medium text-yellow-700">Thanh toán</div>
+                  <div className="text-sm font-medium text-yellow-700">Ghi nhận thanh toán</div>
+                  <div className="flex justify-between text-sm">
+                    <span>Tổng đơn:</span>
+                    <span className="font-medium">{formatMoney(selectedOrder.total_amount || 0)}</span>
+                  </div>
                   <div className="flex justify-between text-sm">
                     <span>Đã thanh toán:</span>
                     <span className="font-medium">{formatMoney(selectedOrder.paid_amount || 0)}</span>
@@ -2537,13 +2590,21 @@ table.summary td{padding:3px 6px;font-size:12px}
                   </div>
                   <div className="flex gap-2">
                     <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)}
-                      placeholder="Nhập số tiền..." className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+                      placeholder="Số tiền..." className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+                    <select value={paymentMethodInput} onChange={e => setPaymentMethodInput(e.target.value)}
+                      className="border rounded-lg px-2 py-1.5 text-sm">
+                      {paymentMethods.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <input type="text" value={paymentNoteInput} onChange={e => setPaymentNoteInput(e.target.value)}
+                    placeholder="Ghi chú (VD: Đặt cọc 50%)" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setShowPaymentInput(false); setPaymentAmount(''); setPaymentNoteInput(''); }}
+                      className="px-3 py-1.5 bg-gray-200 rounded-lg text-xs font-medium">Hủy</button>
                     <button onClick={handlePartialPayment} disabled={submitting}
                       className={`px-4 py-1.5 rounded-lg text-xs font-medium text-white ${submitting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
-                      {submitting ? '...' : 'Xác nhận'}
+                      {submitting ? '...' : 'Xác nhận thanh toán'}
                     </button>
-                    <button onClick={() => { setShowPaymentInput(false); setPaymentAmount(''); }}
-                      className="px-3 py-1.5 bg-gray-200 rounded-lg text-xs font-medium">Hủy</button>
                   </div>
                 </div>
               )}
