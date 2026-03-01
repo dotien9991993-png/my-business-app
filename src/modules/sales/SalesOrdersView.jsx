@@ -465,6 +465,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping', order_status: 'confirmed', shipping_status: 'shipped' }));
         setEditTracking(vtpCode);
         showToast('Đã gửi đơn Viettel Post: ' + vtpCode);
+        logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'shipping', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Đẩy đơn VTP: ${selectedOrder.order_number} → ${vtpCode}` });
         await Promise.all([loadSalesData(), loadPagedOrders()]);
       } else {
         const errMsg = result.error || 'Không xác định';
@@ -766,12 +767,18 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     finally { setLoadingItems(false); }
   };
 
-  const loadStatusLogs = async (orderId) => {
+  const loadOrderTimeline = async (orderId, orderNumber) => {
     try {
-      const { data } = await supabase.from('order_status_logs').select('*')
-        .eq('order_id', orderId).order('created_at', { ascending: false }).limit(50);
-      setStatusLogs(data || []);
-    } catch (err) { console.warn('order_status_logs not ready:', err.message); setStatusLogs([]); }
+      // Load both status logs and activity logs
+      const [statusResult, activityResult] = await Promise.all([
+        supabase.from('order_status_logs').select('*').eq('order_id', orderId).order('created_at', { ascending: false }).limit(50),
+        supabase.from('activity_logs').select('*').eq('entity_type', 'order').eq('entity_id', orderNumber).order('created_at', { ascending: false }).limit(50)
+      ]);
+      const statusLogs = (statusResult.data || []).map(log => ({ ...log, _type: 'status' }));
+      const activityLogs = (activityResult.data || []).map(log => ({ ...log, _type: 'activity' }));
+      const merged = [...statusLogs, ...activityLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      setStatusLogs(merged);
+    } catch (err) { console.warn('Timeline load error:', err.message); setStatusLogs([]); }
   };
 
   // Open order detail from chat attachment
@@ -782,7 +789,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         setSelectedOrder(order);
         loadOrderItems(order.id);
         loadOrderReturns(order.id);
-        loadStatusLogs(order.id);
+        loadOrderTimeline(order.id, order.order_number);
         setEditMode(false);
         setShowPaymentInput(false);
         setShowDetailModal(true);
@@ -952,6 +959,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     if (!selectedOrder) return;
     try {
       await supabase.from('orders').update({ tracking_number: editTracking, updated_at: getNowISOVN() }).eq('id', selectedOrder.id);
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'update', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Cập nhật tracking: ${selectedOrder.order_number} → ${editTracking}` });
       setSelectedOrder(prev => ({ ...prev, tracking_number: editTracking }));
       await Promise.all([loadSalesData(), loadPagedOrders()]);
     } catch (err) { alert('❌ Lỗi: ' + err.message); }
@@ -1012,6 +1020,7 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:4px 0">Ghi chú: ${selec
     const win = window.open('', '_blank', 'width=600,height=800');
     win.document.write(html);
     win.document.close();
+    logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'print', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `In hóa đơn: ${selectedOrder.order_number}` });
   };
 
   // ---- Print packing slip (for warehouse - no prices) ----
@@ -1059,6 +1068,7 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
 <script>window.onload=function(){window.print()}</script></body></html>`;
     const win = window.open('', '_blank', 'width=600,height=800');
     win.document.write(html); win.document.close();
+    logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'print', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `In phiếu đóng gói: ${selectedOrder.order_number}` });
   };
 
   // ---- Edit order ----
@@ -1135,6 +1145,7 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
         status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
       }]);
       showToast(`Đã ghi nhận thanh toán ${formatMoney(amount)}!`);
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'payment', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Thanh toán ${formatMoney(amount)} cho đơn ${selectedOrder.order_number} (${newStatus === 'paid' ? 'Đã thanh toán đủ' : 'Thanh toán 1 phần'})` });
       setSelectedOrder(prev => ({ ...prev, paid_amount: newPaid, payment_status: newStatus }));
       setPaymentAmount(''); setShowPaymentInput(false);
       await Promise.all([loadSalesData(), loadFinanceData(), loadPagedOrders()]);
@@ -1618,6 +1629,11 @@ table.summary td{padding:3px 6px;font-size:12px}
       setBulkVtpProgress({ current: i + 1, total: valid.length, results: [...results] });
     }
 
+    // Log bulk VTP push
+    const successCount = results.filter(r => r.success).length;
+    if (successCount > 0) {
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'shipping', entityType: 'order', entityId: 'bulk', entityName: `${successCount} đơn`, description: `Đẩy hàng loạt VTP: ${successCount}/${results.length} đơn thành công` });
+    }
     // Refresh data after bulk push
     setCheckedOrderIds(new Set());
     await Promise.all([loadSalesData(), loadPagedOrders()]);
@@ -1890,7 +1906,7 @@ table.summary td{padding:3px 6px;font-size:12px}
                   )}
                 </div>
                 {/* Card content */}
-                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); loadStatusLogs(o.id); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
+                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); loadOrderTimeline(o.id, o.order_number); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
                   {/* Line 1: Mã đơn, loại, trạng thái, tổng tiền */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -2557,12 +2573,33 @@ table.summary td{padding:3px 6px;font-size:12px}
                 </div>
               )}
 
-              {/* Status timeline */}
+              {/* Order timeline */}
               {statusLogs.length > 0 && (
                 <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                  <div className="text-sm font-medium text-gray-700">Lịch sử trạng thái ({statusLogs.length})</div>
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                    {statusLogs.map(log => {
+                  <div className="text-sm font-medium text-gray-700">Lịch sử đơn hàng ({statusLogs.length})</div>
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                    {statusLogs.map((log, idx) => {
+                      if (log._type === 'activity') {
+                        const actionConfig = {
+                          create: { icon: '+', color: 'bg-green-100 text-green-700' },
+                          update: { icon: '~', color: 'bg-blue-100 text-blue-700' },
+                          cancel: { icon: '✕', color: 'bg-gray-100 text-gray-600' },
+                          payment: { icon: '$', color: 'bg-yellow-100 text-yellow-700' },
+                          shipping: { icon: '→', color: 'bg-indigo-100 text-indigo-700' },
+                          print: { icon: 'P', color: 'bg-teal-100 text-teal-700' },
+                          return: { icon: '←', color: 'bg-pink-100 text-pink-700' },
+                        }[log.action] || { icon: '?', color: 'bg-gray-100 text-gray-600' };
+                        return (
+                          <div key={`a-${log.id || idx}`} className="flex items-start gap-2 text-xs bg-white rounded px-2 py-1.5 border">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${actionConfig.color}`}>{actionConfig.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-gray-700">{log.description || log.action}</div>
+                              <div className="text-gray-400 mt-0.5">{new Date(log.created_at).toLocaleString('vi-VN')} • {log.user_name || ''}</div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      // Status log
                       const sourceBadge = {
                         webhook: { label: 'Auto', color: 'bg-green-100 text-green-700' },
                         polling: { label: 'Polling', color: 'bg-blue-100 text-blue-700' },
@@ -2574,7 +2611,7 @@ table.summary td{padding:3px 6px;font-size:12px}
                         return paymentStatusValues[field]?.label || field;
                       };
                       return (
-                        <div key={log.id} className="flex items-center gap-2 text-xs bg-white rounded px-2 py-1.5 border">
+                        <div key={`s-${log.id || idx}`} className="flex items-center gap-2 text-xs bg-white rounded px-2 py-1.5 border">
                           <span className="text-gray-400 shrink-0">{new Date(log.created_at).toLocaleString('vi-VN')}</span>
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${sourceBadge.color}`}>{sourceBadge.label}</span>
                           <span className="text-gray-500">{statusLabel(log.old_status)}</span>

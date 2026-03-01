@@ -25,7 +25,11 @@ const ACTION_LABELS = {
   cancel: 'Hủy',
   import: 'Import',
   login: 'Đăng nhập',
-  logout: 'Đăng xuất'
+  logout: 'Đăng xuất',
+  payment: 'Thanh toán',
+  shipping: 'Vận chuyển',
+  print: 'In',
+  return: 'Trả hàng',
 };
 
 const ACTION_COLORS = {
@@ -37,7 +41,11 @@ const ACTION_COLORS = {
   cancel: 'bg-gray-100 text-gray-700',
   import: 'bg-purple-100 text-purple-700',
   login: 'bg-cyan-100 text-cyan-700',
-  logout: 'bg-slate-100 text-slate-700'
+  logout: 'bg-slate-100 text-slate-700',
+  payment: 'bg-yellow-100 text-yellow-700',
+  shipping: 'bg-indigo-100 text-indigo-700',
+  print: 'bg-teal-100 text-teal-700',
+  return: 'bg-pink-100 text-pink-700',
 };
 
 const ACTION_ICONS = {
@@ -49,7 +57,11 @@ const ACTION_ICONS = {
   cancel: '-',
   import: '^',
   login: '>',
-  logout: '<'
+  logout: '<',
+  payment: '$',
+  shipping: '→',
+  print: 'P',
+  return: '←',
 };
 
 export default function ActivityLogView({ tenant, currentUser }) {
