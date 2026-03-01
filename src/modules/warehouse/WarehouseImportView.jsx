@@ -291,17 +291,7 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
     if (!selectedTransaction) return;
     setApproving(true);
     try {
-      // Update approval status
-      const { error: updateErr } = await supabase.from('stock_transactions')
-        .update({
-          approval_status: 'approved',
-          approved_by: currentUser.name,
-          approved_at: getNowISOVN()
-        })
-        .eq('id', selectedTransaction.id);
-      if (updateErr) throw updateErr;
-
-      // Adjust stock now
+      // Adjust stock TRƯỚC — nếu lỗi thì approval_status vẫn pending (không bị inconsistent)
       for (const item of transactionItems) {
         const { error: rpcError } = await supabase.rpc('adjust_warehouse_stock', {
           p_warehouse_id: selectedTransaction.warehouse_id,
@@ -311,16 +301,15 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
         if (rpcError) throw rpcError;
       }
 
-      // Insert serials for has_serial products
-      for (const item of transactionItems) {
-        const product = products.find(p => p.id === item.product_id);
-        if (product?.has_serial) {
-          // Check if serials were stored in the transaction metadata
-          // For pending transactions, serials might need separate handling
-          // For now, the serial data is stored in form but not in transaction items
-          // This is handled at creation time when auto-approved
-        }
-      }
+      // Stock OK → update approval status
+      const { error: updateErr } = await supabase.from('stock_transactions')
+        .update({
+          approval_status: 'approved',
+          approved_by: currentUser.name,
+          approved_at: getNowISOVN()
+        })
+        .eq('id', selectedTransaction.id);
+      if (updateErr) throw updateErr;
 
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'warehouse', action: 'approve', entityType: 'import', entityId: selectedTransaction.transaction_number, entityName: selectedTransaction.transaction_number, description: `Duyệt phiếu nhập ${selectedTransaction.transaction_number}` });
 

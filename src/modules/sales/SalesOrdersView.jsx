@@ -660,17 +660,21 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
 
       // (Stock đã được trừ khi tạo đơn — không trừ lại ở đây)
 
-      // Completed → create receipt
-      if (newStatus === 'completed' && !order.receipt_id) {
-        const receiptNumber = await genReceiptNumber('thu');
-        const category = order.order_type === 'pos' ? 'Bán tại cửa hàng' : 'Lắp đặt tại nhà khách';
-        const { data: receipt } = await supabase.from('receipts_payments').insert([{
-          tenant_id: tenant.id, receipt_number: receiptNumber, type: 'thu',
-          amount: order.total_amount, description: `Bán hàng - ${order.order_number}` + (order.customer_name ? ` - ${order.customer_name}` : ''),
-          category, receipt_date: getTodayVN(), note: `Đơn hàng: ${order.order_number}`,
-          status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
-        }]).select().single();
-        if (receipt) updates.receipt_id = receipt.id;
+      // Completed → create receipt for remaining unpaid amount (skip if already fully paid)
+      if (newStatus === 'completed') {
+        const alreadyPaid = parseFloat(order.paid_amount || 0);
+        const remaining = parseFloat(order.total_amount || 0) - alreadyPaid;
+        if (remaining > 0 && !order.receipt_id) {
+          const receiptNumber = await genReceiptNumber('thu');
+          const category = order.order_type === 'pos' ? 'Bán tại cửa hàng' : 'Lắp đặt tại nhà khách';
+          const { data: receipt } = await supabase.from('receipts_payments').insert([{
+            tenant_id: tenant.id, receipt_number: receiptNumber, type: 'thu',
+            amount: remaining, description: `Bán hàng - ${order.order_number}` + (order.customer_name ? ` - ${order.customer_name}` : ''),
+            category, receipt_date: getTodayVN(), note: `Đơn hàng: ${order.order_number}${alreadyPaid > 0 ? ` (đã thu trước ${formatMoney(alreadyPaid)})` : ''}`,
+            status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
+          }]).select().single();
+          if (receipt) updates.receipt_id = receipt.id;
+        }
         updates.payment_status = 'paid';
         updates.paid_amount = order.total_amount;
       }
@@ -735,13 +739,17 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
             }
           }
         }
-        const receiptNumber = await genReceiptNumber('chi');
-        await supabase.from('receipts_payments').insert([{
-          tenant_id: tenant.id, receipt_number: receiptNumber, type: 'chi',
-          amount: order.total_amount, description: `Trả hàng - ${order.order_number}`,
-          category: 'Khác', receipt_date: getTodayVN(), note: `Hoàn tiền đơn hàng: ${order.order_number}`,
-          status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
-        }]);
+        // Hoàn tiền = số tiền đã thu thực tế (không phải total_amount)
+        const refundAmount = parseFloat(order.paid_amount || 0);
+        if (refundAmount > 0) {
+          const receiptNumber = await genReceiptNumber('chi');
+          await supabase.from('receipts_payments').insert([{
+            tenant_id: tenant.id, receipt_number: receiptNumber, type: 'chi',
+            amount: refundAmount, description: `Trả hàng - ${order.order_number}`,
+            category: 'Khác', receipt_date: getTodayVN(), note: `Hoàn tiền đơn hàng: ${order.order_number}`,
+            status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
+          }]);
+        }
         // Restore serials + void warranty
         await supabase.from('product_serials').update({
           status: 'returned', updated_at: getNowISOVN()

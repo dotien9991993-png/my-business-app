@@ -247,7 +247,17 @@ export default function WarehouseExportView({ products, warehouses, warehouseSto
     if (!selectedTransaction) return;
     setApproving(true);
     try {
-      // Update approval status
+      // Adjust stock TRƯỚC — nếu lỗi (hết hàng) thì approval_status vẫn pending
+      for (const item of transactionItems) {
+        const { error: rpcError } = await supabase.rpc('adjust_warehouse_stock', {
+          p_warehouse_id: selectedTransaction.warehouse_id,
+          p_product_id: item.product_id,
+          p_delta: -parseInt(item.quantity)
+        });
+        if (rpcError) throw new Error(`Không đủ tồn kho SP "${item.product_name}" để xuất`);
+      }
+
+      // Stock OK → update approval status
       const { error: updateErr } = await supabase.from('stock_transactions')
         .update({
           approval_status: 'approved',
@@ -256,16 +266,6 @@ export default function WarehouseExportView({ products, warehouses, warehouseSto
         })
         .eq('id', selectedTransaction.id);
       if (updateErr) throw updateErr;
-
-      // Adjust stock now (negative delta for export)
-      for (const item of transactionItems) {
-        const { error: rpcError } = await supabase.rpc('adjust_warehouse_stock', {
-          p_warehouse_id: selectedTransaction.warehouse_id,
-          p_product_id: item.product_id,
-          p_delta: -parseInt(item.quantity)
-        });
-        if (rpcError) throw rpcError;
-      }
 
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'warehouse', action: 'approve', entityType: 'export', entityId: selectedTransaction.transaction_number, entityName: selectedTransaction.transaction_number, description: `Duyệt phiếu xuất ${selectedTransaction.transaction_number}` });
 
