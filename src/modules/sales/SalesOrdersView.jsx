@@ -1412,30 +1412,62 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
     } catch (err) { console.error(err); alert('❌ Lỗi: ' + err.message); } finally { setSubmitting(false); }
   };
 
-  // ---- Quick reorder ----
-  const handleReorder = () => {
+  // ---- Sao chép đơn hàng ----
+  const handleDuplicateOrder = () => {
     if (cartItems.length > 0 && !window.confirm('Giỏ hàng hiện tại sẽ bị thay thế. Tiếp tục?')) return;
-    const newCart = orderItems.map(item => {
+    const warnings = [];
+    const newCart = [];
+    for (const item of orderItems) {
       const prod = (products || []).find(p => p.id === item.product_id);
-      return {
+      if (!prod) {
+        warnings.push(`${item.product_name}: SP đã bị xóa, bỏ qua`);
+        continue;
+      }
+      // Check price change
+      const currentPrice = parseFloat(prod.price || 0);
+      const oldPrice = parseFloat(item.unit_price || 0);
+      if (currentPrice !== oldPrice && currentPrice > 0) {
+        warnings.push(`${item.product_name}: giá thay đổi ${formatMoney(oldPrice)} → ${formatMoney(currentPrice)}`);
+      }
+      // Check stock
+      if ((prod.stock_quantity || 0) < item.quantity) {
+        warnings.push(`${item.product_name}: tồn kho chỉ còn ${prod.stock_quantity || 0} (cần ${item.quantity})`);
+      }
+      const cartKey = item.variant_id ? `${item.product_id}_${item.variant_id}` : item.product_id;
+      newCart.push({
+        _cartKey: cartKey,
         product_id: item.product_id, product_name: item.product_name,
-        product_sku: item.product_sku || '', unit_price: parseFloat(item.unit_price),
+        product_sku: item.product_sku || '', unit_price: currentPrice > 0 ? currentPrice : oldPrice,
         quantity: item.quantity, discount: parseFloat(item.discount || 0),
         warranty_months: item.warranty_months || 0,
-        stock: prod?.stock_quantity || 0
-      };
-    });
+        stock: prod.stock_quantity || 0,
+        is_combo: prod.is_combo || false,
+        variant_id: item.variant_id || null,
+        variant_name: item.variant_name || null
+      });
+    }
+    if (newCart.length === 0) { alert('Không có sản phẩm nào để sao chép'); return; }
+    if (warnings.length > 0) alert('Lưu ý khi sao chép:\n\n' + warnings.join('\n'));
     setCartItems(newCart);
     setCustomerName(selectedOrder.customer_name || '');
     setCustomerPhone(selectedOrder.customer_phone || '');
     setCustomerId(selectedOrder.customer_id || '');
     setOrderType(selectedOrder.order_type || 'pos');
+    setPaymentMethod(selectedOrder.payment_method || 'cod');
+    setInternalNote(`Sao chép từ đơn #${selectedOrder.order_number}`);
     if (selectedOrder.order_type === 'online') {
       setShippingAddress(selectedOrder.shipping_address || '');
       setShippingProvider(selectedOrder.shipping_provider || '');
+      setShippingFee(String(selectedOrder.shipping_fee || ''));
+      setShippingPayer(selectedOrder.shipping_payer || 'customer');
+    }
+    // Check coupon
+    if (selectedOrder.coupon_code) {
+      setCouponCode(selectedOrder.coupon_code);
     }
     setShowDetailModal(false);
     setShowCreateModal(true);
+    logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'create', entityType: 'order', entityId: selectedOrder.order_number, description: `Sao chép đơn hàng từ #${selectedOrder.order_number}` });
   };
 
   // ---- Toast ----
@@ -2379,7 +2411,7 @@ table.summary td{padding:3px 6px;font-size:12px}
                     {hasPermission('sales', 2) && canPay && !showPaymentInput && <button onClick={() => setShowPaymentInput(true)} className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">💰 Thanh toán</button>}
                     {hasPermission('sales', 2) && canReturn && <button onClick={openReturnModal} className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg text-xs font-medium">↩️ Trả hàng</button>}
                     {hasPermission('sales', 2) && canReturn && <button onClick={openExchangeModal} className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-medium">🔄 Đổi hàng</button>}
-                    {hasPermission('sales', 2) && canReorder && orderItems.length > 0 && <button onClick={handleReorder} className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-medium">📋 Đặt lại</button>}
+                    {hasPermission('sales', 2) && orderItems.length > 0 && <button onClick={handleDuplicateOrder} className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-medium">📋 Sao chép đơn</button>}
                   </div>
                 );
               })()}
