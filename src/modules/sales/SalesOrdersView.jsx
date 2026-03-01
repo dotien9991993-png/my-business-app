@@ -230,7 +230,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [shippingAddress, setShippingAddress] = useState('');
   const [shippingProvider, setShippingProvider] = useState('');
   const [shippingFee, setShippingFee] = useState('');
-  const [shippingPayer, _setShippingPayer] = useState('customer');
+  const [shippingPayer, setShippingPayer] = useState('customer');
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [discountAmount, _setDiscountAmount] = useState('');
   const [_discountNote, _setDiscountNote] = useState('');
@@ -290,7 +290,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     setShippingAddress(''); setShippingAddressData(null); setShippingAddressDetail('');
     setCartItems([]); setProductSearch(''); setCustomerSearch('');
     setShowCustomerDropdown(false); setInternalNote('');
-    setPaymentMethod('cod');
+    setPaymentMethod('cod'); setShippingProvider(''); setShippingFee(''); setShippingPayer('customer');
     const defaultWh = (warehouses || []).find(w => w.is_default) || (warehouses || [])[0];
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
   };
@@ -419,8 +419,8 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const subtotal = cartItems.reduce((s, i) => s + ((parseFloat(i.unit_price) - parseFloat(i.discount || 0)) * parseInt(i.quantity || 0)), 0);
   const discount = parseFloat(discountAmount || 0);
   const shipFee = parseFloat(shippingFee || 0);
-  const shipForShop = shippingPayer === 'shop' ? shipFee : 0;
-  const totalAmount = subtotal - discount + shipForShop;
+  const shipForCustomer = shippingPayer === 'customer' ? shipFee : 0;
+  const totalAmount = subtotal - discount + shipForCustomer;
 
   // ---- Product categories ----
   const _productCategories = useMemo(() => {
@@ -541,8 +541,8 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         status: 'confirmed', customer_id: resolvedCustomerId,
         customer_name: customerName, customer_phone: customerPhone,
         shipping_address: finalShippingAddress,
-        shipping_provider: null,
-        shipping_fee: 0, shipping_payer: 'customer',
+        shipping_provider: shippingProvider || null,
+        shipping_fee: shipFee, shipping_payer: shippingPayer,
         shipping_metadata: finalShippingMetadata,
         discount_amount: 0, discount_note: '',
         subtotal, total_amount: totalAmount,
@@ -880,6 +880,9 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
       discount_note: selectedOrder.discount_note || '',
       note: selectedOrder.note || '',
       payment_method: selectedOrder.payment_method || 'cod',
+      shipping_provider: selectedOrder.shipping_provider || '',
+      shipping_fee: selectedOrder.shipping_fee || 0,
+      shipping_payer: selectedOrder.shipping_payer || 'customer',
     });
     setEditMode(true);
   };
@@ -890,13 +893,17 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
     setSubmitting(true);
     try {
       const newDiscount = parseFloat(editData.discount_amount || 0);
-      const shipForShop = selectedOrder.shipping_payer === 'shop' ? parseFloat(selectedOrder.shipping_fee || 0) : 0;
-      const newTotal = parseFloat(selectedOrder.subtotal || 0) - newDiscount + shipForShop;
+      const editShipFee = parseFloat(editData.shipping_fee ?? selectedOrder.shipping_fee ?? 0);
+      const editShipPayer = editData.shipping_payer || selectedOrder.shipping_payer || 'customer';
+      const shipForCust = editShipPayer === 'customer' ? editShipFee : 0;
+      const newTotal = parseFloat(selectedOrder.subtotal || 0) - newDiscount + shipForCust;
       const updates = {
         customer_name: editData.customer_name, customer_phone: editData.customer_phone,
         shipping_address: editData.shipping_address, discount_amount: newDiscount,
         discount_note: editData.discount_note, note: editData.note,
         payment_method: editData.payment_method || selectedOrder.payment_method,
+        shipping_provider: editData.shipping_provider || null,
+        shipping_fee: editShipFee, shipping_payer: editShipPayer,
         total_amount: newTotal, updated_at: getNowISOVN()
       };
       const { error } = await supabase.from('orders').update(updates).eq('id', selectedOrder.id);
@@ -1568,6 +1575,34 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 )}
               </div>
 
+              {/* B2. Vận chuyển (online) */}
+              {orderType === 'online' && (
+                <div className="bg-purple-50 rounded-lg p-3 space-y-2">
+                  <label className="text-sm font-medium text-purple-700">Vận chuyển</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={shippingProvider} onChange={e => setShippingProvider(e.target.value)}
+                      className="border border-purple-300 rounded-lg px-3 py-2 text-sm bg-white">
+                      <option value="">-- Chọn đơn vị VC --</option>
+                      {(dynamicShippingProviders || shippingProviders).map(sp => (
+                        <option key={sp} value={sp}>{sp}</option>
+                      ))}
+                    </select>
+                    <input type="number" min="0" value={shippingFee} onChange={e => setShippingFee(e.target.value)}
+                      placeholder="Phí ship (VNĐ)" className="border border-purple-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  {shipFee > 0 && (
+                    <div className="flex gap-2">
+                      {Object.entries(shippingPayers).map(([key, label]) => (
+                        <button key={key} type="button" onClick={() => setShippingPayer(key)}
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border-2 transition ${shippingPayer === key ? 'border-purple-500 bg-purple-100 text-purple-700' : 'border-gray-200 bg-white text-gray-600'}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* C. Sản phẩm — Dropdown search */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">Sản phẩm</label>
@@ -1660,11 +1695,21 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               <textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Ghi chú nội bộ..."
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
 
-              {/* E. Footer: Tổng SP + Tổng tiền + Tạo đơn */}
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <div className="flex justify-between text-lg font-bold text-green-700">
-                  <span>{cartItems.reduce((s, i) => s + parseInt(i.quantity || 0), 0)} SP</span>
+              {/* F. Footer: Tổng SP + Tổng tiền + Tạo đơn */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>{cartItems.reduce((s, i) => s + parseInt(i.quantity || 0), 0)} sản phẩm</span>
                   <span>{formatMoney(subtotal)}</span>
+                </div>
+                {shipFee > 0 && (
+                  <div className="flex justify-between text-sm text-purple-600">
+                    <span>Phí vận chuyển ({shippingPayers[shippingPayer]})</span>
+                    <span>{shippingPayer === 'customer' ? `+${formatMoney(shipFee)}` : formatMoney(shipFee)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-lg font-bold text-green-700 pt-1 border-t border-green-200">
+                  <span>Tổng cộng</span>
+                  <span>{formatMoney(totalAmount)}</span>
                 </div>
               </div>
 
@@ -1744,7 +1789,25 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                     <input value={editData.customer_phone} onChange={e => setEditData(d => ({ ...d, customer_phone: e.target.value }))} placeholder="SĐT" className="border rounded-lg px-3 py-1.5 text-sm" />
                   </div>
                   {selectedOrder.order_type === 'online' && (
-                    <input value={editData.shipping_address} onChange={e => setEditData(d => ({ ...d, shipping_address: e.target.value }))} placeholder="Địa chỉ giao hàng" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                    <>
+                      <input value={editData.shipping_address} onChange={e => setEditData(d => ({ ...d, shipping_address: e.target.value }))} placeholder="Địa chỉ giao hàng" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                      <div className="grid grid-cols-3 gap-2">
+                        <select value={editData.shipping_provider} onChange={e => setEditData(d => ({ ...d, shipping_provider: e.target.value }))}
+                          className="border rounded-lg px-3 py-1.5 text-sm">
+                          <option value="">-- ĐV vận chuyển --</option>
+                          {(dynamicShippingProviders || shippingProviders).map(sp => (
+                            <option key={sp} value={sp}>{sp}</option>
+                          ))}
+                        </select>
+                        <input type="number" min="0" value={editData.shipping_fee} onChange={e => setEditData(d => ({ ...d, shipping_fee: e.target.value }))} placeholder="Phí ship" className="border rounded-lg px-3 py-1.5 text-sm" />
+                        <select value={editData.shipping_payer} onChange={e => setEditData(d => ({ ...d, shipping_payer: e.target.value }))}
+                          className="border rounded-lg px-3 py-1.5 text-sm">
+                          {Object.entries(shippingPayers).map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
                   )}
                   <div className="grid grid-cols-2 gap-2">
                     <input type="number" value={editData.discount_amount} onChange={e => setEditData(d => ({ ...d, discount_amount: e.target.value }))} placeholder="Chiết khấu" className="border rounded-lg px-3 py-1.5 text-sm" />
