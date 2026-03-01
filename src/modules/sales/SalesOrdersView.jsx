@@ -32,6 +32,12 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [editData, setEditData] = useState({});
   const [showPaymentInput, setShowPaymentInput] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  // Return state
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnItems, setReturnItems] = useState([]);
+  const [returnReason, setReturnReason] = useState('');
+  const [refundMethod, setRefundMethod] = useState('cash');
+  const [orderReturns, setOrderReturns] = useState([]);
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterPayment, setFilterPayment] = useState('all');
@@ -641,6 +647,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       if (order) {
         setSelectedOrder(order);
         loadOrderItems(order.id);
+        loadOrderReturns(order.id);
         setEditMode(false);
         setShowPaymentInput(false);
         setShowDetailModal(true);
@@ -948,6 +955,97 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
       setSelectedOrder(prev => ({ ...prev, paid_amount: newPaid, payment_status: newStatus }));
       setPaymentAmount(''); setShowPaymentInput(false);
       await Promise.all([loadSalesData(), loadFinanceData(), loadPagedOrders()]);
+    } catch (err) { console.error(err); alert('❌ Lỗi: ' + err.message); } finally { setSubmitting(false); }
+  };
+
+  // ---- Partial Return ----
+  const genReturnCode = async () => {
+    const dateStr = getDateStrVN();
+    const prefix = `TH-${dateStr}-`;
+    const { data } = await supabase.from('order_returns').select('return_code')
+      .like('return_code', `${prefix}%`).order('return_code', { ascending: false }).limit(1);
+    const lastNum = data?.[0] ? parseInt(data[0].return_code.slice(-3)) || 0 : 0;
+    return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
+  };
+
+  const openReturnModal = () => {
+    if (!orderItems.length) return alert('Chưa có sản phẩm để trả');
+    setReturnItems(orderItems.map(item => ({
+      ...item, return_qty: 0, condition: 'good', note: ''
+    })));
+    setReturnReason(''); setRefundMethod('cash');
+    setShowReturnModal(true);
+  };
+
+  const loadOrderReturns = async (orderId) => {
+    const { data } = await supabase.from('order_returns').select('*').eq('order_id', orderId).order('created_at', { ascending: false });
+    setOrderReturns(data || []);
+  };
+
+  const handleSubmitReturn = async () => {
+    if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
+    const itemsToReturn = returnItems.filter(i => i.return_qty > 0);
+    if (itemsToReturn.length === 0) return alert('Vui lòng chọn ít nhất 1 sản phẩm để trả');
+    for (const item of itemsToReturn) {
+      if (item.return_qty > item.quantity) return alert(`Số lượng trả ${item.product_name} vượt quá số lượng đã mua`);
+    }
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const returnCode = await genReturnCode();
+      const totalRefund = itemsToReturn.reduce((s, i) => s + i.return_qty * parseFloat(i.unit_price), 0);
+
+      // Insert order_returns
+      const { data: returnRecord, error: retErr } = await supabase.from('order_returns').insert([{
+        tenant_id: tenant.id, order_id: selectedOrder.id,
+        return_code: returnCode, reason: returnReason,
+        status: 'completed', total_refund: totalRefund,
+        refund_method: refundMethod,
+        created_by: currentUser.id, created_at: getNowISOVN()
+      }]).select().single();
+      if (retErr) throw retErr;
+
+      // Insert return items
+      const returnItemsData = itemsToReturn.map(i => ({
+        return_id: returnRecord.id, product_id: i.product_id,
+        product_name: i.product_name, quantity: i.return_qty,
+        unit_price: parseFloat(i.unit_price),
+        subtotal: i.return_qty * parseFloat(i.unit_price),
+        condition: i.condition, note: i.note
+      }));
+      const { error: itemsErr } = await supabase.from('order_return_items').insert(returnItemsData);
+      if (itemsErr) throw itemsErr;
+
+      // Restore stock
+      for (const item of itemsToReturn) {
+        const warehouseId = selectedOrder.warehouse_id;
+        if (warehouseId) {
+          await supabase.rpc('adjust_warehouse_stock', {
+            p_warehouse_id: warehouseId, p_product_id: item.product_id, p_delta: item.return_qty
+          });
+        } else {
+          await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: item.return_qty });
+        }
+      }
+
+      // Create refund receipt
+      if (totalRefund > 0) {
+        const receiptNumber = await genReceiptNumber('chi');
+        await supabase.from('receipts_payments').insert([{
+          tenant_id: tenant.id, receipt_number: receiptNumber, type: 'chi',
+          amount: totalRefund, description: `Hoàn tiền trả hàng - ${selectedOrder.order_number} - ${returnCode}`,
+          category: 'Hoàn tiền khách hàng', receipt_date: getTodayVN(),
+          note: `Trả hàng: ${returnCode}, Lý do: ${returnReason || 'Không ghi'}`,
+          status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
+        }]);
+      }
+
+      showToast(`Trả hàng thành công! ${returnCode} - Hoàn ${formatMoney(totalRefund)}`);
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'return', entityType: 'order', entityId: selectedOrder.order_number, entityName: returnCode, description: `Trả hàng ${returnCode} từ đơn ${selectedOrder.order_number}: ${itemsToReturn.map(i => `${i.product_name} x${i.return_qty}`).join(', ')} → Hoàn ${formatMoney(totalRefund)}` });
+
+      setShowReturnModal(false);
+      await loadOrderReturns(selectedOrder.id);
+      await Promise.all([loadSalesData(), loadWarehouseData(), loadFinanceData(), loadPagedOrders()]);
     } catch (err) { console.error(err); alert('❌ Lỗi: ' + err.message); } finally { setSubmitting(false); }
   };
 
@@ -1409,7 +1507,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                   )}
                 </div>
                 {/* Card content */}
-                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); setEditMode(false); setShowPaymentInput(false); setShowDetailModal(true); }}>
+                <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
                   {/* Line 1: Mã đơn, loại, trạng thái, tổng tiền */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -1805,10 +1903,12 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 const canEditOrder = ['new', 'confirmed', 'packing'].includes(selectedOrder.status);
                 const canPay = selectedOrder.payment_status !== 'paid' && !['cancelled', 'returned'].includes(selectedOrder.status);
                 const canReorder = ['completed', 'cancelled', 'returned'].includes(selectedOrder.status);
+                const canReturn = ['delivered', 'completed'].includes(selectedOrder.status) && orderItems.length > 0;
                 return (
                   <div className="flex gap-2 flex-wrap">
                     {hasPermission('sales', 2) && canEditOrder && !editMode && <button onClick={enterEditMode} className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium">✏️ Sửa đơn</button>}
                     {hasPermission('sales', 2) && canPay && !showPaymentInput && <button onClick={() => setShowPaymentInput(true)} className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">💰 Thanh toán</button>}
+                    {hasPermission('sales', 2) && canReturn && <button onClick={openReturnModal} className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg text-xs font-medium">↩️ Trả hàng</button>}
                     {hasPermission('sales', 2) && canReorder && orderItems.length > 0 && <button onClick={handleReorder} className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-medium">🔄 Đặt lại</button>}
                   </div>
                 );
@@ -2027,7 +2127,106 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               {selectedOrder.warehouse_id && getWarehouseName(selectedOrder.warehouse_id) && (
                 <div className="text-sm text-amber-600">🏭 Kho: {getWarehouseName(selectedOrder.warehouse_id)}</div>
               )}
+              {/* Return history */}
+              {orderReturns.length > 0 && (
+                <div className="bg-orange-50 rounded-lg p-3 space-y-2">
+                  <div className="text-sm font-medium text-orange-700">Lịch sử trả hàng ({orderReturns.length})</div>
+                  {orderReturns.map(ret => (
+                    <div key={ret.id} className="bg-white rounded-lg p-2 border border-orange-200 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-orange-800">{ret.return_code}</span>
+                        <span className="text-red-600 font-medium">-{formatMoney(ret.total_refund)}</span>
+                      </div>
+                      {ret.reason && <div className="text-xs text-gray-500 mt-0.5">Lý do: {ret.reason}</div>}
+                      <div className="text-xs text-gray-400">{new Date(ret.created_at).toLocaleString('vi-VN')} - {paymentMethods[ret.refund_method]?.label || ret.refund_method}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="text-xs text-gray-400">Tạo bởi: {selectedOrder.created_by}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return Modal */}
+      {showReturnModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[70] p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-2xl w-full my-4">
+            <div className="p-4 border-b bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-t-xl flex justify-between items-center">
+              <h3 className="font-bold text-lg">Trả hàng - {selectedOrder.order_number}</h3>
+              <button onClick={() => setShowReturnModal(false)} className="text-white/80 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="text-sm text-gray-600">Chọn sản phẩm và số lượng muốn trả:</div>
+              <div className="space-y-2">
+                {returnItems.map((item, idx) => (
+                  <div key={item.id} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium text-sm">{item.product_name}</div>
+                        <div className="text-xs text-gray-500">Đã mua: {item.quantity} x {formatMoney(item.unit_price)}</div>
+                      </div>
+                      <span className="text-sm font-medium">{formatMoney(item.return_qty * parseFloat(item.unit_price))}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-500 whitespace-nowrap">SL trả:</label>
+                      <input type="number" min="0" max={item.quantity} value={item.return_qty}
+                        onChange={e => {
+                          const qty = Math.min(Math.max(0, parseInt(e.target.value) || 0), item.quantity);
+                          setReturnItems(prev => prev.map((ri, i) => i === idx ? { ...ri, return_qty: qty } : ri));
+                        }}
+                        className="w-20 border rounded px-2 py-1 text-sm text-center" />
+                      <select value={item.condition}
+                        onChange={e => setReturnItems(prev => prev.map((ri, i) => i === idx ? { ...ri, condition: e.target.value } : ri))}
+                        className="border rounded px-2 py-1 text-xs">
+                        <option value="good">Nguyên vẹn</option>
+                        <option value="damaged">Hư hỏng</option>
+                        <option value="defective">Lỗi nhà SX</option>
+                      </select>
+                      <input value={item.note} placeholder="Ghi chú"
+                        onChange={e => setReturnItems(prev => prev.map((ri, i) => i === idx ? { ...ri, note: e.target.value } : ri))}
+                        className="flex-1 border rounded px-2 py-1 text-xs" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={2}
+                placeholder="Lý do trả hàng..." className="w-full border rounded-lg px-3 py-2 text-sm" />
+
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Hoàn tiền qua</label>
+                <div className="flex gap-2">
+                  {Object.entries(paymentMethods).filter(([k]) => k !== 'cod' && k !== 'debt').map(([key, pm]) => (
+                    <button key={key} type="button" onClick={() => setRefundMethod(key)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border-2 ${refundMethod === key ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-600'}`}>
+                      {pm.icon} {pm.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                <div className="flex justify-between text-sm">
+                  <span>Sản phẩm trả: {returnItems.filter(i => i.return_qty > 0).length}</span>
+                  <span>SL: {returnItems.reduce((s, i) => s + i.return_qty, 0)}</span>
+                </div>
+                <div className="flex justify-between text-lg font-bold text-orange-700 mt-1">
+                  <span>Hoàn tiền</span>
+                  <span>{formatMoney(returnItems.reduce((s, i) => s + i.return_qty * parseFloat(i.unit_price), 0))}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowReturnModal(false)} className="flex-1 px-4 py-2.5 bg-gray-200 rounded-lg font-medium text-sm">Hủy</button>
+                <button onClick={handleSubmitReturn} disabled={submitting}
+                  className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm text-white ${submitting ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'}`}>
+                  {submitting ? 'Đang xử lý...' : 'Xác nhận trả hàng'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
