@@ -24,6 +24,12 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
   const [filterWarehouse, setFilterWarehouse] = useState('');
   const [xntData, setXntData] = useState([]);
   const [loadingXnt, setLoadingXnt] = useState(false);
+  // History state
+  const [historyData, setHistoryData] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const HISTORY_PAGE_SIZE = 30;
 
   // Period helpers
   const getDateRange = useCallback(() => {
@@ -272,6 +278,62 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
     return months.map(m => ({ month: m.label, value: m.value }));
   }, [products, stockTransactions, now]);
 
+  // ---- Low stock products ----
+  const lowStockProducts = useMemo(() => {
+    return (products || [])
+      .map(p => {
+        const minStock = p.min_stock || 5;
+        let stock = p.stock_quantity || p.stock || 0;
+        if (filterWarehouse && warehouseStock) {
+          const ws = warehouseStock.find(w => w.product_id === p.id && w.warehouse_id === filterWarehouse);
+          stock = ws ? (ws.quantity || 0) : 0;
+        }
+        return { ...p, currentStock: stock, minStock, needMore: Math.max(0, minStock - stock) };
+      })
+      .filter(p => p.currentStock <= p.minStock)
+      .sort((a, b) => a.currentStock - b.currentStock);
+  }, [products, warehouseStock, filterWarehouse]);
+
+  const lowStockSummary = useMemo(() => ({
+    total: lowStockProducts.length,
+    outOfStock: lowStockProducts.filter(p => p.currentStock === 0).length,
+  }), [lowStockProducts]);
+
+  // ---- Stock history (paginated) ----
+  const loadHistory = useCallback(async () => {
+    if (!tenant?.id) return;
+    setLoadingHistory(true);
+    try {
+      const { startDate, endDate } = getDateRange();
+      let query = supabase
+        .from('stock_transactions')
+        .select('*', { count: 'exact' })
+        .eq('tenant_id', tenant.id)
+        .gte('transaction_date', startDate)
+        .lte('transaction_date', endDate)
+        .order('created_at', { ascending: false })
+        .range(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE - 1);
+      if (filterWarehouse) query = query.eq('warehouse_id', filterWarehouse);
+      const { data, count, error } = await query;
+      if (error) throw error;
+      // Map warehouse names
+      const mapped = (data || []).map(tx => {
+        const wh = (warehouses || []).find(w => w.id === tx.warehouse_id);
+        return { ...tx, warehouse_name: wh?.name || '—' };
+      });
+      setHistoryData(mapped);
+      setHistoryTotal(count || 0);
+    } catch (err) {
+      console.error('Load history error:', err);
+      setHistoryData([]);
+    }
+    setLoadingHistory(false);
+  }, [tenant, getDateRange, filterWarehouse, historyPage, warehouses]);
+
+  useEffect(() => {
+    if (reportType === 'history') loadHistory();
+  }, [reportType, loadHistory]);
+
   // Entire view guard (placed after all hooks to comply with rules-of-hooks)
   if (!hasPermission('warehouse', 2)) {
     return (
@@ -285,27 +347,27 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
   return (
     <div className="space-y-4">
       {/* Report type tabs */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setReportType('xnt')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            reportType === 'xnt'
-              ? 'bg-amber-600 text-white shadow-sm'
-              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          Xuất Nhập Tồn
-        </button>
-        <button
-          onClick={() => setReportType('value')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            reportType === 'value'
-              ? 'bg-amber-600 text-white shadow-sm'
-              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          Giá Trị Kho
-        </button>
+      <div className="flex flex-wrap gap-2">
+        {[
+          { id: 'xnt', label: 'Xuất Nhập Tồn' },
+          { id: 'value', label: 'Giá Trị Kho' },
+          { id: 'lowstock', label: 'Cảnh Báo Tồn Kho' },
+          { id: 'history', label: 'Lịch Sử Kho' },
+        ].map(tab => (
+          <button key={tab.id}
+            onClick={() => setReportType(tab.id)}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              reportType === tab.id
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {tab.label}
+            {tab.id === 'lowstock' && lowStockSummary.total > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">{lowStockSummary.total}</span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Period selector */}
@@ -675,6 +737,131 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
               </ResponsiveContainer>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Low Stock Report */}
+      {reportType === 'lowstock' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl shadow-sm border border-l-4 border-l-red-500 p-4">
+              <p className="text-sm text-gray-500 mb-1">Cần nhập thêm</p>
+              <p className="text-2xl font-bold text-red-700">{lowStockSummary.total} <span className="text-sm font-normal text-gray-500">sản phẩm</span></p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-l-4 border-l-orange-500 p-4">
+              <p className="text-sm text-gray-500 mb-1">Hết hàng</p>
+              <p className="text-2xl font-bold text-orange-700">{lowStockSummary.outOfStock} <span className="text-sm font-normal text-gray-500">sản phẩm</span></p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-l-4 border-l-green-500 p-4">
+              <p className="text-sm text-gray-500 mb-1">Tổng sản phẩm</p>
+              <p className="text-2xl font-bold text-green-700">{(products || []).length}</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div className="p-4 border-b bg-gray-50">
+              <h3 className="font-semibold text-gray-800">Sản phẩm cần nhập thêm</h3>
+              <p className="text-sm text-gray-500 mt-0.5">{lowStockProducts.length} sản phẩm dưới mức tồn kho tối thiểu</p>
+            </div>
+            {lowStockProducts.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Tất cả sản phẩm đều đủ tồn kho</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium text-gray-600">STT</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Mã SP</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Tên SP</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Tồn hiện tại</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Tồn tối thiểu</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Cần nhập thêm</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lowStockProducts.map((p, idx) => (
+                      <tr key={p.id} className={`${p.currentStock === 0 ? 'bg-red-50' : p.currentStock <= Math.floor(p.minStock / 2) ? 'bg-yellow-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                        <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-600">{p.sku || '-'}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800 max-w-[200px] truncate">{p.name}</td>
+                        <td className={`px-3 py-2 text-right font-bold ${p.currentStock === 0 ? 'text-red-600' : 'text-orange-600'}`}>{formatNumber(p.currentStock)}</td>
+                        <td className="px-3 py-2 text-right text-gray-500">{formatNumber(p.minStock)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-blue-700">{formatNumber(p.needMore)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* History Report */}
+      {reportType === 'history' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-800">Lịch sử xuất nhập kho</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{historyTotal} phiếu trong kỳ</p>
+              </div>
+              <button onClick={loadHistory} disabled={loadingHistory}
+                className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
+                {loadingHistory ? 'Đang tải...' : 'Tải lại'}
+              </button>
+            </div>
+            {loadingHistory ? (
+              <div className="p-8 text-center text-gray-500">
+                <div className="inline-block w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-2" />
+                <p>Đang tải dữ liệu...</p>
+              </div>
+            ) : historyData.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Không có phiếu nào trong kỳ đã chọn</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium text-gray-600">Thời gian</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Loại</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Mã phiếu</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Kho</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Tổng tiền</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Nhân viên</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.map((tx, idx) => (
+                      <tr key={tx.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-3 py-2 text-gray-600 text-xs">{new Date(tx.created_at).toLocaleString('vi-VN')}</td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${tx.type === 'import' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {tx.type === 'import' ? 'Nhập' : 'Xuất'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-600">{tx.transaction_code || '-'}</td>
+                        <td className="px-3 py-2 text-gray-700">{tx.warehouse_name}</td>
+                        <td className="px-3 py-2 text-right font-medium">{permLevel >= 3 ? formatCurrency(tx.total_amount || 0) : '---'}</td>
+                        <td className="px-3 py-2 text-gray-600 text-xs">{tx.created_by || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          {/* Pagination */}
+          {Math.ceil(historyTotal / HISTORY_PAGE_SIZE) > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <button onClick={() => setHistoryPage(p => Math.max(0, p - 1))} disabled={historyPage === 0}
+                className="px-3 py-1.5 border rounded-lg text-sm disabled:opacity-40 hover:bg-gray-50">&lt;</button>
+              <span className="text-sm text-gray-600">Trang {historyPage + 1} / {Math.ceil(historyTotal / HISTORY_PAGE_SIZE)}</span>
+              <button onClick={() => setHistoryPage(p => Math.min(Math.ceil(historyTotal / HISTORY_PAGE_SIZE) - 1, p + 1))}
+                disabled={historyPage >= Math.ceil(historyTotal / HISTORY_PAGE_SIZE) - 1}
+                className="px-3 py-1.5 border rounded-lg text-sm disabled:opacity-40 hover:bg-gray-50">&gt;</button>
+            </div>
+          )}
         </div>
       )}
     </div>
