@@ -11,6 +11,7 @@ import ZaloOASettings from './ZaloOASettings';
 import ActivityLogView from './ActivityLogView';
 import BackupSettings from './BackupSettings';
 import SocialPagesSettings from './SocialPagesSettings';
+import LoyaltySettings from './LoyaltySettings';
 
 export default function SettingsModule() {
   const { activeTab, tenant, currentUser } = useApp();
@@ -47,6 +48,9 @@ export default function SettingsModule() {
       )}
       {activeTab === 'social' && (
         <SocialPagesSettings tenant={tenant} currentUser={currentUser} />
+      )}
+      {activeTab === 'loyalty' && (
+        <LoyaltySettings {...commonProps} />
       )}
       {activeTab === 'logs' && (
         <ActivityLogView tenant={tenant} currentUser={currentUser} />

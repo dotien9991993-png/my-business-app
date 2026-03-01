@@ -308,6 +308,13 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponError, setCouponError] = useState('');
 
+  // Loyalty / Points
+  const [usePoints, setUsePoints] = useState(false);
+  const [pointsToUse, setPointsToUse] = useState(0);
+  const [customerPoints, setCustomerPoints] = useState(null);
+  const loyaltyConfig = getSettingValue('loyalty', 'config', null);
+  const loyaltyEnabled = loyaltyConfig?.enabled === true;
+
   const _isVTP = shippingProvider === 'Viettel Post' && !!vtpToken;
 
   // ---- Helpers: unique number generators ----
@@ -336,8 +343,19 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     setShowCustomerDropdown(false); setInternalNote('');
     setPaymentMethod('cod'); setShippingProvider(''); setShippingFee(''); setShippingPayer('customer'); setSelectedAddressId('');
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setCouponError('');
+    setUsePoints(false); setPointsToUse(0); setCustomerPoints(null);
     const defaultWh = (warehouses || []).find(w => w.is_default) || (warehouses || [])[0];
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
+  };
+
+  // ---- Load customer points ----
+  const loadCustomerPoints = async (custId) => {
+    if (!custId || !loyaltyEnabled) { setCustomerPoints(null); return; }
+    try {
+      const { data } = await supabase.from('customer_points').select('*')
+        .eq('tenant_id', tenant.id).eq('customer_id', custId).maybeSingle();
+      setCustomerPoints(data);
+    } catch { setCustomerPoints(null); }
   };
 
   // ---- Coupon validation ----
@@ -556,7 +574,8 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const discount = parseFloat(discountAmount || 0);
   const shipFee = parseFloat(shippingFee || 0);
   const shipForCustomer = shippingPayer === 'customer' ? shipFee : 0;
-  const totalAmount = subtotal - discount - couponDiscount + shipForCustomer;
+  const pointsDiscount = usePoints && pointsToUse > 0 && loyaltyConfig ? pointsToUse * (loyaltyConfig.point_value || 1000) : 0;
+  const totalAmount = subtotal - discount - couponDiscount - pointsDiscount + shipForCustomer;
 
   // ---- Product categories ----
   const _productCategories = useMemo(() => {
@@ -682,8 +701,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         shipping_provider: shippingProvider || null,
         shipping_fee: shipFee, shipping_payer: shippingPayer,
         shipping_metadata: finalShippingMetadata,
-        discount_amount: couponDiscount, discount_note: appliedCoupon ? `Mã: ${appliedCoupon.code}` : '',
+        discount_amount: couponDiscount + pointsDiscount, discount_note: appliedCoupon ? `Mã: ${appliedCoupon.code}` : '',
         coupon_id: appliedCoupon?.id || null, coupon_code: appliedCoupon?.code || null,
+        points_used: pointsToUse > 0 ? pointsToUse : 0,
+        points_discount: pointsDiscount > 0 ? pointsDiscount : 0,
         subtotal, total_amount: totalAmount,
         payment_method: paymentMethod, payment_status: 'unpaid',
         paid_amount: 0,
@@ -753,6 +774,19 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
           tenant_id: tenant.id, coupon_id: appliedCoupon.id, order_id: order.id,
           customer_phone: customerPhone.trim() || null, discount_amount: couponDiscount
         }]);
+      }
+
+      // Redeem loyalty points
+      if (usePoints && pointsToUse > 0 && resolvedCustomerId && loyaltyEnabled) {
+        await supabase.from('point_transactions').insert([{
+          tenant_id: tenant.id, customer_id: resolvedCustomerId, order_id: order.id,
+          type: 'redeem', points: -pointsToUse,
+          description: `Dùng ${pointsToUse} điểm cho đơn ${orderNumber} (-${formatMoney(pointsDiscount)})`,
+          created_by: currentUser.name, created_at: getNowISOVN()
+        }]).then(() => {}).catch(() => {});
+        await supabase.from('customer_points').update({
+          used_points: (customerPoints?.used_points || 0) + pointsToUse, updated_at: getNowISOVN()
+        }).eq('tenant_id', tenant.id).eq('customer_id', resolvedCustomerId).then(() => {}).catch(() => {});
       }
 
       showToast('Tạo đơn thành công! ' + orderNumber);
@@ -873,6 +907,33 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         }
         updates.payment_status = 'paid';
         updates.paid_amount = order.total_amount;
+
+        // Loyalty: tích điểm cho KH khi đơn completed
+        if (order.customer_id && loyaltyEnabled && loyaltyConfig) {
+          const paidAmount = parseFloat(order.total_amount || 0);
+          const earnedPoints = Math.floor(paidAmount / (loyaltyConfig.points_per_amount || 10000));
+          if (earnedPoints > 0) {
+            await supabase.from('point_transactions').insert([{
+              tenant_id: tenant.id, customer_id: order.customer_id, order_id: orderId,
+              type: 'earn', points: earnedPoints,
+              description: `Tích ${earnedPoints} điểm từ đơn ${order.order_number} (${formatMoney(paidAmount)})`,
+              created_by: currentUser.name, created_at: getNowISOVN()
+            }]).then(() => {}).catch(() => {});
+            // Upsert customer_points
+            const { data: existing } = await supabase.from('customer_points').select('*')
+              .eq('tenant_id', tenant.id).eq('customer_id', order.customer_id).maybeSingle();
+            if (existing) {
+              await supabase.from('customer_points').update({
+                total_points: (existing.total_points || 0) + earnedPoints, updated_at: getNowISOVN()
+              }).eq('id', existing.id).then(() => {}).catch(() => {});
+            } else {
+              await supabase.from('customer_points').insert([{
+                tenant_id: tenant.id, customer_id: order.customer_id,
+                total_points: earnedPoints, used_points: 0
+              }]).then(() => {}).catch(() => {});
+            }
+          }
+        }
       }
 
       // Cancelled → restore stock to order's warehouse + restore serials
@@ -2374,6 +2435,7 @@ table.summary td{padding:3px 6px;font-size:12px}
                         <button key={c.id} onClick={() => {
                           setCustomerId(c.id); setCustomerName(c.name); setCustomerPhone(c.phone || '');
                           setCustomerSearch(c.name);
+                          loadCustomerPoints(c.id);
                           if (c.address_data) { setShippingAddressData(c.address_data); }
                           // Auto-select default address if available
                           const defAddr = (customerAddresses || []).find(a => a.customer_id === c.id && a.is_default);
@@ -2572,6 +2634,31 @@ table.summary td{padding:3px 6px;font-size:12px}
                 {couponError && <p className="text-red-500 text-xs mt-1">{couponError}</p>}
               </div>
 
+              {/* E2. Dùng điểm */}
+              {loyaltyEnabled && customerId && customerPoints && customerPoints.available_points > 0 && (
+                <div className="bg-amber-50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-amber-700">Dùng điểm tích lũy</label>
+                    <span className="text-xs text-amber-600">Có {customerPoints.available_points} điểm ({formatMoney(customerPoints.available_points * (loyaltyConfig.point_value || 1000))})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setUsePoints(!usePoints); if (usePoints) setPointsToUse(0); }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition ${usePoints ? 'border-amber-500 bg-amber-100 text-amber-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+                      {usePoints ? 'Bật' : 'Tắt'}
+                    </button>
+                    {usePoints && (
+                      <input type="number" min={loyaltyConfig.min_redeem_points || 1}
+                        max={Math.min(customerPoints.available_points, Math.floor((subtotal - couponDiscount) / (loyaltyConfig.point_value || 1000)))}
+                        value={pointsToUse} onChange={e => setPointsToUse(Math.max(0, parseInt(e.target.value) || 0))}
+                        placeholder="Số điểm" className="w-32 border rounded-lg px-2.5 py-1.5 text-sm" />
+                    )}
+                    {usePoints && pointsToUse > 0 && (
+                      <span className="text-sm text-amber-700 font-medium">= -{formatMoney(pointsDiscount)}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* F. Ghi chú */}
               <textarea value={internalNote} onChange={e => setInternalNote(e.target.value)} rows={2} placeholder="Ghi chú nội bộ..."
                 className="w-full border rounded-lg px-3 py-2 text-sm" />
@@ -2586,6 +2673,12 @@ table.summary td{padding:3px 6px;font-size:12px}
                   <div className="flex justify-between text-sm text-red-600">
                     <span>Mã giảm giá ({appliedCoupon?.code})</span>
                     <span>-{formatMoney(couponDiscount)}</span>
+                  </div>
+                )}
+                {pointsDiscount > 0 && (
+                  <div className="flex justify-between text-sm text-amber-600">
+                    <span>Dùng {pointsToUse} điểm</span>
+                    <span>-{formatMoney(pointsDiscount)}</span>
                   </div>
                 )}
                 {shipFee > 0 && (

@@ -72,6 +72,7 @@ export default function SalesModule() {
           warrantyCards={warrantyCards} warrantyRepairs={warrantyRepairs}
           hasPermission={hasPermission} canEdit={canEdit}
           getPermissionLevel={getPermissionLevel} filterByPermission={filterByPermission}
+          getSettingValue={getSettingValue}
         />
       )}
       {activeTab === 'products' && canAccessTab('sales', 'products') && (

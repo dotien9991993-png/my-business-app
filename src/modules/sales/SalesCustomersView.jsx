@@ -32,7 +32,7 @@ const INTERACTION_TYPES = {
 
 const TAG_SUGGESTIONS = ['Đại lý miền Bắc', 'Đại lý miền Nam', 'Karaoke', 'Hội trường', 'Nhà thờ', 'Sự kiện', 'Quán cafe', 'Trường học'];
 
-export default function SalesCustomersView({ tenant, currentUser, customers, orders, customerAddresses, loadSalesData, warrantyCards, warrantyRepairs, hasPermission, canEdit: canEditSales }) {
+export default function SalesCustomersView({ tenant, currentUser, customers, orders, customerAddresses, loadSalesData, warrantyCards, warrantyRepairs, hasPermission, canEdit: canEditSales, getSettingValue }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -59,6 +59,46 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
   const [addrDistrict, setAddrDistrict] = useState('');
   const [addrProvince, setAddrProvince] = useState('');
   const [totalCustomerCount, setTotalCustomerCount] = useState(0);
+
+  // Loyalty
+  const [allCustomerPoints, setAllCustomerPoints] = useState([]);
+  const [customerPointHistory, setCustomerPointHistory] = useState([]);
+  const loyaltyConfig = getSettingValue ? getSettingValue('loyalty', 'config', null) : null;
+  const loyaltyEnabled = loyaltyConfig?.enabled === true;
+
+  const LOYALTY_TIERS = [
+    { name: 'Thành viên', min: 0, max: 99, color: 'bg-gray-100 text-gray-600' },
+    { name: 'Bạc', min: 100, max: 499, color: 'bg-gray-200 text-gray-700' },
+    { name: 'Vàng', min: 500, max: 999, color: 'bg-yellow-100 text-yellow-700' },
+    { name: 'Kim cương', min: 1000, max: Infinity, color: 'bg-blue-100 text-blue-700' },
+  ];
+
+  const getCustomerTier = useCallback((customerId) => {
+    const cp = allCustomerPoints.find(p => p.customer_id === customerId);
+    const pts = cp ? (cp.total_points - cp.used_points) : 0;
+    return LOYALTY_TIERS.find(t => pts >= t.min && pts <= t.max) || LOYALTY_TIERS[0];
+  }, [allCustomerPoints]);
+
+  const getCustomerPointsData = useCallback((customerId) => {
+    return allCustomerPoints.find(p => p.customer_id === customerId);
+  }, [allCustomerPoints]);
+
+  // Load all customer points on mount
+  useEffect(() => {
+    if (!tenant || !loyaltyEnabled) return;
+    supabase.from('customer_points').select('*').eq('tenant_id', tenant.id)
+      .then(({ data }) => { if (data) setAllCustomerPoints(data); })
+      .catch(() => {});
+  }, [tenant, loyaltyEnabled]);
+
+  const loadPointHistory = useCallback(async (customerId) => {
+    try {
+      const { data } = await supabase.from('point_transactions').select('*')
+        .eq('tenant_id', tenant.id).eq('customer_id', customerId)
+        .order('created_at', { ascending: false }).limit(20);
+      setCustomerPointHistory(data || []);
+    } catch { setCustomerPointHistory([]); }
+  }, [tenant]);
 
   // Debounce search input
   useEffect(() => {
@@ -906,6 +946,7 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-medium text-gray-900">{c.name}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${custType.color}`}>{custType.label}</span>
+                    {loyaltyEnabled && (() => { const t = getCustomerTier(c.id); const cp = getCustomerPointsData(c.id); return cp ? <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${t.color}`}>{t.name} ({cp.total_points - cp.used_points}P)</span> : null; })()}
                     {c.birthday && new Date(c.birthday).getMonth() === new Date().getMonth() && (
                       <span className="text-xs" title={`Sinh nhật: ${formatBirthday(c.birthday)}`}>🎂</span>
                     )}
@@ -1081,6 +1122,7 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
                   { key: 'addresses', label: `Địa chỉ (${getCustomerAddresses(selectedCustomer.id).length})` },
                   { key: 'interactions', label: 'Tương tác' },
                   { key: 'warranty', label: `Bảo hành (${customerWarranty.cards.length})` },
+                  ...(loyaltyEnabled ? [{ key: 'loyalty', label: 'Tích điểm' }] : []),
                 ].map(tab => (
                   <button key={tab.key} onClick={() => setDetailTab(tab.key)}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition ${detailTab === tab.key ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -1390,6 +1432,65 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
                   {customerWarranty.cards.length === 0 && customerWarranty.repairs.length === 0 && (
                     <p className="text-sm text-gray-400 text-center py-4">Chưa có thông tin bảo hành</p>
                   )}
+                </div>
+              )}
+
+              {/* Tab: Loyalty */}
+              {detailTab === 'loyalty' && loyaltyEnabled && (
+                <div className="space-y-3">
+                  {(() => {
+                    const cp = getCustomerPointsData(selectedCustomer.id);
+                    const tier = getCustomerTier(selectedCustomer.id);
+                    const availPts = cp ? (cp.total_points - cp.used_points) : 0;
+                    // Load history on first render
+                    if (customerPointHistory.length === 0 && cp) loadPointHistory(selectedCustomer.id);
+                    return (
+                      <>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-green-50 rounded-lg p-2.5 text-center">
+                            <div className="text-xs text-green-600">Tổng tích</div>
+                            <div className="text-sm font-bold text-green-700">{cp?.total_points || 0}</div>
+                          </div>
+                          <div className="bg-amber-50 rounded-lg p-2.5 text-center">
+                            <div className="text-xs text-amber-600">Đã dùng</div>
+                            <div className="text-sm font-bold text-amber-700">{cp?.used_points || 0}</div>
+                          </div>
+                          <div className="bg-blue-50 rounded-lg p-2.5 text-center">
+                            <div className="text-xs text-blue-600">Khả dụng</div>
+                            <div className="text-sm font-bold text-blue-700">{availPts}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600">Hạng:</span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${tier.color}`}>{tier.name}</span>
+                          {availPts > 0 && (
+                            <span className="text-xs text-gray-400 ml-auto">= {formatMoney(availPts * (loyaltyConfig.point_value || 1000))}</span>
+                          )}
+                        </div>
+                        {/* Point history */}
+                        {customerPointHistory.length > 0 ? (
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                            <div className="text-sm font-medium text-gray-700">Lịch sử điểm</div>
+                            {customerPointHistory.map(pt => (
+                              <div key={pt.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg text-sm">
+                                <div>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${pt.type === 'earn' ? 'bg-green-100 text-green-700' : pt.type === 'redeem' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {pt.type === 'earn' ? 'Tích' : pt.type === 'redeem' ? 'Dùng' : pt.type === 'adjust' ? 'Điều chỉnh' : pt.type}
+                                  </span>
+                                  <span className="text-gray-500 text-xs ml-2">{new Date(pt.created_at).toLocaleDateString('vi-VN')}</span>
+                                </div>
+                                <span className={`font-medium ${pt.points > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {pt.points > 0 ? '+' : ''}{pt.points}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-400 text-center py-2">Chưa có lịch sử tích điểm</p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
