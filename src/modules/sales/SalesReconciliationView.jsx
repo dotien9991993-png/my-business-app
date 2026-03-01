@@ -48,7 +48,7 @@ export default function SalesReconciliationView({
 
   // Stats
   const pendingCount = useMemo(() =>
-    (orders || []).filter(o => ['shipping', 'delivered'].includes(o.status)).length
+    (orders || []).filter(o => ['shipped', 'in_transit', 'delivered'].includes(o.shipping_status)).length
   , [orders]);
 
   const todayStats = useMemo(() => {
@@ -128,13 +128,14 @@ export default function SalesReconciliationView({
   const handleDeliveryConfirm = async () => {
     if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
     if (!scannedOrder || submitting) return;
-    if (!['shipping', 'delivered'].includes(scannedOrder.status)) {
+    const ss = scannedOrder.shipping_status || scannedOrder.status;
+    if (!['shipped', 'in_transit', 'delivered', 'shipping'].includes(ss)) {
       showToast('Đơn hàng không ở trạng thái có thể xác nhận giao', 'error');
       return;
     }
     setSubmitting(true);
     try {
-      const updates = { status: 'completed', updated_at: getNowISOVN() };
+      const updates = { status: 'completed', order_status: 'completed', shipping_status: 'delivered', updated_at: getNowISOVN() };
 
       // Create receipt for remaining unpaid amount (skip if fully paid)
       const alreadyPaid = parseFloat(scannedOrder.paid_amount || 0);
@@ -180,7 +181,8 @@ export default function SalesReconciliationView({
   const handleReturnConfirm = async () => {
     if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
     if (!scannedOrder || submitting) return;
-    if (!['shipping', 'delivered', 'completed'].includes(scannedOrder.status)) {
+    const rss = scannedOrder.shipping_status || scannedOrder.status;
+    if (!['shipped', 'in_transit', 'delivered', 'shipping', 'delivered', 'completed'].includes(rss) && !['completed'].includes(scannedOrder.order_status)) {
       showToast('Đơn hàng không ở trạng thái có thể hoàn', 'error');
       return;
     }
@@ -225,7 +227,7 @@ export default function SalesReconciliationView({
       }
 
       await supabase.from('orders').update({
-        status: 'returned', updated_at: getNowISOVN()
+        status: 'returned', order_status: 'returned', shipping_status: 'returned_to_sender', updated_at: getNowISOVN()
       }).eq('id', scannedOrder.id);
 
       await supabase.from('order_reconciliation').insert([{

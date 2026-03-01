@@ -70,6 +70,21 @@ const mapOrderStatus = (shippingRaw) => {
   return 'completed';
 };
 
+// Map legacy status → 3-way status fields (for Haravan import)
+const mapThreeWayStatus = (legacyStatus) => {
+  const map = {
+    new: { order_status: 'open', shipping_status: 'pending' },
+    confirmed: { order_status: 'confirmed', shipping_status: 'pending' },
+    packing: { order_status: 'confirmed', shipping_status: 'packing' },
+    shipping: { order_status: 'confirmed', shipping_status: 'shipped' },
+    delivered: { order_status: 'confirmed', shipping_status: 'delivered' },
+    completed: { order_status: 'completed', shipping_status: 'delivered' },
+    cancelled: { order_status: 'cancelled', shipping_status: 'pending' },
+    returned: { order_status: 'returned', shipping_status: 'returned_to_sender' },
+  };
+  return map[legacyStatus] || { order_status: 'completed', shipping_status: 'delivered' };
+};
+
 const mapPaymentMethod = (raw) => {
   const s = (raw || '').toLowerCase().trim();
   if (s.includes('cod') || s.includes('giao hàng')) return 'cod';
@@ -208,6 +223,7 @@ export default function HaravanImportModal({ isOpen, onClose, tenant, currentUse
             promotion_code: get(first, 'promotion_code'),
             payment_status: mapPaymentStatus(get(first, 'payment_status_raw')),
             status: mapOrderStatus(get(first, 'shipping_status_raw')),
+            ...mapThreeWayStatus(mapOrderStatus(get(first, 'shipping_status_raw'))),
             payment_method: mapPaymentMethod(get(first, 'payment_method_raw')),
             shipping_method: get(first, 'shipping_method'),
             channel: get(first, 'channel'),

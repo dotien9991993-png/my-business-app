@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
 import { formatMoney } from '../../utils/formatUtils';
 import { getDateStrVN, getNowISOVN, getTodayVN } from '../../utils/dateUtils';
-import { orderStatuses, orderStatusFlow, orderTypes, paymentMethods, shippingProviders, shippingPayers, paymentStatuses, orderSources, shippingServices } from '../../constants/salesConstants';
+import { orderStatuses, orderStatusFlow, orderTypes, paymentMethods, shippingProviders, shippingPayers, paymentStatuses, orderSources, shippingServices, orderStatusValues, shippingStatusValues, paymentStatusValues, orderStatusFlow3 } from '../../constants/salesConstants';
 import QRCode from 'qrcode';
 import AddressPicker from '../../components/shared/AddressPicker';
 import QRScanner from '../../components/shared/QRScanner';
@@ -20,6 +20,8 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const vtpToken = vtpConfig?.api_token;
   // ---- View state ----
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterOrderStatus, setFilterOrderStatus] = useState('all');
+  const [filterShippingStatus, setFilterShippingStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -138,20 +140,29 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         query = query.eq('tenant_id', tenant.id);
         if (permLevel === 1) query = query.eq('created_by', currentUser.name);
         if (filterStatus !== 'all') query = query.eq('status', filterStatus);
+        if (filterOrderStatus !== 'all') query = query.eq('order_status', filterOrderStatus);
+        if (filterShippingStatus !== 'all') query = query.eq('shipping_status', filterShippingStatus);
         if (filterType !== 'all') query = query.eq('order_type', filterType);
-        if (filterPayment !== 'all') query = query.eq('payment_status', filterPayment);
+        if (filterPayment !== 'all') {
+          // Support both partial and partial_paid
+          if (filterPayment === 'partial_paid') {
+            query = query.in('payment_status', ['partial', 'partial_paid']);
+          } else {
+            query = query.eq('payment_status', filterPayment);
+          }
+        }
         if (filterCreatedBy !== 'all') query = query.eq('created_by', filterCreatedBy);
         if (filterSource !== 'all') query = query.eq('order_source', filterSource);
         if (filterShipping === 'not_shipped') {
-          query = query.in('status', ['confirmed', 'packing']).is('tracking_number', null);
+          query = query.in('shipping_status', ['pending', 'packing']).is('tracking_number', null);
         } else if (filterShipping === 'shipped') {
           query = query.not('tracking_number', 'is', null);
         } else if (filterShipping === 'shipping') {
-          query = query.eq('status', 'shipping');
+          query = query.in('shipping_status', ['shipped', 'in_transit']);
         } else if (filterShipping === 'delivered') {
-          query = query.eq('status', 'delivered');
+          query = query.eq('shipping_status', 'delivered');
         } else if (filterShipping === 'returning') {
-          query = query.eq('status', 'returned');
+          query = query.in('shipping_status', ['returned_to_sender', 'delivery_failed']);
         }
         if (filterStartDate) query = query.gte('created_at', filterStartDate);
         if (filterEndDate) query = query.lte('created_at', filterEndDate + 'T23:59:59');
@@ -168,13 +179,13 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
           .order(sortBy, { ascending: sortOrder === 'asc' })
           .range(from, to),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id).eq('status', 'new')),
+          .eq('tenant_id', tenant.id).eq('order_status', 'open')),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id).in('status', ['confirmed', 'packing']).is('tracking_number', null)),
+          .eq('tenant_id', tenant.id).in('shipping_status', ['pending', 'packing']).is('tracking_number', null)),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id).eq('status', 'shipping')),
+          .eq('tenant_id', tenant.id).in('shipping_status', ['shipped', 'in_transit'])),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenant.id).eq('status', 'completed')),
+          .eq('tenant_id', tenant.id).eq('order_status', 'completed')),
         addUserFilter(supabase.from('orders').select('*', { count: 'exact', head: true })
           .eq('tenant_id', tenant.id)),
       ]);
@@ -193,7 +204,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     } finally {
       setLoadingOrders(false);
     }
-  }, [tenant?.id, page, filterStatus, filterType, filterPayment, filterCreatedBy, filterSource, filterShipping, filterStartDate, filterEndDate, search, sortBy, sortOrder, permLevel, currentUser.name]);
+  }, [tenant?.id, page, filterStatus, filterOrderStatus, filterShippingStatus, filterType, filterPayment, filterCreatedBy, filterSource, filterShipping, filterStartDate, filterEndDate, search, sortBy, sortOrder, permLevel, currentUser.name]);
 
   useEffect(() => {
     loadPagedOrders();
@@ -217,11 +228,18 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
 
   // Shipping status label helper
   const getShippingLabel = (o) => {
-    if (['new', 'completed', 'cancelled'].includes(o.status)) return null;
-    if (o.status === 'returned') return { icon: '↩️', text: 'Đang hoàn', color: 'text-orange-600' };
-    if (o.status === 'delivered') return { icon: '✅', text: 'Đã giao', color: 'text-cyan-600' };
-    if (o.status === 'shipping') return { icon: '🚚', text: 'Đang vận chuyển', color: 'text-purple-600' };
+    const ss = o.shipping_status || 'pending';
+    if (ss === 'delivered') return { icon: '📬', text: 'Đã giao', color: 'text-cyan-600' };
+    if (ss === 'returned_to_sender') return { icon: '↩️', text: 'Hoàn về', color: 'text-orange-600' };
+    if (ss === 'delivery_failed') return { icon: '⚠️', text: 'Giao thất bại', color: 'text-red-600' };
+    if (ss === 'in_transit') return { icon: '🛵', text: 'Đang vận chuyển', color: 'text-blue-600' };
+    if (ss === 'shipped') return { icon: '🚚', text: 'Đã giao VC', color: 'text-purple-600' };
+    if (ss === 'packing') return { icon: '📦', text: 'Đóng gói', color: 'text-yellow-600' };
+    if (ss === 'pickup') return { icon: '🏪', text: 'Lấy tại shop', color: 'text-teal-600' };
+    // Fallback for pending
     if (o.tracking_number) return { icon: '📤', text: 'Đã đẩy đơn', color: 'text-blue-600' };
+    const os = o.order_status || o.status;
+    if (['open', 'new', 'completed', 'cancelled'].includes(os) && ss === 'pending') return null;
     return { icon: '⏳', text: 'Chưa đẩy đơn', color: 'text-amber-600' };
   };
 
@@ -373,9 +391,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         await supabase.from('orders').update({
           tracking_number: vtpCode, shipping_metadata: newMeta,
           shipping_provider: 'Viettel Post', shipping_service: svcCode,
-          status: 'shipping', updated_at: getNowISOVN()
+          status: 'shipping', order_status: 'confirmed', shipping_status: 'shipped',
+          updated_at: getNowISOVN()
         }).eq('id', selectedOrder.id);
-        setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping' }));
+        setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping', order_status: 'confirmed', shipping_status: 'shipped' }));
         setEditTracking(vtpCode);
         showToast('Đã gửi đơn Viettel Post: ' + vtpCode);
         await Promise.all([loadSalesData(), loadPagedOrders()]);
@@ -551,7 +570,9 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       // Insert order with hard defaults
       const { data: order, error: orderErr } = await supabase.from('orders').insert([{
         tenant_id: tenant.id, order_number: orderNumber, order_type: orderType,
-        status: 'confirmed', customer_id: resolvedCustomerId,
+        status: 'confirmed',
+        order_status: 'confirmed', shipping_status: 'pending',
+        customer_id: resolvedCustomerId,
         customer_name: customerName, customer_phone: customerPhone,
         shipping_address: finalShippingAddress,
         shipping_provider: shippingProvider || null,
@@ -671,7 +692,19 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     setSubmitting(true);
 
     try {
-      const updates = { status: newStatus, updated_at: getNowISOVN() };
+      // Map legacy status → 3-way status fields
+      const statusMap = {
+        new: { order_status: 'open', shipping_status: 'pending' },
+        confirmed: { order_status: 'confirmed', shipping_status: 'pending' },
+        packing: { order_status: 'confirmed', shipping_status: 'packing' },
+        shipping: { order_status: 'confirmed', shipping_status: 'shipped' },
+        delivered: { order_status: 'confirmed', shipping_status: 'delivered' },
+        completed: { order_status: 'completed', shipping_status: 'delivered' },
+        cancelled: { order_status: 'cancelled' },
+        returned: { order_status: 'returned', shipping_status: 'returned_to_sender' },
+      };
+      const mapped = statusMap[newStatus] || {};
+      const updates = { status: newStatus, ...mapped, updated_at: getNowISOVN() };
 
       // (Stock đã được trừ khi tạo đơn — không trừ lại ở đây)
 
@@ -1225,7 +1258,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
   };
 
   // ---- Bulk selection helpers ----
-  const canBulkSelect = (o) => ['confirmed', 'packing'].includes(o.status) && !o.tracking_number;
+  const canBulkSelect = (o) => ['pending', 'packing'].includes(o.shipping_status || 'pending') && (o.order_status || o.status) !== 'cancelled' && !o.tracking_number;
   const selectableOnPage = serverOrders.filter(canBulkSelect);
   const allPageSelected = selectableOnPage.length > 0 && selectableOnPage.every(o => checkedOrderIds.has(o.id));
 
@@ -1369,6 +1402,8 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
               tracking_number: vtpCode,
               shipping_metadata: newMeta,
               status: 'shipping',
+              order_status: 'confirmed',
+              shipping_status: 'shipped',
               shipping_provider: 'Viettel Post',
               shipping_service: bulkVtpService,
               updated_at: getNowISOVN()
@@ -1499,8 +1534,20 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
   // ---- Pagination (server-side) ----
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  // ---- Status badge ----
-  const StatusBadge = ({ status }) => {
+  // ---- Status badge (3-way) ----
+  const StatusBadge = ({ status, order }) => {
+    if (order) {
+      const os = orderStatusValues[order.order_status] || orderStatusValues.open;
+      const ss = shippingStatusValues[order.shipping_status] || shippingStatusValues.pending;
+      const ps = paymentStatusValues[order.payment_status] || paymentStatusValues[order.payment_status === 'partial' ? 'partial_paid' : 'unpaid'] || paymentStatusValues.unpaid;
+      return (
+        <div className="flex flex-wrap gap-1">
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${os.color}`}>{os.icon} {os.label}</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ss.color}`}>{ss.icon} {ss.label}</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ps.color}`}>{ps.icon} {ps.label}</span>
+        </div>
+      );
+    }
     const s = orderStatuses[status] || orderStatuses.new;
     return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.color}`}>{s.icon} {s.label}</span>;
   };
@@ -1529,18 +1576,18 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
       {/* ===== Stats (5 clickable cards) ===== */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
         {[
-          { key: 'total', label: 'Tổng', value: statusCounts.total, color: 'bg-gray-50 text-gray-700 border-gray-200', active: filterStatus === 'all' && filterShipping === 'all' },
-          { key: 'waiting_confirm', label: 'Chờ XN', value: statusCounts.waiting_confirm, color: 'bg-yellow-50 text-yellow-700 border-yellow-200', active: filterStatus === 'new' },
+          { key: 'total', label: 'Tổng', value: statusCounts.total, color: 'bg-gray-50 text-gray-700 border-gray-200', active: filterOrderStatus === 'all' && filterShippingStatus === 'all' && filterStatus === 'all' && filterShipping === 'all' },
+          { key: 'waiting_confirm', label: 'Chờ XN', value: statusCounts.waiting_confirm, color: 'bg-yellow-50 text-yellow-700 border-yellow-200', active: filterOrderStatus === 'open' },
           { key: 'not_shipped', label: 'Chưa đẩy đơn', value: statusCounts.not_shipped, color: 'bg-amber-50 text-amber-700 border-amber-200', active: filterShipping === 'not_shipped' },
-          { key: 'shipping', label: 'Đang giao', value: statusCounts.shipping, color: 'bg-purple-50 text-purple-700 border-purple-200', active: filterStatus === 'shipping' },
-          { key: 'completed', label: 'Hoàn thành', value: statusCounts.completed, color: 'bg-green-50 text-green-700 border-green-200', active: filterStatus === 'completed' },
+          { key: 'shipping', label: 'Đang giao', value: statusCounts.shipping, color: 'bg-purple-50 text-purple-700 border-purple-200', active: filterShippingStatus === 'shipped' },
+          { key: 'completed', label: 'Hoàn thành', value: statusCounts.completed, color: 'bg-green-50 text-green-700 border-green-200', active: filterOrderStatus === 'completed' },
         ].map(s => (
           <button key={s.key} onClick={() => {
-            setFilterStatus('all'); setFilterShipping('all');
-            if (s.key === 'waiting_confirm') setFilterStatus('new');
+            setFilterStatus('all'); setFilterShipping('all'); setFilterOrderStatus('all'); setFilterShippingStatus('all');
+            if (s.key === 'waiting_confirm') setFilterOrderStatus('open');
             else if (s.key === 'not_shipped') setFilterShipping('not_shipped');
-            else if (s.key === 'shipping') setFilterStatus('shipping');
-            else if (s.key === 'completed') setFilterStatus('completed');
+            else if (s.key === 'shipping') setFilterShippingStatus('shipped');
+            else if (s.key === 'completed') setFilterOrderStatus('completed');
             setPage(1);
           }}
             className={`flex-shrink-0 min-w-[80px] p-2 rounded-lg text-center border transition ${s.active ? s.color + ' ring-2 ring-offset-1 ring-green-500' : s.color + ' opacity-70 hover:opacity-100'}`}>
@@ -1554,23 +1601,17 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
       <div className="space-y-2 bg-gray-50 rounded-xl p-3">
         {/* Row 1: Trạng thái, Vận chuyển, Thanh toán, NV tạo */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
-            <option value="all">Trạng thái: Tất cả</option>
-            {Object.entries(orderStatuses).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+          <select value={filterOrderStatus} onChange={e => { setFilterOrderStatus(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+            <option value="all">Đơn hàng: Tất cả</option>
+            {Object.entries(orderStatusValues).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
           </select>
-          <select value={filterShipping} onChange={e => { setFilterShipping(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
+          <select value={filterShippingStatus} onChange={e => { setFilterShippingStatus(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
             <option value="all">Vận chuyển: Tất cả</option>
-            <option value="not_shipped">⏳ Chưa đẩy đơn</option>
-            <option value="shipped">📤 Đã đẩy đơn</option>
-            <option value="shipping">🚚 Đang vận chuyển</option>
-            <option value="delivered">✅ Đã giao</option>
-            <option value="returning">↩️ Đang hoàn</option>
+            {Object.entries(shippingStatusValues).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
           </select>
           <select value={filterPayment} onChange={e => { setFilterPayment(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
             <option value="all">Thanh toán: Tất cả</option>
-            <option value="unpaid">💰 Chưa thanh toán</option>
-            <option value="partial">💳 TT 1 phần</option>
-            <option value="paid">✅ Đã thanh toán</option>
+            {Object.entries(paymentStatusValues).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
           </select>
           <select value={filterCreatedBy} onChange={e => { setFilterCreatedBy(e.target.value); setPage(1); }} className="border rounded-lg px-2 py-1.5 text-xs sm:text-sm bg-white">
             <option value="all">NV tạo: Tất cả</option>
@@ -1658,7 +1699,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${o.order_type === 'pos' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
                         {orderTypes[o.order_type]?.icon} {orderTypes[o.order_type]?.label || o.order_type}
                       </span>
-                      <StatusBadge status={o.status} />
+                      <StatusBadge order={o} />
                     </div>
                     <div className="font-bold text-green-700 text-sm whitespace-nowrap">{formatMoney(o.total_amount)}</div>
                   </div>
@@ -2029,7 +2070,7 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
             <div className="p-4 space-y-4">
               {/* Status + Actions */}
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <StatusBadge status={selectedOrder.status} />
+                <StatusBadge order={selectedOrder} />
                 <div className="flex gap-2 flex-wrap">
                   {hasPermission('sales', 2) && (orderStatusFlow[selectedOrder.order_type]?.[selectedOrder.status] || []).map(nextStatus => (
                     <button key={nextStatus} onClick={() => changeOrderStatus(selectedOrder.id, nextStatus, selectedOrder)}
@@ -2043,10 +2084,12 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
 
               {/* Action buttons: Edit + Payment + Reorder */}
               {(() => {
-                const canEditOrder = ['new', 'confirmed', 'packing'].includes(selectedOrder.status);
-                const canPay = selectedOrder.payment_status !== 'paid' && !['cancelled', 'returned'].includes(selectedOrder.status);
-                const canReorder = ['completed', 'cancelled', 'returned'].includes(selectedOrder.status);
-                const canReturn = ['delivered', 'completed'].includes(selectedOrder.status) && orderItems.length > 0;
+                const effectiveOrderStatus = selectedOrder.order_status || selectedOrder.status;
+                const effectiveShippingStatus = selectedOrder.shipping_status || 'pending';
+                const canEditOrder = ['open', 'confirmed'].includes(effectiveOrderStatus) && ['pending', 'packing'].includes(effectiveShippingStatus);
+                const canPay = selectedOrder.payment_status !== 'paid' && !['cancelled', 'returned'].includes(effectiveOrderStatus);
+                const canReorder = ['completed', 'cancelled', 'returned'].includes(effectiveOrderStatus);
+                const canReturn = (['delivered'].includes(effectiveShippingStatus) || ['completed'].includes(effectiveOrderStatus)) && orderItems.length > 0;
                 return (
                   <div className="flex gap-2 flex-wrap">
                     {hasPermission('sales', 2) && canEditOrder && !editMode && <button onClick={enterEditMode} className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium">✏️ Sửa đơn</button>}

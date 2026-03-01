@@ -35,7 +35,7 @@ export default function SalesShippingView({ tenant, currentUser: _currentUser, l
       let query = supabase.from('orders').select('*')
         .eq('tenant_id', tenant.id)
         .eq('order_type', 'online')
-        .in('status', ['confirmed', 'packing', 'shipping', 'delivered'])
+        .in('shipping_status', ['pending', 'packing', 'shipped', 'in_transit', 'delivered', 'delivery_failed'])
         .order('created_at', { ascending: false });
 
       if (filterStartDate) query = query.gte('created_at', filterStartDate + 'T00:00:00');
@@ -69,18 +69,20 @@ export default function SalesShippingView({ tenant, currentUser: _currentUser, l
   const stats = useMemo(() => {
     const all = orders;
     return {
-      waiting: all.filter(o => ['confirmed', 'packing'].includes(o.status)).length,
-      shipping: all.filter(o => o.status === 'shipping').length,
-      delivered: all.filter(o => o.status === 'delivered').length,
-      totalCod: all.filter(o => o.status === 'shipping').reduce((sum, o) => sum + ((o.total_amount || 0) - (o.paid_amount || 0)), 0),
+      waiting: all.filter(o => ['pending', 'packing'].includes(o.shipping_status)).length,
+      shipping: all.filter(o => ['shipped', 'in_transit'].includes(o.shipping_status)).length,
+      delivered: all.filter(o => o.shipping_status === 'delivered').length,
+      totalCod: all.filter(o => ['shipped', 'in_transit'].includes(o.shipping_status)).reduce((sum, o) => sum + ((o.total_amount || 0) - (o.paid_amount || 0)), 0),
     };
   }, [orders]);
 
   // Filtered orders
   const filteredOrders = useMemo(() => {
     let result = orders;
-    if (filterStatus === 'waiting') result = result.filter(o => ['confirmed', 'packing'].includes(o.status));
-    else if (filterStatus !== 'all') result = result.filter(o => o.status === filterStatus);
+    if (filterStatus === 'waiting') result = result.filter(o => ['pending', 'packing'].includes(o.shipping_status));
+    else if (filterStatus === 'shipping') result = result.filter(o => ['shipped', 'in_transit'].includes(o.shipping_status));
+    else if (filterStatus === 'delivered') result = result.filter(o => o.shipping_status === 'delivered');
+    else if (filterStatus !== 'all') result = result.filter(o => o.shipping_status === filterStatus);
     if (filterProvider !== 'all') result = result.filter(o => o.shipping_provider === filterProvider);
     if (search.trim()) {
       const s = search.toLowerCase();
@@ -137,6 +139,8 @@ export default function SalesShippingView({ tenant, currentUser: _currentUser, l
           tracking_number: vtpCode,
           shipping_metadata: newMeta,
           status: 'shipping',
+          order_status: 'confirmed',
+          shipping_status: 'shipped',
           updated_at: getNowISOVN()
         }).eq('id', order.id);
 
@@ -193,7 +197,7 @@ export default function SalesShippingView({ tenant, currentUser: _currentUser, l
   const handleMarkDelivered = async (order) => {
     if (!window.confirm(`Đánh dấu đơn ${order.order_number} đã giao?`)) return;
     try {
-      await supabase.from('orders').update({ status: 'delivered', updated_at: getNowISOVN() }).eq('id', order.id);
+      await supabase.from('orders').update({ status: 'delivered', shipping_status: 'delivered', updated_at: getNowISOVN() }).eq('id', order.id);
       await supabase.from('shipping_tracking_events').insert([{
         tenant_id: tenant.id, order_id: order.id,
         tracking_number: order.tracking_number,

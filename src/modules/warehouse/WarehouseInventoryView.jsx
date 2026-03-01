@@ -27,8 +27,12 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   // Load committed qty from pending orders
   useEffect(() => {
     if (!tenant?.id) return;
-    const pendingStatuses = ['new', 'confirmed', 'packing', 'shipping'];
-    const pendingOrderIds = (orders || []).filter(o => pendingStatuses.includes(o.status)).map(o => o.id);
+    const pendingOrderIds = (orders || []).filter(o => {
+      const os = o.order_status || o.status;
+      const ss = o.shipping_status || 'pending';
+      // Đơn còn open/confirmed VÀ chưa giao = tồn cam kết
+      return ['open', 'confirmed', 'new'].includes(os) && ['pending', 'packing', 'shipped', 'in_transit'].includes(ss);
+    }).map(o => o.id);
     if (pendingOrderIds.length === 0) { setCommittedQtyMap({}); return; }
     (async () => {
       const { data } = await supabase.from('order_items').select('product_id, quantity').in('order_id', pendingOrderIds);

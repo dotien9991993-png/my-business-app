@@ -70,16 +70,16 @@ export default function SalesReportView({ orders, products }) {
 
   // ---- Stats ----
   const stats = useMemo(() => {
-    const completed = periodOrders.filter(o => o.status === 'completed');
-    const cancelled = periodOrders.filter(o => o.status === 'cancelled');
+    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
+    const cancelled = periodOrders.filter(o => (o.order_status || o.status) === 'cancelled');
     const revenue = completed.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
     const avgOrder = completed.length > 0 ? revenue / completed.length : 0;
     const cancelRate = periodOrders.length > 0 ? (cancelled.length / periodOrders.length * 100) : 0;
     const posOrders = periodOrders.filter(o => o.order_type === 'pos');
     const onlineOrders = periodOrders.filter(o => o.order_type === 'online');
-    const posRevenue = posOrders.filter(o => o.status === 'completed').reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
-    const onlineRevenue = onlineOrders.filter(o => o.status === 'completed').reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
-    const unpaid = periodOrders.filter(o => o.payment_status === 'unpaid' || o.payment_status === 'partial');
+    const posRevenue = posOrders.filter(o => (o.order_status || o.status) === 'completed').reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
+    const onlineRevenue = onlineOrders.filter(o => (o.order_status || o.status) === 'completed').reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
+    const unpaid = periodOrders.filter(o => o.payment_status === 'unpaid' || o.payment_status === 'partial' || o.payment_status === 'partial_paid');
     const debtTotal = unpaid.reduce((s, o) => s + (parseFloat(o.total_amount || 0) - parseFloat(o.paid_amount || 0)), 0);
 
     return {
@@ -94,7 +94,7 @@ export default function SalesReportView({ orders, products }) {
 
   // ---- Revenue by day/month chart ----
   const revenueChartData = useMemo(() => {
-    const completed = periodOrders.filter(o => o.status === 'completed');
+    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
     const map = {};
     const isDaysView = period === 'month' || period === 'lastMonth' || period === 'custom';
 
@@ -120,7 +120,8 @@ export default function SalesReportView({ orders, products }) {
   const statusChartData = useMemo(() => {
     const map = {};
     periodOrders.forEach(o => {
-      const label = orderStatuses[o.status]?.label || o.status;
+      const effectiveStatus = o.order_status || o.status;
+      const label = orderStatuses[effectiveStatus]?.label || effectiveStatus;
       map[label] = (map[label] || 0) + 1;
     });
     return Object.entries(map).map(([name, value]) => ({ name, value }));
@@ -130,7 +131,7 @@ export default function SalesReportView({ orders, products }) {
 
   // ---- Top employees ----
   const topEmployees = useMemo(() => {
-    const completed = periodOrders.filter(o => o.status === 'completed');
+    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
     const map = {};
     completed.forEach(o => {
       const name = o.created_by || 'Không rõ';
@@ -143,7 +144,7 @@ export default function SalesReportView({ orders, products }) {
 
   // ---- Top customers ----
   const topCustomers = useMemo(() => {
-    const completed = periodOrders.filter(o => o.status === 'completed');
+    const completed = periodOrders.filter(o => (o.order_status || o.status) === 'completed');
     const map = {};
     completed.forEach(o => {
       const name = o.customer_name || 'Khách lẻ';
@@ -170,10 +171,10 @@ export default function SalesReportView({ orders, products }) {
       try {
         const { data } = await supabase
           .from('order_items')
-          .select('product_id, product_name, quantity, total_price, orders!inner(status, created_at)')
+          .select('product_id, product_name, quantity, total_price, orders!inner(status, order_status, created_at)')
           .gte('orders.created_at', dateRange.start)
           .lte('orders.created_at', dateRange.end)
-          .eq('orders.status', 'completed');
+          .in('orders.order_status', ['completed']);
         const map = {};
         (data || []).forEach(item => {
           const key = item.product_id || item.product_name;
@@ -220,7 +221,7 @@ export default function SalesReportView({ orders, products }) {
     const ps = prevStart.toISOString().split('T')[0];
     const pe = prevEnd.toISOString().split('T')[0] + 'T23:59:59';
     const prev = (orders || []).filter(o => o.created_at >= ps && o.created_at <= pe);
-    const completed = prev.filter(o => o.status === 'completed');
+    const completed = prev.filter(o => (o.order_status || o.status) === 'completed');
     const revenue = completed.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
     return { revenue, orders: prev.length, completed: completed.length };
   }, [orders, period]);
