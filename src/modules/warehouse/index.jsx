@@ -24,7 +24,7 @@ const NoAccess = () => (
 
 export default function WarehouseModule() {
   const { activeTab, currentUser, tenant, canAccessTab, hasPermission, canEdit, getPermissionLevel } = useApp();
-  const { products, stockTransactions, loadWarehouseData, warehouses, warehouseStock, getSettingValue, comboItems, suppliers, stocktakes, transfers } = useData();
+  const { products, stockTransactions, loadWarehouseData, warehouses, warehouseStock, getSettingValue, comboItems, suppliers, stocktakes, transfers, orders } = useData();
 
   const dynamicCategories = getSettingValue('product', 'categories', null);
   const dynamicUnits = getSettingValue('product', 'units', null);
@@ -36,7 +36,7 @@ export default function WarehouseModule() {
 
   return (
     <>
-      {activeTab === 'inventory' && canAccessTab('warehouse', 'inventory') && <WarehouseInventoryView products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} dynamicCategories={dynamicCategories} dynamicUnits={dynamicUnits} comboItems={comboItems} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
+      {activeTab === 'inventory' && canAccessTab('warehouse', 'inventory') && <WarehouseInventoryView products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} dynamicCategories={dynamicCategories} dynamicUnits={dynamicUnits} comboItems={comboItems} orders={orders} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
       {activeTab === 'import' && canAccessTab('warehouse', 'import') && <WarehouseImportView products={products} warehouses={warehouses} warehouseStock={warehouseStock} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} suppliers={suppliers} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
       {activeTab === 'export' && canAccessTab('warehouse', 'export') && <WarehouseExportView products={products} warehouses={warehouses} warehouseStock={warehouseStock} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
       {activeTab === 'transfer' && canAccessTab('warehouse', 'transfer') && <WarehouseTransferView transfers={transfers} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}

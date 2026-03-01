@@ -6,7 +6,7 @@ import { warehouseCategories, warehouseUnits } from '../../constants/warehouseCo
 import { logActivity } from '../../lib/activityLog';
 import { uploadImage, getThumbnailUrl } from '../../utils/cloudinaryUpload';
 
-export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, hasPermission, canEdit, getPermissionLevel }) {
+export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, orders, hasPermission, canEdit, getPermissionLevel }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const permLevel = getPermissionLevel('warehouse');
   const effectiveCategories = dynamicCategories || warehouseCategories;
@@ -22,6 +22,25 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   const [filterWarehouse, setFilterWarehouse] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
+  const [committedQtyMap, setCommittedQtyMap] = useState({});
+
+  // Load committed qty from pending orders
+  useEffect(() => {
+    if (!tenant?.id) return;
+    const pendingStatuses = ['new', 'confirmed', 'packing', 'shipping'];
+    const pendingOrderIds = (orders || []).filter(o => pendingStatuses.includes(o.status)).map(o => o.id);
+    if (pendingOrderIds.length === 0) { setCommittedQtyMap({}); return; }
+    (async () => {
+      const { data } = await supabase.from('order_items').select('product_id, quantity').in('order_id', pendingOrderIds);
+      if (!data) return;
+      const map = {};
+      data.forEach(item => { map[item.product_id] = (map[item.product_id] || 0) + item.quantity; });
+      setCommittedQtyMap(map);
+    })();
+  }, [tenant?.id, orders]);
+
+  const getCommittedQty = (productId) => committedQtyMap[productId] || 0;
+  const getAvailableStock = (product) => Math.max(0, getEffectiveStock(product) - getCommittedQty(product.id));
 
   // Get stock quantity for a product at a specific warehouse
   const getWarehouseQty = (productId, warehouseId) => {
@@ -482,6 +501,8 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                   <th onClick={() => toggleSort('stock_quantity')} className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100">
                     Tồn kho {sortBy === 'stock_quantity' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden lg:table-cell" title="Đang chờ giao (đơn hàng chưa hoàn thành)">Cam kết</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden lg:table-cell" title="Tồn kho - Cam kết">Có thể bán</th>
                   <th onClick={() => toggleSort('import_price')} className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden md:table-cell cursor-pointer hover:bg-gray-100">
                     Giá nhập {sortBy === 'import_price' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
@@ -496,7 +517,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredProducts.length === 0 ? (
-                  <tr><td colSpan="10" className="px-4 py-12 text-center">
+                  <tr><td colSpan="12" className="px-4 py-12 text-center">
                     <div className="text-gray-400 text-5xl mb-3">📦</div>
                     <div className="text-gray-500">{products.length === 0 ? 'Chưa có sản phẩm nào' : 'Không tìm thấy'}</div>
                     {products.length === 0 && hasPermission('warehouse', 2) && <button onClick={() => { resetForm(); setShowCreateModal(true); }} className="mt-3 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">➕ Thêm sản phẩm đầu tiên</button>}
@@ -522,6 +543,18 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                           {formatNumber(getEffectiveStock(product))}
                         </span>
                         <span className="text-gray-400 text-sm ml-1">{product.unit}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right hidden lg:table-cell">
+                        {getCommittedQty(product.id) > 0 ? (
+                          <span className="text-amber-600 font-medium">{formatNumber(getCommittedQty(product.id))}</span>
+                        ) : (
+                          <span className="text-gray-300">0</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right hidden lg:table-cell">
+                        <span className={`font-bold ${getAvailableStock(product) === 0 ? 'text-red-600' : 'text-green-700'}`}>
+                          {formatNumber(getAvailableStock(product))}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-right text-gray-700 hidden md:table-cell">{permLevel >= 3 ? formatCurrency(product.import_price) : '---'}</td>
                       <td className="px-4 py-3 text-right hidden lg:table-cell">
@@ -589,6 +622,9 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                     <span className={`font-bold ${getEffectiveStock(product) === 0 ? 'text-red-600' : 'text-gray-900'}`}>{formatNumber(getEffectiveStock(product))} {product.unit}</span>
                     <span className={`px-2 py-0.5 rounded-full text-xs ${status.color}`}>{status.icon}</span>
                   </div>
+                  {getCommittedQty(product.id) > 0 && (
+                    <div className="text-xs text-amber-600 mt-0.5">Cam kết: {getCommittedQty(product.id)} | Bán được: {getAvailableStock(product)}</div>
+                  )}
                   <div className="text-sm text-green-600 font-medium mt-1">{permLevel >= 3 ? formatCurrency(product.sell_price) : ''}</div>
                   {hasPermission('warehouse', 2) && (
                     <div className="flex gap-1 mt-2">
@@ -791,6 +827,12 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
               <div className={`bg-gradient-to-r ${selectedProduct.is_combo ? 'from-orange-500 to-amber-500' : 'from-amber-500 to-orange-500'} rounded-xl p-6 text-white text-center`}>
                 <div className="text-4xl font-bold">{formatNumber(selectedProduct.is_combo ? getComboStock(selectedProduct.id) : selectedProduct.stock_quantity)}</div>
                 <div className="text-amber-100">{selectedProduct.unit} {selectedProduct.is_combo ? 'combo khả dụng (tính từ SP con)' : 'trong kho (tổng)'}</div>
+                {getCommittedQty(selectedProduct.id) > 0 && (
+                  <div className="flex justify-center gap-4 mt-2 text-sm text-amber-100">
+                    <span>Cam kết: <strong className="text-white">{formatNumber(getCommittedQty(selectedProduct.id))}</strong></span>
+                    <span>Có thể bán: <strong className="text-white">{formatNumber(getAvailableStock(selectedProduct))}</strong></span>
+                  </div>
+                )}
                 {!selectedProduct.is_combo && (
                   <button onClick={() => { setShowDetailModal(false); openAdjust(selectedProduct); }} className="mt-3 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium">Điều chỉnh số lượng</button>
                 )}

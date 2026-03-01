@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { formatMoney } from '../../utils/formatUtils';
 import { warehouseCategories } from '../../constants/warehouseConstants';
 
-export default function SalesProductsView({ products, dynamicCategories, comboItems, getPermissionLevel }) {
+export default function SalesProductsView({ products, orders, dynamicCategories, comboItems, getPermissionLevel }) {
   const permLevel = getPermissionLevel('sales');
   const effectiveCategories = dynamicCategories || warehouseCategories;
   const [search, setSearch] = useState('');
@@ -14,6 +14,22 @@ export default function SalesProductsView({ products, dynamicCategories, comboIt
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [productSalesHistory, setProductSalesHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [committedQtyMap, setCommittedQtyMap] = useState({});
+
+  useEffect(() => {
+    const pendingStatuses = ['new', 'confirmed', 'packing', 'shipping'];
+    const pendingOrderIds = (orders || []).filter(o => pendingStatuses.includes(o.status)).map(o => o.id);
+    if (pendingOrderIds.length === 0) { setCommittedQtyMap({}); return; }
+    (async () => {
+      const { data } = await supabase.from('order_items').select('product_id, quantity').in('order_id', pendingOrderIds);
+      if (!data) return;
+      const map = {};
+      data.forEach(item => { map[item.product_id] = (map[item.product_id] || 0) + item.quantity; });
+      setCommittedQtyMap(map);
+    })();
+  }, [orders]);
+
+  const getCommittedQty = (productId) => committedQtyMap[productId] || 0;
 
   // Tính tồn kho combo
   const getComboStock = (productId) => {
@@ -208,6 +224,9 @@ export default function SalesProductsView({ products, dynamicCategories, comboIt
                     </span>
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${status.color}`}>{status.label}</span>
                   </div>
+                  {getCommittedQty(p.id) > 0 && (
+                    <div className="text-[10px] text-amber-600">Cam kết: {getCommittedQty(p.id)} | Bán được: {Math.max(0, getEffectiveStock(p) - getCommittedQty(p.id))}</div>
+                  )}
                 </div>
               </div>
             );
