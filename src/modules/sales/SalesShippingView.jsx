@@ -117,11 +117,11 @@ export default function SalesShippingView({ tenant, currentUser: _currentUser, l
       const result = await vtpApi.createOrder(vtpToken, {
         partnerOrderNumber: order.order_number,
         senderName: sender.name, senderPhone: sender.phone, senderAddress: sender.address,
-        senderProvince: sender.province_id, senderDistrict: sender.district_id, senderWard: sender.ward_id || 0,
+        senderProvince: Number(sender.province_id), senderDistrict: Number(sender.district_id), senderWard: Number(sender.ward_id || 0),
         receiverName: order.customer_name || 'Khách hàng',
         receiverPhone: order.customer_phone || '',
         receiverAddress: order.shipping_address || '',
-        receiverProvince: meta.province_id, receiverDistrict: meta.district_id, receiverWard: meta.ward_id || 0,
+        receiverProvince: Number(meta.province_id), receiverDistrict: Number(meta.district_id), receiverWard: Number(meta.ward_id || 0),
         productName: orderItems.map(i => i.product_name).join(', ').slice(0, 200) || 'Hàng hóa',
         productQuantity: orderItems.reduce((s, i) => s + i.quantity, 0),
         productWeight: totalWeight, productPrice: order.total_amount,

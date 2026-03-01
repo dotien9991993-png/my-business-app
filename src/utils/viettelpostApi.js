@@ -186,33 +186,21 @@ export async function createOrder(token, params) {
     return { success: false, data: null, error: err };
   }
 
-  // === DEBUG TẠM: gọi trực tiếp VTP không qua proxy để test ===
-  const VTP_URL = 'https://partner.viettelpost.vn/v2/order/createOrder';
-  const debugInfo = [
-    `TOKEN: ${token ? token.substring(0, 30) + '... (len=' + token.length + ')' : 'MISSING!'}`,
-    `SENDER: ${orderData.SENDER_FULLNAME} | ${orderData.SENDER_PHONE}`,
-    `SENDER ADDR: P${orderData.SENDER_PROVINCE}/D${orderData.SENDER_DISTRICT}/W${orderData.SENDER_WARD}`,
-    `RECEIVER: ${orderData.RECEIVER_FULLNAME} | ${orderData.RECEIVER_PHONE}`,
-    `RECEIVER ADDR: P${orderData.RECEIVER_PROVINCE}/D${orderData.RECEIVER_DISTRICT}/W${orderData.RECEIVER_WARD}`,
-    `PRODUCT: ${orderData.PRODUCT_NAME} | ${orderData.PRODUCT_WEIGHT}g | ${orderData.PRODUCT_PRICE}đ`,
-    `SERVICE: ${orderData.ORDER_SERVICE} | PAYMENT: ${orderData.ORDER_PAYMENT}`,
-    `COD: ${orderData.MONEY_COLLECTION} | TOTAL: ${orderData.MONEY_TOTAL}`,
-    `LIST_ITEM count: ${orderData.LIST_ITEM.length}`
-  ];
-  console.log('[VTP] createOrder DEBUG:\n' + debugInfo.join('\n'));
-  console.log('[VTP] createOrder FULL body:', JSON.stringify(orderData));
+  // Log request info (console.warn survives production build, console.log is stripped)
+  console.warn('[VTP] createOrder request:', {
+    token: token ? `${token.substring(0, 20)}...(len=${token.length})` : 'MISSING',
+    sender: `${orderData.SENDER_FULLNAME} | ${orderData.SENDER_PHONE} | P${orderData.SENDER_PROVINCE}/D${orderData.SENDER_DISTRICT}/W${orderData.SENDER_WARD}`,
+    receiver: `${orderData.RECEIVER_FULLNAME} | ${orderData.RECEIVER_PHONE} | P${orderData.RECEIVER_PROVINCE}/D${orderData.RECEIVER_DISTRICT}/W${orderData.RECEIVER_WARD}`,
+    product: `${orderData.PRODUCT_NAME} | ${orderData.PRODUCT_WEIGHT}g | ${orderData.PRODUCT_PRICE}đ`,
+    service: orderData.ORDER_SERVICE, payment: orderData.ORDER_PAYMENT,
+    cod: orderData.MONEY_COLLECTION, items: orderData.LIST_ITEM.length
+  });
 
   // Gọi qua proxy
   const result = await vtpProxy('createOrder', token, { orderData });
 
-  // DEBUG TẠM: hiện kết quả đầy đủ
-  const resultStr = JSON.stringify(result, null, 2);
-  alert(
-    '=== VTP DEBUG ===\n' +
-    debugInfo.join('\n') +
-    '\n\n=== RESPONSE ===\n' +
-    resultStr.substring(0, 1200)
-  );
+  // Log response (console.warn survives production build)
+  console.warn('[VTP] createOrder response:', JSON.stringify(result).substring(0, 1500));
 
   // Parse ORDER_NUMBER từ nhiều format VTP có thể trả về
   if (result.success && result.data) {

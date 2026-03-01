@@ -93,8 +93,12 @@ export default async function handler(req, res) {
       if (!orderBody) {
         return res.status(400).json({ error: true, message: 'Missing orderData' });
       }
+      if (!token) {
+        return res.status(400).json({ error: true, message: 'Missing VTP token. Vui lòng kết nối lại Viettel Post trong Cài đặt.' });
+      }
 
       const vtpUrl = BASE_URL + '/order/createOrder';
+      console.log('[VTP createOrder] Sending to VTP:', vtpUrl, 'Token length:', token?.length, 'Body keys:', Object.keys(orderBody).join(','));
 
       try {
         const vtpResp = await fetch(vtpUrl, {
@@ -104,6 +108,7 @@ export default async function handler(req, res) {
         });
 
         const rawText = await vtpResp.text();
+        console.log('[VTP createOrder] VTP HTTP status:', vtpResp.status, 'Response length:', rawText?.length, 'Response:', rawText?.substring(0, 1000));
 
         if (!rawText || rawText.trim() === '') {
           return res.status(200).json({
@@ -115,6 +120,8 @@ export default async function handler(req, res) {
 
         try {
           const data = JSON.parse(rawText);
+          // Log parsed data for debugging
+          console.log('[VTP createOrder] Parsed response:', JSON.stringify(data).substring(0, 500));
           return res.status(200).json(data);
         } catch (_e) {
           return res.status(200).json({
