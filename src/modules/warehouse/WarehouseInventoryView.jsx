@@ -6,7 +6,7 @@ import { warehouseCategories, warehouseUnits } from '../../constants/warehouseCo
 import { logActivity } from '../../lib/activityLog';
 import { uploadImage, getThumbnailUrl } from '../../utils/cloudinaryUpload';
 
-export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, productVariants, orders, hasPermission, canEdit, getPermissionLevel }) {
+export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, productVariants, orders, suppliers, hasPermission, canEdit, getPermissionLevel }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const permLevel = getPermissionLevel('warehouse');
   const effectiveCategories = dynamicCategories || warehouseCategories;
@@ -99,6 +99,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   const [comboChildSearch, setComboChildSearch] = useState('');
   const [formImageUrl, setFormImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [formSupplierId, setFormSupplierId] = useState('');
   // Variant states
   const [formHasVariants, setFormHasVariants] = useState(false);
   const [formVariantOptions, setFormVariantOptions] = useState([]); // [{ name: 'Màu', values: ['Đỏ','Xanh'] }]
@@ -119,7 +120,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     setFormMinStock('5'); setFormMaxStock(''); setFormLocation('');
     setFormDescription(''); setFormBrand(''); setFormWarranty(''); setFormHasSerial(false);
     setFormIsCombo(false); setFormComboItems([]); setComboChildSearch('');
-    setFormImageUrl('');
+    setFormImageUrl(''); setFormSupplierId('');
     setFormHasVariants(false); setFormVariantOptions([]); setFormVariants([]);
   };
 
@@ -274,6 +275,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
         has_variants: formHasVariants,
         variant_options: formHasVariants ? formVariantOptions : [],
         image_url: formImageUrl || null,
+        supplier_id: formSupplierId || null,
         created_by: currentUser.name
       }]).select().single();
       if (error) throw error;
@@ -320,6 +322,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
         has_variants: formHasVariants,
         variant_options: formHasVariants ? formVariantOptions : [],
         image_url: formImageUrl || null,
+        supplier_id: formSupplierId || null,
         updated_at: getNowISOVN()
       }).eq('id', selectedProduct.id);
       if (error) throw error;
@@ -427,6 +430,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     setFormHasSerial(product.has_serial || false);
     setFormIsCombo(product.is_combo || false);
     setFormImageUrl(product.image_url || '');
+    setFormSupplierId(product.supplier_id || '');
     // Load combo children
     const existingChildren = (comboItems || []).filter(ci => ci.combo_product_id === product.id);
     setFormComboItems(existingChildren.map(ci => {
@@ -779,6 +783,15 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                     <label className="block text-sm font-medium text-gray-700 mb-1">Thương hiệu</label>
                     <input type="text" value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="VD: Shure, JBL..." className="w-full px-3 py-2 border rounded-lg" />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nhà cung cấp</label>
+                    <select value={formSupplierId} onChange={e => setFormSupplierId(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                      <option value="">-- Chọn NCC --</option>
+                      {(suppliers || []).filter(s => s.is_active !== false).map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -1107,6 +1120,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Danh mục</label><select value={formCategory} onChange={(e) => setFormCategory(e.target.value)} className="w-full px-3 py-2 border rounded-lg"><option value="">Chọn</option>{effectiveCategories.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Thương hiệu</label><input type="text" value={formBrand} onChange={(e) => setFormBrand(e.target.value)} className="w-full px-3 py-2 border rounded-lg" /></div>
                 </div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Nhà cung cấp</label><select value={formSupplierId} onChange={e => setFormSupplierId(e.target.value)} className="w-full px-3 py-2 border rounded-lg"><option value="">-- Chọn NCC --</option>{(suppliers || []).filter(s => s.is_active !== false).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
               </div>
 
               <div className="bg-blue-50 rounded-lg p-4 space-y-4">

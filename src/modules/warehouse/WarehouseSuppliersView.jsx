@@ -53,20 +53,27 @@ export default function WarehouseSuppliersView({
     );
   }, [activeSuppliers, searchTerm]);
 
-  // Import stats per supplier
+  // Import stats per supplier (with debt)
   const supplierImportStats = useMemo(() => {
     const stats = {};
     (stockTransactions || []).forEach((tx) => {
       if (tx.type === 'import' && tx.supplier_id) {
         if (!stats[tx.supplier_id]) {
-          stats[tx.supplier_id] = { count: 0, totalAmount: 0 };
+          stats[tx.supplier_id] = { count: 0, totalAmount: 0, paidAmount: 0 };
         }
         stats[tx.supplier_id].count += 1;
         stats[tx.supplier_id].totalAmount += Number(tx.total_amount || 0);
+        stats[tx.supplier_id].paidAmount += Number(tx.paid_amount || 0);
       }
     });
     return stats;
   }, [stockTransactions]);
+
+  const getSupplierDebt = (supplierId) => {
+    const s = supplierImportStats[supplierId];
+    if (!s) return 0;
+    return s.totalAmount - s.paidAmount;
+  };
 
   // Overall stats
   const totalSuppliers = activeSuppliers.length;
@@ -76,6 +83,15 @@ export default function WarehouseSuppliersView({
   const suppliersWithImports = useMemo(() => {
     return Object.keys(supplierImportStats).length;
   }, [supplierImportStats]);
+  const totalDebt = useMemo(() => {
+    return Object.values(supplierImportStats).reduce((sum, s) => sum + (s.totalAmount - s.paidAmount), 0);
+  }, [supplierImportStats]);
+
+  // Products of selected supplier
+  const supplierProducts = useMemo(() => {
+    if (!selectedSupplier) return [];
+    return (products || []).filter(p => p.supplier_id === selectedSupplier.id);
+  }, [selectedSupplier, products]);
 
   // Import history for selected supplier
   const selectedSupplierHistory = useMemo(() => {
@@ -324,6 +340,20 @@ export default function WarehouseSuppliersView({
             </div>
           </div>
         </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 ${totalDebt > 0 ? 'bg-red-100' : 'bg-green-100'} rounded-lg flex items-center justify-center`}>
+              <svg className={`w-5 h-5 ${totalDebt > 0 ? 'text-red-600' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Tổng công nợ NCC</p>
+              <p className={`text-xl font-bold ${totalDebt > 0 ? 'text-red-700' : 'text-green-700'}`}>{formatMoney(totalDebt)}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Search */}
@@ -364,13 +394,14 @@ export default function WarehouseSuppliersView({
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Người liên hệ</th>
                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Số lần nhập</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600">Tổng giá trị</th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600">Công nợ</th>
                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Thao tác</th>
               </tr>
             </thead>
             <tbody>
               {filteredSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-400">
+                  <td colSpan={7} className="text-center py-12 text-gray-400">
                     {searchTerm ? 'Không tìm thấy nhà cung cấp phù hợp' : 'Chưa có nhà cung cấp nào'}
                   </td>
                 </tr>
@@ -400,6 +431,12 @@ export default function WarehouseSuppliersView({
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-gray-800">
                         {formatMoney(stats.totalAmount)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {(() => {
+                          const debt = getSupplierDebt(supplier.id);
+                          return debt > 0 ? <span className="font-medium text-red-600">{formatMoney(debt)}</span> : <span className="text-gray-400">0</span>;
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-center">
                         {canEdit('warehouse') && (
@@ -762,6 +799,40 @@ export default function WarehouseSuppliersView({
                       <InfoRow label="Ghi chú" value={selectedSupplier.note} className="sm:col-span-2" />
                     )}
                   </div>
+
+                  {/* Debt summary */}
+                  {(() => {
+                    const debt = getSupplierDebt(selectedSupplier.id);
+                    const stats = supplierImportStats[selectedSupplier.id] || { totalAmount: 0, paidAmount: 0 };
+                    return (
+                      <div className={`rounded-xl p-4 ${debt > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Công nợ</h4>
+                        <div className="grid grid-cols-3 gap-3 text-sm">
+                          <div><span className="text-gray-500">Tổng nhập:</span><div className="font-bold">{formatMoney(stats.totalAmount)}</div></div>
+                          <div><span className="text-gray-500">Đã thanh toán:</span><div className="font-bold text-green-700">{formatMoney(stats.paidAmount)}</div></div>
+                          <div><span className="text-gray-500">Còn nợ:</span><div className={`font-bold ${debt > 0 ? 'text-red-700' : 'text-green-700'}`}>{formatMoney(debt)}</div></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Supplier products */}
+                  {supplierProducts.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Sản phẩm của NCC ({supplierProducts.length})</h4>
+                      <div className="space-y-1.5">
+                        {supplierProducts.map(p => (
+                          <div key={p.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                            <div>
+                              <span className="font-medium text-gray-800">{p.name}</span>
+                              {p.sku && <span className="text-xs text-gray-400 ml-2">{p.sku}</span>}
+                            </div>
+                            <span className="text-gray-600">{p.stock_quantity || 0} {p.unit}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Import history */}
                   <div>
