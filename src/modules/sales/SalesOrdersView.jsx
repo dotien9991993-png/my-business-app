@@ -38,6 +38,12 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [returnReason, setReturnReason] = useState('');
   const [refundMethod, setRefundMethod] = useState('cash');
   const [orderReturns, setOrderReturns] = useState([]);
+  // Exchange state
+  const [showExchangeModal, setShowExchangeModal] = useState(false);
+  const [exchangeReturnItems, setExchangeReturnItems] = useState([]);
+  const [exchangeNewItems, setExchangeNewItems] = useState([]);
+  const [exchangeProductSearch, setExchangeProductSearch] = useState('');
+  const [exchangeReason, setExchangeReason] = useState('');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterPayment, setFilterPayment] = useState('all');
@@ -1049,6 +1055,143 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
     } catch (err) { console.error(err); alert('❌ Lỗi: ' + err.message); } finally { setSubmitting(false); }
   };
 
+  // ---- Exchange (đổi hàng) ----
+  const openExchangeModal = () => {
+    if (!orderItems.length) return alert('Chưa có sản phẩm để đổi');
+    setExchangeReturnItems(orderItems.map(item => ({
+      ...item, return_qty: 0, condition: 'good'
+    })));
+    setExchangeNewItems([]);
+    setExchangeProductSearch('');
+    setExchangeReason('');
+    setShowExchangeModal(true);
+  };
+
+  const addExchangeProduct = (p) => {
+    const existing = exchangeNewItems.find(i => i.product_id === p.id);
+    if (existing) {
+      setExchangeNewItems(prev => prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i));
+    } else {
+      setExchangeNewItems(prev => [...prev, {
+        product_id: p.id, product_name: p.name, product_sku: p.sku || '',
+        unit_price: p.sell_price || 0, quantity: 1, is_combo: p.is_combo || false,
+        stock: getProductStock(p), warranty_months: p.warranty_months || null
+      }]);
+    }
+    setExchangeProductSearch('');
+  };
+
+  const handleSubmitExchange = async () => {
+    if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
+    const itemsToReturn = exchangeReturnItems.filter(i => i.return_qty > 0);
+    if (itemsToReturn.length === 0) return alert('Vui lòng chọn ít nhất 1 SP trả lại');
+    if (exchangeNewItems.length === 0) return alert('Vui lòng chọn ít nhất 1 SP mới');
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const returnTotal = itemsToReturn.reduce((s, i) => s + i.return_qty * parseFloat(i.unit_price), 0);
+      const newTotal = exchangeNewItems.reduce((s, i) => s + i.quantity * parseFloat(i.unit_price), 0);
+      const diff = newTotal - returnTotal;
+
+      // 1. Create return record
+      const returnCode = await genReturnCode();
+      const { data: returnRecord, error: retErr } = await supabase.from('order_returns').insert([{
+        tenant_id: tenant.id, order_id: selectedOrder.id,
+        return_code: returnCode, reason: exchangeReason || 'Đổi hàng',
+        status: 'completed', total_refund: returnTotal,
+        refund_method: 'exchange',
+        created_by: currentUser.id, created_at: getNowISOVN()
+      }]).select().single();
+      if (retErr) throw retErr;
+
+      const returnItemsData = itemsToReturn.map(i => ({
+        return_id: returnRecord.id, product_id: i.product_id,
+        product_name: i.product_name, quantity: i.return_qty,
+        unit_price: parseFloat(i.unit_price),
+        subtotal: i.return_qty * parseFloat(i.unit_price),
+        condition: i.condition, note: 'Đổi hàng'
+      }));
+      await supabase.from('order_return_items').insert(returnItemsData);
+
+      // 2. Restore stock for returned items
+      const warehouseId = selectedOrder.warehouse_id;
+      for (const item of itemsToReturn) {
+        if (warehouseId) {
+          await supabase.rpc('adjust_warehouse_stock', {
+            p_warehouse_id: warehouseId, p_product_id: item.product_id, p_delta: item.return_qty
+          });
+        } else {
+          await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: item.return_qty });
+        }
+      }
+
+      // 3. Create new order for exchange items
+      const orderNumber = await genOrderNumber();
+      const { data: newOrder, error: orderErr } = await supabase.from('orders').insert([{
+        tenant_id: tenant.id, order_number: orderNumber, order_type: selectedOrder.order_type,
+        status: 'confirmed', customer_id: selectedOrder.customer_id,
+        customer_name: selectedOrder.customer_name, customer_phone: selectedOrder.customer_phone,
+        shipping_address: selectedOrder.shipping_address,
+        subtotal: newTotal, total_amount: Math.abs(diff) < 1 ? 0 : diff,
+        payment_method: diff > 0 ? 'cash' : 'transfer',
+        payment_status: Math.abs(diff) < 1 ? 'paid' : 'unpaid',
+        paid_amount: 0,
+        note: `Đổi hàng từ đơn ${selectedOrder.order_number} (${returnCode})`,
+        created_by: currentUser.name,
+        warehouse_id: warehouseId || null, order_source: 'manual',
+        internal_note: `Đổi hàng: trả ${formatMoney(returnTotal)}, mới ${formatMoney(newTotal)}, chênh lệch ${diff > 0 ? '+' : ''}${formatMoney(diff)}`
+      }]).select().single();
+      if (orderErr) throw orderErr;
+
+      // 4. Insert new order items + deduct stock
+      const newItemsData = exchangeNewItems.map(item => ({
+        order_id: newOrder.id, product_id: item.product_id, product_name: item.product_name,
+        product_sku: item.product_sku, quantity: item.quantity,
+        unit_price: parseFloat(item.unit_price), discount: 0,
+        total_price: parseFloat(item.unit_price) * item.quantity
+      }));
+      await supabase.from('order_items').insert(newItemsData);
+
+      for (const item of exchangeNewItems) {
+        if (warehouseId) {
+          await supabase.rpc('adjust_warehouse_stock', {
+            p_warehouse_id: warehouseId, p_product_id: item.product_id, p_delta: -item.quantity
+          });
+        } else {
+          await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: -item.quantity });
+        }
+      }
+
+      // 5. Create receipt for the difference
+      if (Math.abs(diff) >= 1) {
+        if (diff > 0) {
+          const receiptNumber = await genReceiptNumber('thu');
+          await supabase.from('receipts_payments').insert([{
+            tenant_id: tenant.id, receipt_number: receiptNumber, type: 'thu',
+            amount: diff, description: `Thu thêm đổi hàng - ${selectedOrder.order_number} → ${orderNumber}`,
+            category: 'Bán hàng', receipt_date: getTodayVN(),
+            status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
+          }]);
+        } else {
+          const receiptNumber = await genReceiptNumber('chi');
+          await supabase.from('receipts_payments').insert([{
+            tenant_id: tenant.id, receipt_number: receiptNumber, type: 'chi',
+            amount: Math.abs(diff), description: `Hoàn tiền đổi hàng - ${selectedOrder.order_number} → ${orderNumber}`,
+            category: 'Hoàn tiền khách hàng', receipt_date: getTodayVN(),
+            status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
+          }]);
+        }
+      }
+
+      showToast(`Đổi hàng thành công! Đơn mới: ${orderNumber}`);
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'exchange', entityType: 'order', entityId: selectedOrder.order_number, entityName: orderNumber, description: `Đổi hàng từ ${selectedOrder.order_number} → ${orderNumber}: trả ${itemsToReturn.map(i => `${i.product_name}x${i.return_qty}`).join(', ')}, mới ${exchangeNewItems.map(i => `${i.product_name}x${i.quantity}`).join(', ')}, chênh lệch ${diff > 0 ? '+' : ''}${formatMoney(diff)}` });
+
+      setShowExchangeModal(false);
+      await loadOrderReturns(selectedOrder.id);
+      await Promise.all([loadSalesData(), loadWarehouseData(), loadFinanceData(), loadPagedOrders()]);
+    } catch (err) { console.error(err); alert('❌ Lỗi: ' + err.message); } finally { setSubmitting(false); }
+  };
+
   // ---- Quick reorder ----
   const handleReorder = () => {
     if (cartItems.length > 0 && !window.confirm('Giỏ hàng hiện tại sẽ bị thay thế. Tiếp tục?')) return;
@@ -1909,7 +2052,8 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                     {hasPermission('sales', 2) && canEditOrder && !editMode && <button onClick={enterEditMode} className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium">✏️ Sửa đơn</button>}
                     {hasPermission('sales', 2) && canPay && !showPaymentInput && <button onClick={() => setShowPaymentInput(true)} className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">💰 Thanh toán</button>}
                     {hasPermission('sales', 2) && canReturn && <button onClick={openReturnModal} className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-lg text-xs font-medium">↩️ Trả hàng</button>}
-                    {hasPermission('sales', 2) && canReorder && orderItems.length > 0 && <button onClick={handleReorder} className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-medium">🔄 Đặt lại</button>}
+                    {hasPermission('sales', 2) && canReturn && <button onClick={openExchangeModal} className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-medium">🔄 Đổi hàng</button>}
+                    {hasPermission('sales', 2) && canReorder && orderItems.length > 0 && <button onClick={handleReorder} className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-xs font-medium">📋 Đặt lại</button>}
                   </div>
                 );
               })()}
@@ -2225,6 +2369,117 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                 <button onClick={handleSubmitReturn} disabled={submitting}
                   className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm text-white ${submitting ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'}`}>
                   {submitting ? 'Đang xử lý...' : 'Xác nhận trả hàng'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exchange Modal */}
+      {showExchangeModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[70] p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-4xl w-full my-4">
+            <div className="p-4 border-b bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-t-xl flex justify-between items-center">
+              <h3 className="font-bold text-lg">Đổi hàng - {selectedOrder.order_number}</h3>
+              <button onClick={() => setShowExchangeModal(false)} className="text-white/80 hover:text-white text-xl">✕</button>
+            </div>
+            <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Panel trái: Items trả */}
+                <div className="space-y-3">
+                  <div className="text-sm font-bold text-orange-700">↩️ Trả lại</div>
+                  {exchangeReturnItems.map((item, idx) => (
+                    <div key={item.id} className="border rounded-lg p-2 space-y-1">
+                      <div className="text-sm font-medium truncate">{item.product_name}</div>
+                      <div className="text-xs text-gray-500">Đã mua: {item.quantity} x {formatMoney(item.unit_price)}</div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-500">SL trả:</label>
+                        <input type="number" min="0" max={item.quantity} value={item.return_qty}
+                          onChange={e => {
+                            const qty = Math.min(Math.max(0, parseInt(e.target.value) || 0), item.quantity);
+                            setExchangeReturnItems(prev => prev.map((ri, i) => i === idx ? { ...ri, return_qty: qty } : ri));
+                          }}
+                          className="w-16 border rounded px-2 py-1 text-sm text-center" />
+                        {item.return_qty > 0 && <span className="text-xs text-orange-600 font-medium">{formatMoney(item.return_qty * parseFloat(item.unit_price))}</span>}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="bg-orange-50 rounded-lg p-2 text-sm font-medium text-orange-700 text-right">
+                    Trả: {formatMoney(exchangeReturnItems.reduce((s, i) => s + i.return_qty * parseFloat(i.unit_price), 0))}
+                  </div>
+                </div>
+
+                {/* Panel phải: Items mới */}
+                <div className="space-y-3">
+                  <div className="text-sm font-bold text-green-700">🛒 Mua mới</div>
+                  <div className="relative">
+                    <input value={exchangeProductSearch} onChange={e => setExchangeProductSearch(e.target.value)}
+                      placeholder="Tìm SP mới..." className="w-full border rounded-lg px-3 py-2 text-sm" />
+                    {exchangeProductSearch.trim() && (
+                      <div className="absolute top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 z-10 max-h-48 overflow-y-auto">
+                        {displayProducts.slice(0, 8).map(p => {
+                          const stock = getProductStock(p);
+                          return (
+                            <button key={p.id} type="button" disabled={stock <= 0}
+                              onClick={() => addExchangeProduct(p)}
+                              className={`w-full text-left px-3 py-2 text-sm ${stock <= 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-green-50'}`}>
+                              <div className="font-medium truncate">{p.name}</div>
+                              <div className="text-xs text-gray-500 flex justify-between">
+                                <span>{p.sku}</span>
+                                <span>{formatMoney(p.sell_price)} | Tồn: {stock}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  {exchangeNewItems.map((item, idx) => (
+                    <div key={idx} className="border rounded-lg p-2 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{item.product_name}</div>
+                        <div className="text-xs text-gray-500">{item.product_sku}</div>
+                      </div>
+                      <input type="number" min="1" value={item.quantity}
+                        onChange={e => setExchangeNewItems(prev => prev.map((ni, i) => i === idx ? { ...ni, quantity: Math.max(1, parseInt(e.target.value) || 1) } : ni))}
+                        className="w-14 border rounded px-2 py-1 text-sm text-center" />
+                      <span className="text-xs text-gray-400">x</span>
+                      <span className="text-sm font-medium text-green-600 w-24 text-right">{formatMoney(item.unit_price * item.quantity)}</span>
+                      <button onClick={() => setExchangeNewItems(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">✕</button>
+                    </div>
+                  ))}
+                  <div className="bg-green-50 rounded-lg p-2 text-sm font-medium text-green-700 text-right">
+                    Mới: {formatMoney(exchangeNewItems.reduce((s, i) => s + i.quantity * parseFloat(i.unit_price), 0))}
+                  </div>
+                </div>
+              </div>
+
+              <textarea value={exchangeReason} onChange={e => setExchangeReason(e.target.value)} rows={2}
+                placeholder="Lý do đổi hàng..." className="w-full border rounded-lg px-3 py-2 text-sm" />
+
+              {/* Summary */}
+              {(() => {
+                const returnVal = exchangeReturnItems.reduce((s, i) => s + i.return_qty * parseFloat(i.unit_price), 0);
+                const newVal = exchangeNewItems.reduce((s, i) => s + i.quantity * parseFloat(i.unit_price), 0);
+                const diff = newVal - returnVal;
+                return (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-1">
+                    <div className="flex justify-between text-sm"><span>Giá trị trả lại</span><span className="text-orange-600">-{formatMoney(returnVal)}</span></div>
+                    <div className="flex justify-between text-sm"><span>Giá trị hàng mới</span><span className="text-green-600">+{formatMoney(newVal)}</span></div>
+                    <div className="flex justify-between text-lg font-bold pt-1 border-t border-indigo-200">
+                      <span>{diff > 0 ? 'Khách trả thêm' : diff < 0 ? 'Hoàn lại khách' : 'Không chênh lệch'}</span>
+                      <span className={diff > 0 ? 'text-red-600' : diff < 0 ? 'text-green-600' : 'text-gray-600'}>{diff !== 0 ? formatMoney(Math.abs(diff)) : '0đ'}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowExchangeModal(false)} className="flex-1 px-4 py-2.5 bg-gray-200 rounded-lg font-medium text-sm">Hủy</button>
+                <button onClick={handleSubmitExchange} disabled={submitting}
+                  className={`flex-1 px-4 py-2.5 rounded-lg font-medium text-sm text-white ${submitting ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                  {submitting ? 'Đang xử lý...' : 'Xác nhận đổi hàng'}
                 </button>
               </div>
             </div>
