@@ -11,6 +11,11 @@ function formatCompactNumber(num) {
   return num.toString();
 }
 
+// Format Date → YYYY-MM-DD (dùng local time, tránh toISOString lệch timezone)
+function toDateStr(date) {
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+}
+
 // Lấy ngày YYYY-MM-DD từ task
 function getTaskDate(task) {
   return (task.completed_at || task.updated_at || task.created_at || '').substring(0, 10);
@@ -20,7 +25,8 @@ function getTaskDate(task) {
 function getTaskTotalViews(task) {
   let views = 0;
   for (const link of (task.postLinks || [])) {
-    if (link.stats?.views) views += link.stats.views;
+    if (!link.stats) continue;
+    views += link.stats.views || 0;
   }
   return views;
 }
@@ -76,15 +82,15 @@ const MediaDashboard = ({ tasks, allUsers, products, setSelectedTask, setShowMod
     } else if (timeFilter === 'last_month') {
       startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const endDate = new Date(now.getFullYear(), now.getMonth(), 0);
-      const startStr = startDate.toISOString().substring(0, 10);
-      const endStr = endDate.toISOString().substring(0, 10);
+      const startStr = toDateStr(startDate);
+      const endStr = toDateStr(endDate);
       return tasks.filter(t => {
         const d = getTaskDate(t);
         return d >= startStr && d <= endStr;
       });
     }
 
-    const startStr = startDate.toISOString().substring(0, 10);
+    const startStr = toDateStr(startDate);
     return tasks.filter(t => getTaskDate(t) >= startStr);
   }, [tasks, timeFilter]);
 
@@ -388,11 +394,11 @@ const MediaDashboard = ({ tasks, allUsers, products, setSelectedTask, setShowMod
                   <tr key={i} className="border-t hover:bg-gray-50">
                     <td className="px-3 md:px-4 py-2.5">
                       <div className="flex items-center gap-2">
-                        {page.platform === 'facebook' ? (
+                        {page.platform === 'Facebook' ? (
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                        ) : page.platform === 'tiktok' ? (
+                        ) : page.platform === 'TikTok' ? (
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="#000"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46V13a8.28 8.28 0 005.58 2.17V11.7a4.85 4.85 0 01-3.77-1.77V6.69h3.77z"/></svg>
-                        ) : page.platform === 'youtube' ? (
+                        ) : page.platform === 'YouTube' ? (
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
                         ) : (
                           <span className="text-gray-400">🌐</span>
@@ -441,13 +447,13 @@ const MediaDashboard = ({ tasks, allUsers, products, setSelectedTask, setShowMod
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
                     <span className="font-medium">{video.task.assignee || '—'}</span>
-                    {video.platform === 'facebook' && (
+                    {video.platform === 'Facebook' && (
                       <span className="flex items-center gap-1">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                         Facebook
                       </span>
                     )}
-                    {video.platform === 'tiktok' && (
+                    {video.platform === 'TikTok' && (
                       <span className="flex items-center gap-1">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="#000"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46V13a8.28 8.28 0 005.58 2.17V11.7a4.85 4.85 0 01-3.77-1.77V6.69h3.77z"/></svg>
                         TikTok
