@@ -1792,8 +1792,7 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
 
   // ---- Bulk selection helpers ----
   const canBulkSelect = (o) => ['pending', 'packing'].includes(o.shipping_status || 'pending') && (o.order_status || o.status) !== 'cancelled' && !o.tracking_number;
-  const selectableOnPage = serverOrders.filter(canBulkSelect);
-  const allPageSelected = selectableOnPage.length > 0 && selectableOnPage.every(o => checkedOrderIds.has(o.id));
+  const allPageChecked = serverOrders.length > 0 && serverOrders.every(o => checkedOrderIds.has(o.id));
 
   const toggleCheck = (id) => {
     setCheckedOrderIds(prev => {
@@ -1804,16 +1803,16 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
   };
 
   const toggleAllPage = () => {
-    if (allPageSelected) {
+    if (allPageChecked) {
       setCheckedOrderIds(prev => {
         const next = new Set(prev);
-        selectableOnPage.forEach(o => next.delete(o.id));
+        serverOrders.forEach(o => next.delete(o.id));
         return next;
       });
     } else {
       setCheckedOrderIds(prev => {
         const next = new Set(prev);
-        selectableOnPage.forEach(o => next.add(o.id));
+        serverOrders.forEach(o => next.add(o.id));
         return next;
       });
     }
@@ -1821,6 +1820,9 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
 
   const checkedOrders = serverOrders.filter(o => checkedOrderIds.has(o.id));
   const checkedTotal = checkedOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
+  const checkedVtpEligible = checkedOrders.filter(canBulkSelect);
+  const checkedCanConfirm = checkedOrders.filter(o => (o.order_status || o.status) === 'open');
+  const checkedCanCancel = checkedOrders.filter(o => !['completed', 'cancelled', 'returned'].includes(o.order_status || o.status));
 
   // ---- Bulk print invoices ----
   const handleBulkPrint = async () => {
@@ -1876,6 +1878,39 @@ table.summary td{padding:3px 6px;font-size:12px}
 <script>window.onload=function(){window.print()}</script></body></html>`;
     const win = window.open('', '_blank', 'width=600,height=800');
     win.document.write(html); win.document.close();
+  };
+
+  // ---- Bulk confirm orders ----
+  const handleBulkConfirm = async () => {
+    if (checkedCanConfirm.length === 0) return;
+    try {
+      const ids = checkedCanConfirm.map(o => o.id);
+      const { error } = await supabase.from('orders').update({ order_status: 'confirmed', status: 'confirmed', updated_at: getNowISOVN() }).in('id', ids).eq('tenant_id', tenant.id);
+      if (error) throw error;
+      for (const o of checkedCanConfirm) {
+        logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'update', entityType: 'order', entityId: o.order_number, entityName: o.order_number, description: 'Xác nhận đơn hàng loạt: ' + o.order_number });
+      }
+      showToast(`Đã xác nhận ${checkedCanConfirm.length} đơn hàng`);
+      setCheckedOrderIds(new Set());
+      await loadPagedOrders();
+    } catch (err) { console.error(err); alert('Lỗi xác nhận: ' + (err.message || '')); }
+  };
+
+  // ---- Bulk cancel orders ----
+  const handleBulkCancel = async () => {
+    if (checkedCanCancel.length === 0) return;
+    if (!window.confirm(`Bạn chắc chắn muốn HỦY ${checkedCanCancel.length} đơn hàng?`)) return;
+    try {
+      const ids = checkedCanCancel.map(o => o.id);
+      const { error } = await supabase.from('orders').update({ order_status: 'cancelled', status: 'cancelled', updated_at: getNowISOVN() }).in('id', ids).eq('tenant_id', tenant.id);
+      if (error) throw error;
+      for (const o of checkedCanCancel) {
+        logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'cancel', entityType: 'order', entityId: o.order_number, entityName: o.order_number, description: 'Hủy đơn hàng loạt: ' + o.order_number });
+      }
+      showToast(`Đã hủy ${checkedCanCancel.length} đơn hàng`);
+      setCheckedOrderIds(new Set());
+      await loadPagedOrders();
+    } catch (err) { console.error(err); alert('Lỗi hủy đơn: ' + (err.message || '')); }
   };
 
   // ---- Bulk VTP: validate + push ----
@@ -2184,14 +2219,14 @@ table.summary td{padding:3px 6px;font-size:12px}
           { key: 'total', label: 'Tổng', value: statusCounts.total, color: 'bg-gray-50 text-gray-700 border-gray-200', active: filterOrderStatus === 'all' && filterShippingStatus === 'all' && filterStatus === 'all' && filterShipping === 'all' },
           { key: 'waiting_confirm', label: 'Chờ XN', value: statusCounts.waiting_confirm, color: 'bg-yellow-50 text-yellow-700 border-yellow-200', active: filterOrderStatus === 'open' },
           { key: 'not_shipped', label: 'Chưa đẩy đơn', value: statusCounts.not_shipped, color: 'bg-amber-50 text-amber-700 border-amber-200', active: filterShipping === 'not_shipped' },
-          { key: 'shipping', label: 'Đang giao', value: statusCounts.shipping, color: 'bg-purple-50 text-purple-700 border-purple-200', active: filterShippingStatus === 'shipped' },
+          { key: 'shipping', label: 'Đang giao', value: statusCounts.shipping, color: 'bg-purple-50 text-purple-700 border-purple-200', active: filterShipping === 'shipping' },
           { key: 'completed', label: 'Hoàn thành', value: statusCounts.completed, color: 'bg-green-50 text-green-700 border-green-200', active: filterOrderStatus === 'completed' },
         ].map(s => (
           <button key={s.key} onClick={() => {
             setFilterStatus('all'); setFilterShipping('all'); setFilterOrderStatus('all'); setFilterShippingStatus('all');
             if (s.key === 'waiting_confirm') setFilterOrderStatus('open');
             else if (s.key === 'not_shipped') setFilterShipping('not_shipped');
-            else if (s.key === 'shipping') setFilterShippingStatus('shipped');
+            else if (s.key === 'shipping') setFilterShipping('shipping');
             else if (s.key === 'completed') setFilterOrderStatus('completed');
             setPage(1);
           }}
@@ -2257,13 +2292,13 @@ table.summary td{padding:3px 6px;font-size:12px}
       </div>
 
       {/* ===== Select All + Count ===== */}
-      {!loadingOrders && serverOrders.length > 0 && selectableOnPage.length > 0 && (
+      {!loadingOrders && serverOrders.length > 0 && (
         <div className="flex items-center justify-between bg-gray-50 border rounded-lg px-3 py-2">
           <label className="flex items-center gap-2 cursor-pointer text-sm">
-            <input type="checkbox" checked={allPageSelected} onChange={toggleAllPage}
+            <input type="checkbox" checked={allPageChecked} onChange={toggleAllPage}
               className="w-4 h-4 rounded border-gray-300 text-green-600" />
             <span className="text-gray-700">
-              {allPageSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${selectableOnPage.length} đơn có thể đẩy)`}
+              {allPageChecked ? 'Bỏ chọn tất cả' : `Chọn tất cả (${serverOrders.length} đơn)`}
             </span>
           </label>
           <span className="text-xs text-gray-500">Hiện {serverOrders.length} / {totalCount.toLocaleString('vi-VN')}</span>
@@ -2279,21 +2314,15 @@ table.summary td{padding:3px 6px;font-size:12px}
         ) : serverOrders.map(o => {
           const shipLabel = getShippingLabel(o);
           const itemsText = getItemsPreview(o.id);
-          const selectable = canBulkSelect(o);
           const isChecked = checkedOrderIds.has(o.id);
           return (
             <div key={o.id} className={`bg-white rounded-xl border p-3 md:p-4 hover:shadow-md cursor-pointer transition-shadow space-y-1 ${isChecked ? 'ring-2 ring-green-500 border-green-300' : ''}`}>
               <div className="flex gap-2">
-                {/* Checkbox or tracking badge */}
-                <div className="flex-shrink-0 pt-0.5" onClick={e => e.stopPropagation()}>
-                  {selectable ? (
-                    <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(o.id)}
-                      className="w-4 h-4 rounded border-gray-300 text-green-600 cursor-pointer" />
-                  ) : o.tracking_number ? (
-                    <span className="text-[10px] text-purple-600" title={o.tracking_number}>🚚</span>
-                  ) : (
-                    <span className="w-4 inline-block" />
-                  )}
+                {/* Checkbox + tracking badge */}
+                <div className="flex-shrink-0 pt-0.5 flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(o.id)}
+                    className="w-4 h-4 rounded border-gray-300 text-green-600 cursor-pointer" />
+                  {o.tracking_number && <span className="text-[10px] text-purple-600" title={o.tracking_number}>🚚</span>}
                 </div>
                 {/* Card content */}
                 <div className="flex-1 min-w-0" onClick={() => { setSelectedOrder(o); setEditTracking(o.tracking_number || ''); loadOrderItems(o.id); loadOrderReturns(o.id); loadOrderTimeline(o.id, o.order_number); loadPaymentHistory(o.id); setEditMode(false); setShowPaymentInput(false); setShowReturnModal(false); setShowDetailModal(true); }}>
@@ -3322,9 +3351,9 @@ table.summary td{padding:3px 6px;font-size:12px}
         <div className="fixed bottom-0 left-0 right-0 z-[55] bg-white border-t shadow-[0_-4px_12px_rgba(0,0,0,0.1)] px-3 py-2.5 md:px-6 md:py-3">
           <div className="max-w-4xl mx-auto flex items-center gap-2 md:gap-4 overflow-x-auto">
             <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 text-xs sm:text-sm">
-              <input type="checkbox" checked={allPageSelected} onChange={toggleAllPage}
+              <input type="checkbox" checked={allPageChecked} onChange={toggleAllPage}
                 className="w-4 h-4 rounded border-gray-300 text-green-600" />
-              <span className="hidden sm:inline">Chọn tất cả</span> ({selectableOnPage.length})
+              <span className="hidden sm:inline">Chọn tất cả</span> ({serverOrders.length})
             </label>
             <div className="h-5 w-px bg-gray-200 flex-shrink-0" />
             <span className="text-xs sm:text-sm font-medium text-gray-700 flex-shrink-0">
@@ -3334,14 +3363,26 @@ table.summary td{padding:3px 6px;font-size:12px}
               {formatMoney(checkedTotal)}
             </span>
             <div className="flex-1" />
+            {checkedCanConfirm.length > 0 && hasPermission('sales', 2) && (
+              <button onClick={handleBulkConfirm}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
+                ✅ Xác nhận ({checkedCanConfirm.length})
+              </button>
+            )}
+            {checkedCanCancel.length > 0 && hasPermission('sales', 2) && (
+              <button onClick={handleBulkCancel}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
+                ❌ Hủy đơn ({checkedCanCancel.length})
+              </button>
+            )}
             <button onClick={handleBulkPrint}
               className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
               🖨️ In ({checkedOrderIds.size})
             </button>
-            {vtpToken && hasPermission('sales', 2) && (
+            {checkedVtpEligible.length > 0 && vtpToken && hasPermission('sales', 2) && (
               <button onClick={handleBulkVtpOpen}
                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-medium flex-shrink-0">
-                🚚 Đẩy đơn VTP
+                🚚 Đẩy VTP ({checkedVtpEligible.length})
               </button>
             )}
             {checkedOrderIds.size >= 2 && hasPermission('sales', 2) && (
