@@ -467,6 +467,14 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         }).eq('id', selectedOrder.id);
         setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping', order_status: 'confirmed', shipping_status: 'shipped' }));
         setEditTracking(vtpCode);
+        // Auto-create COD reconciliation record
+        if (codAmount > 0) {
+          await supabase.from('cod_reconciliation').insert([{
+            tenant_id: tenant.id, order_id: selectedOrder.id,
+            order_number: selectedOrder.order_number, shipping_provider: 'Viettel Post',
+            tracking_number: vtpCode, cod_amount: codAmount, status: 'pending'
+          }]);
+        }
         showToast('Đã gửi đơn Viettel Post: ' + vtpCode);
         logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'shipping', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Đẩy đơn VTP: ${selectedOrder.order_number} → ${vtpCode}` });
         await Promise.all([loadSalesData(), loadPagedOrders()]);
@@ -1643,6 +1651,14 @@ table.summary td{padding:3px 6px;font-size:12px}
               shipping_service: bulkVtpService,
               updated_at: getNowISOVN()
             }).eq('id', o.id);
+            // Auto-create COD reconciliation record
+            if (codAmt > 0) {
+              await supabase.from('cod_reconciliation').insert([{
+                tenant_id: tenant.id, order_id: o.id,
+                order_number: o.order_number, shipping_provider: 'Viettel Post',
+                tracking_number: vtpCode, cod_amount: codAmt, status: 'pending'
+              }]);
+            }
             results.push({ order: o, success: true, vtpCode });
           }
         } else {

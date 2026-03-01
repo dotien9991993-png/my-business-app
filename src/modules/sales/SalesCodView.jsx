@@ -8,6 +8,7 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterProvider, setFilterProvider] = useState('all');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [search, setSearch] = useState('');
@@ -18,6 +19,7 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
   const [confirmNote, setConfirmNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(new Set());
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -68,19 +70,27 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
     };
   }, [records]);
 
+  // Unique providers for filter
+  const providers = useMemo(() => {
+    const set = new Set(records.map(r => r.shipping_provider).filter(Boolean));
+    return Array.from(set).sort();
+  }, [records]);
+
   // Filtered records
   const filteredRecords = useMemo(() => {
     let result = records;
     if (filterStatus !== 'all') result = result.filter(r => r.status === filterStatus);
+    if (filterProvider !== 'all') result = result.filter(r => r.shipping_provider === filterProvider);
     if (search.trim()) {
       const s = search.toLowerCase();
       result = result.filter(r =>
         (r.order_number || '').toLowerCase().includes(s) ||
-        (r.tracking_number || '').toLowerCase().includes(s)
+        (r.tracking_number || '').toLowerCase().includes(s) ||
+        (r.shipping_provider || '').toLowerCase().includes(s)
       );
     }
     return result;
-  }, [records, filterStatus, search]);
+  }, [records, filterStatus, filterProvider, search]);
 
   // Open confirm received modal
   const openConfirmReceived = (record) => {
@@ -163,6 +173,51 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
     }
   };
 
+  // Bulk reconciliation
+  const handleBulkReconcile = async () => {
+    const selectedRecords = records.filter(r => checkedIds.has(r.id) && r.status === 'received');
+    if (selectedRecords.length === 0) return alert('Không có đơn nào ở trạng thái "Đã nhận" để đối soát');
+    const totalAmount = selectedRecords.reduce((s, r) => s + (r.received_amount || r.cod_amount || 0), 0);
+    if (!window.confirm(`Xác nhận đối soát ${selectedRecords.length} đơn COD?\nTổng: ${formatMoney(totalAmount)}`)) return;
+    let successCount = 0;
+    for (const record of selectedRecords) {
+      try {
+        await supabase.from('cod_reconciliation').update({
+          status: 'confirmed', confirmed_by: currentUser.name, updated_at: getNowISOVN()
+        }).eq('id', record.id);
+        // Create finance receipt
+        const dateStr = getTodayVN().replace(/-/g, '');
+        const { data: lastReceipt } = await supabase.from('receipts_payments').select('receipt_number')
+          .like('receipt_number', `PT-${dateStr}-%`).order('receipt_number', { ascending: false }).limit(1);
+        const lastNum = lastReceipt?.[0] ? parseInt(lastReceipt[0].receipt_number.slice(-3)) || 0 : 0;
+        const receiptNumber = `PT-${dateStr}-${String(lastNum + 1 + successCount).padStart(3, '0')}`;
+        await supabase.from('receipts_payments').insert([{
+          tenant_id: tenant.id, receipt_number: receiptNumber, type: 'thu',
+          amount: record.received_amount || record.cod_amount,
+          description: `COD đơn ${record.order_number} - ${record.shipping_provider || 'VC'}`,
+          category: 'Thu hộ COD', receipt_date: getTodayVN(),
+          note: `Đối soát hàng loạt - MVĐ: ${record.tracking_number || ''}`,
+          status: 'approved', created_by: currentUser.name, created_at: getNowISOVN()
+        }]);
+        // Update order
+        if (record.order_id) {
+          const { data: order } = await supabase.from('orders').select('paid_amount, total_amount').eq('id', record.order_id).single();
+          if (order) {
+            const newPaid = (order.paid_amount || 0) + (record.received_amount || record.cod_amount);
+            const pStatus = newPaid >= order.total_amount ? 'paid' : 'partial';
+            await supabase.from('orders').update({ paid_amount: newPaid, payment_status: pStatus, updated_at: getNowISOVN() }).eq('id', record.order_id);
+          }
+        }
+        successCount++;
+      } catch (err) { console.error(`Lỗi đối soát ${record.order_number}:`, err); }
+    }
+    showToast(`Đã đối soát ${successCount}/${selectedRecords.length} đơn COD`);
+    setCheckedIds(new Set());
+    loadRecords();
+    if (loadSalesData) loadSalesData();
+    if (loadFinanceData) loadFinanceData();
+  };
+
   // Mark as disputed
   const handleDispute = async (record) => {
     const reason = window.prompt('Lý do khiếu nại:');
@@ -206,9 +261,15 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
           placeholder="Tìm mã đơn, mã vận đơn..."
           className="flex-1 min-w-[200px] border rounded-lg px-3 py-2 text-sm" />
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
-          <option value="all">Tất cả</option>
+          <option value="all">Tất cả trạng thái</option>
           {Object.entries(codStatuses).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
+        {providers.length > 1 && (
+          <select value={filterProvider} onChange={e => setFilterProvider(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
+            <option value="all">Tất cả NVC</option>
+            {providers.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
         <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="border rounded-lg px-3 py-2 text-sm" />
         <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="border rounded-lg px-3 py-2 text-sm" />
       </div>
@@ -228,6 +289,15 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
               <div key={record.id} className="bg-white border rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
+                    {['pending', 'received'].includes(record.status) && (
+                      <input type="checkbox" checked={checkedIds.has(record.id)}
+                        onChange={e => {
+                          const next = new Set(checkedIds);
+                          if (e.target.checked) next.add(record.id); else next.delete(record.id);
+                          setCheckedIds(next);
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    )}
                     <span className="font-medium text-sm">{record.order_number}</span>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
                       {statusInfo.label}
@@ -293,6 +363,26 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {checkedIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t shadow-lg px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">Đã chọn: <strong className="text-blue-700">{checkedIds.size}</strong></span>
+            <span className="text-sm text-gray-500">
+              ({formatMoney(records.filter(r => checkedIds.has(r.id)).reduce((s, r) => s + (r.received_amount || r.cod_amount || 0), 0))})
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handleBulkReconcile}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+              Xác nhận đối soát ({checkedIds.size})
+            </button>
+            <button onClick={() => setCheckedIds(new Set())}
+              className="px-3 py-2 bg-gray-200 rounded-lg text-sm font-medium">Hủy chọn</button>
+          </div>
         </div>
       )}
 
