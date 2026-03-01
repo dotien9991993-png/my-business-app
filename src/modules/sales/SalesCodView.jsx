@@ -141,7 +141,7 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
       // Create finance receipt
       const dateStr = getTodayVN().replace(/-/g, '');
       const { data: lastReceipt } = await supabase.from('receipts_payments').select('receipt_number')
-        .like('receipt_number', `PT-${dateStr}-%`).order('receipt_number', { ascending: false }).limit(1);
+        .eq('tenant_id', tenant.id).like('receipt_number', `PT-${dateStr}-%`).order('receipt_number', { ascending: false }).limit(1);
       const lastNum = lastReceipt?.[0] ? parseInt(lastReceipt[0].receipt_number.slice(-3)) || 0 : 0;
       const receiptNumber = `PT-${dateStr}-${String(lastNum + 1).padStart(3, '0')}`;
 
@@ -188,7 +188,7 @@ export default function SalesCodView({ tenant, currentUser, loadSalesData, loadF
         // Create finance receipt
         const dateStr = getTodayVN().replace(/-/g, '');
         const { data: lastReceipt } = await supabase.from('receipts_payments').select('receipt_number')
-          .like('receipt_number', `PT-${dateStr}-%`).order('receipt_number', { ascending: false }).limit(1);
+          .eq('tenant_id', tenant.id).like('receipt_number', `PT-${dateStr}-%`).order('receipt_number', { ascending: false }).limit(1);
         const lastNum = lastReceipt?.[0] ? parseInt(lastReceipt[0].receipt_number.slice(-3)) || 0 : 0;
         const receiptNumber = `PT-${dateStr}-${String(lastNum + 1 + successCount).padStart(3, '0')}`;
         await supabase.from('receipts_payments').insert([{

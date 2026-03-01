@@ -126,7 +126,7 @@ export default function WarehouseStocktakeView({
 
   // Auto-save every 30s (using ref to avoid stale closure)
   useEffect(() => {
-    if (showDetailModal && selectedStocktake?.status === 'in_progress') {
+    if (showDetailModal && (selectedStocktake?.status === 'draft' || selectedStocktake?.status === 'in_progress')) {
       autoSaveTimer.current = setInterval(() => {
         if (dirtyRef.current && handleSaveAllRef.current) {
           handleSaveAllRef.current(true);
@@ -138,7 +138,7 @@ export default function WarehouseStocktakeView({
 
   // USB barcode scanner: detect rapid keystrokes + Enter
   useEffect(() => {
-    if (!showDetailModal || selectedStocktake?.status !== 'in_progress') return;
+    if (!showDetailModal || (selectedStocktake?.status !== 'draft' && selectedStocktake?.status !== 'in_progress')) return;
     const buf = { text: '', timer: null };
     const handleKeyDown = (e) => {
       const tag = e.target.tagName;
@@ -512,6 +512,7 @@ export default function WarehouseStocktakeView({
   // ── Start audit (draft → in_progress) ─────────
   const handleStartAudit = async () => {
     if (!selectedStocktake) return;
+    if (!canEdit('warehouse')) { setToast({ type: 'error', msg: 'Bạn không có quyền thực hiện' }); return; }
     try {
       const { error } = await supabase.from('stocktakes')
         .update({ status: 'in_progress' })
@@ -1094,7 +1095,7 @@ export default function WarehouseStocktakeView({
             {/* Filters & barcode */}
             <div className="flex flex-wrap items-center gap-2 px-3 md:px-5 py-2 border-b flex-shrink-0">
               {/* Barcode scan input */}
-              {selectedStocktake.status === 'in_progress' && (
+              {(selectedStocktake.status === 'draft' || selectedStocktake.status === 'in_progress') && (
                 <div className="relative min-w-[120px]">
                   <input ref={barcodeFieldRef} type="text" placeholder="Quét mã SP..."
                     value={barcodeInput}
@@ -1143,7 +1144,7 @@ export default function WarehouseStocktakeView({
               )}
 
               {/* Quick actions */}
-              {selectedStocktake.status === 'in_progress' && (
+              {(selectedStocktake.status === 'draft' || selectedStocktake.status === 'in_progress') && (
                 <button onClick={handleSetAllMatch}
                   className="px-2.5 py-1.5 text-xs border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 whitespace-nowrap font-medium">
                   Đặt tất cả = Tồn HT
@@ -1194,7 +1195,7 @@ export default function WarehouseStocktakeView({
                             </td>
                             <td className="px-3 py-2 text-center text-gray-700 font-medium">{item.system_qty}</td>
                             <td className="px-3 py-2 text-center">
-                              {selectedStocktake.status === 'in_progress' ? (
+                              {(selectedStocktake.status === 'draft' || selectedStocktake.status === 'in_progress') ? (
                                 <div className="flex items-center justify-center gap-1">
                                   <input
                                     type="number" min="0" step="1"
@@ -1226,7 +1227,7 @@ export default function WarehouseStocktakeView({
                             </td>
                             <td className="px-3 py-2 text-center text-sm"><DiffCell item={item} /></td>
                             <td className="px-3 py-2">
-                              {selectedStocktake.status === 'in_progress' ? (
+                              {(selectedStocktake.status === 'draft' || selectedStocktake.status === 'in_progress') ? (
                                 <input type="text" value={item.note || ''} placeholder="Ghi chú..."
                                   onChange={e => handleLocalUpdate(item.id, 'note', e.target.value)}
                                   className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-amber-500 focus:border-amber-500" />
@@ -1260,7 +1261,7 @@ export default function WarehouseStocktakeView({
                           </div>
                           <div className="flex items-center gap-2 mt-2">
                             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">Tồn HT: <strong>{item.system_qty}</strong></span>
-                            {selectedStocktake.status === 'in_progress' ? (
+                            {(selectedStocktake.status === 'draft' || selectedStocktake.status === 'in_progress') ? (
                               <>
                                 <input type="number" min="0" step="1"
                                   value={hasActual ? item.actual_qty : ''} placeholder="SL..."
@@ -1336,7 +1337,7 @@ export default function WarehouseStocktakeView({
                 </div>
               )}
 
-              {selectedStocktake.status === 'in_progress' && (
+              {(selectedStocktake.status === 'draft' || selectedStocktake.status === 'in_progress') && (
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => handleSaveAll(false)} disabled={saving}
                     className="px-3 py-2 border border-amber-300 text-amber-700 rounded-xl hover:bg-amber-50 font-medium text-sm disabled:opacity-50 flex items-center gap-1">

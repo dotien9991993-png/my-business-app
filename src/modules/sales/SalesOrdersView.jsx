@@ -470,13 +470,16 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         }).eq('id', selectedOrder.id);
         setSelectedOrder(prev => ({ ...prev, tracking_number: vtpCode, shipping_metadata: newMeta, shipping_provider: 'Viettel Post', shipping_service: svcCode, status: 'shipping', order_status: 'confirmed', shipping_status: 'shipped' }));
         setEditTracking(vtpCode);
-        // Auto-create COD reconciliation record
+        // Auto-create COD reconciliation record (skip if already exists)
         if (codAmount > 0) {
-          await supabase.from('cod_reconciliation').insert([{
-            tenant_id: tenant.id, order_id: selectedOrder.id,
-            order_number: selectedOrder.order_number, shipping_provider: 'Viettel Post',
-            tracking_number: vtpCode, cod_amount: codAmount, status: 'pending'
-          }]);
+          const { data: existingCod } = await supabase.from('cod_reconciliation').select('id').eq('order_id', selectedOrder.id).eq('tenant_id', tenant.id).limit(1);
+          if (!existingCod || existingCod.length === 0) {
+            await supabase.from('cod_reconciliation').insert([{
+              tenant_id: tenant.id, order_id: selectedOrder.id,
+              order_number: selectedOrder.order_number, shipping_provider: 'Viettel Post',
+              tracking_number: vtpCode, cod_amount: codAmount, status: 'pending'
+            }]);
+          }
         }
         showToast('Đã gửi đơn Viettel Post: ' + vtpCode);
         logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'shipping', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Đẩy đơn VTP: ${selectedOrder.order_number} → ${vtpCode}` });
@@ -797,7 +800,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
 
   const loadPaymentHistory = async (orderId) => {
     try {
-      const { data } = await supabase.from('payment_transactions').select('*').eq('order_id', orderId).order('created_at', { ascending: true });
+      const { data } = await supabase.from('payment_transactions').select('*').eq('tenant_id', tenant.id).eq('order_id', orderId).order('created_at', { ascending: true });
       setPaymentHistory(data || []);
     } catch (err) { console.warn('Payment history load error:', err.message); setPaymentHistory([]); }
   };
@@ -1478,11 +1481,20 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
     if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
     if (checkedOrderIds.size < 2) { alert('Cần chọn ít nhất 2 đơn để gộp'); return; }
     const selected = serverOrders.filter(o => checkedOrderIds.has(o.id));
-    // Validate: same customer
-    const customerIds = [...new Set(selected.map(o => o.customer_id).filter(Boolean))];
-    const customerPhones = [...new Set(selected.map(o => o.customer_phone).filter(Boolean))];
-    if (customerIds.length > 1 || (customerIds.length === 0 && customerPhones.length > 1)) {
+    // Validate: same customer (all must have same customer_id, or all guest with same phone)
+    const customerIds = [...new Set(selected.map(o => o.customer_id || null))];
+    if (customerIds.length > 1) {
       alert('Chỉ gộp được các đơn cùng 1 khách hàng!'); return;
+    }
+    if (!customerIds[0]) {
+      // All guest orders - check same phone
+      const phones = [...new Set(selected.map(o => (o.customer_phone || '').trim()).filter(Boolean))];
+      if (phones.length > 1) { alert('Các đơn khách lẻ phải cùng số điện thoại!'); return; }
+    }
+    // Validate: same warehouse
+    const whIds = [...new Set(selected.map(o => o.warehouse_id || null))];
+    if (whIds.length > 1) {
+      alert('Chỉ gộp được các đơn cùng 1 kho!'); return;
     }
     // Validate: status open/confirmed only
     const invalidStatus = selected.filter(o => !['open', 'confirmed'].includes(o.order_status || o.status));
@@ -1528,7 +1540,7 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
       const totalPaid = selected.reduce((s, o) => s + parseFloat(o.paid_amount || 0), 0);
       const subtotal = mergedItems.reduce((s, it) => s + (it.total_price || 0), 0);
       const discount = bestCoupon ? parseFloat(bestCoupon.discount_amount || 0) : 0;
-      const shippingFee = Math.max(...selected.map(o => parseFloat(o.shipping_fee || 0)));
+      const shippingFee = parseFloat(selected[0].shipping_fee || 0);
       const totalAmount = subtotal - discount + shippingFee;
       // Use first order's address/shipping info
       const baseOrder = selected[0];
@@ -1659,7 +1671,7 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
 
       // 5. Move payment transactions to new order
       for (const old of oldOrders) {
-        await supabase.from('payment_transactions').update({ order_id: newOrder.id }).eq('order_id', old.id);
+        await supabase.from('payment_transactions').update({ order_id: newOrder.id }).eq('tenant_id', tenant.id).eq('order_id', old.id);
       }
 
       // 6. Log activity
@@ -1892,13 +1904,16 @@ table.summary td{padding:3px 6px;font-size:12px}
               shipping_service: bulkVtpService,
               updated_at: getNowISOVN()
             }).eq('id', o.id);
-            // Auto-create COD reconciliation record
+            // Auto-create COD reconciliation record (skip if already exists)
             if (codAmt > 0) {
-              await supabase.from('cod_reconciliation').insert([{
-                tenant_id: tenant.id, order_id: o.id,
-                order_number: o.order_number, shipping_provider: 'Viettel Post',
-                tracking_number: vtpCode, cod_amount: codAmt, status: 'pending'
-              }]);
+              const { data: existCod } = await supabase.from('cod_reconciliation').select('id').eq('order_id', o.id).eq('tenant_id', tenant.id).limit(1);
+              if (!existCod || existCod.length === 0) {
+                await supabase.from('cod_reconciliation').insert([{
+                  tenant_id: tenant.id, order_id: o.id,
+                  order_number: o.order_number, shipping_provider: 'Viettel Post',
+                  tracking_number: vtpCode, cod_amount: codAmt, status: 'pending'
+                }]);
+              }
             }
             results.push({ order: o, success: true, vtpCode });
           }
@@ -2850,13 +2865,13 @@ table.summary td{padding:3px 6px;font-size:12px}
                       placeholder="Số tiền..." className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
                     <select value={paymentMethodInput} onChange={e => setPaymentMethodInput(e.target.value)}
                       className="border rounded-lg px-2 py-1.5 text-sm">
-                      {paymentMethods.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      {Object.entries(paymentMethods).map(([val, pm]) => <option key={val} value={val}>{pm.label}</option>)}
                     </select>
                   </div>
                   <input type="text" value={paymentNoteInput} onChange={e => setPaymentNoteInput(e.target.value)}
                     placeholder="Ghi chú (VD: Đặt cọc 50%)" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => { setShowPaymentInput(false); setPaymentAmount(''); setPaymentNoteInput(''); }}
+                    <button onClick={() => { setShowPaymentInput(false); setPaymentAmount(''); setPaymentMethodInput('cash'); setPaymentNoteInput(''); }}
                       className="px-3 py-1.5 bg-gray-200 rounded-lg text-xs font-medium">Hủy</button>
                     <button onClick={handlePartialPayment} disabled={submitting}
                       className={`px-4 py-1.5 rounded-lg text-xs font-medium text-white ${submitting ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}>
