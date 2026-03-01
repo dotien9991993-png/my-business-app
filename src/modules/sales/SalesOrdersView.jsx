@@ -12,7 +12,7 @@ import HaravanImportModal from './HaravanImportModal';
 import { logActivity } from '../../lib/activityLog';
 import { sendOrderConfirmation, sendShippingNotification } from '../../utils/zaloAutomation';
 
-export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob: _createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
+export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, customerAddresses, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob: _createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
   const { pendingOpenRecord, setPendingOpenRecord, allUsers } = useApp();
   const permLevel = getPermissionLevel('sales');
   const _effectiveShippingProviders = dynamicShippingProviders || shippingProviders;
@@ -236,6 +236,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const [_discountNote, _setDiscountNote] = useState('');
   const [_note, _setNote] = useState('');
   const [_needsInstallation, _setNeedsInstallation] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState('');
   const [cartItems, setCartItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
@@ -290,7 +291,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     setShippingAddress(''); setShippingAddressData(null); setShippingAddressDetail('');
     setCartItems([]); setProductSearch(''); setCustomerSearch('');
     setShowCustomerDropdown(false); setInternalNote('');
-    setPaymentMethod('cod'); setShippingProvider(''); setShippingFee(''); setShippingPayer('customer');
+    setPaymentMethod('cod'); setShippingProvider(''); setShippingFee(''); setShippingPayer('customer'); setSelectedAddressId('');
     const defaultWh = (warehouses || []).find(w => w.is_default) || (warehouses || [])[0];
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
   };
@@ -1546,8 +1547,17 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                       {searchedCustomers.map(c => (
                         <button key={c.id} onClick={() => {
                           setCustomerId(c.id); setCustomerName(c.name); setCustomerPhone(c.phone || '');
-                          setShippingAddress(c.address || ''); setCustomerSearch(c.name);
+                          setCustomerSearch(c.name);
                           if (c.address_data) { setShippingAddressData(c.address_data); }
+                          // Auto-select default address if available
+                          const defAddr = (customerAddresses || []).find(a => a.customer_id === c.id && a.is_default);
+                          if (defAddr) {
+                            setSelectedAddressId(defAddr.id);
+                            setShippingAddress([defAddr.address, defAddr.ward, defAddr.district, defAddr.province].filter(Boolean).join(', '));
+                          } else {
+                            setSelectedAddressId('');
+                            setShippingAddress(c.address || '');
+                          }
                           setShowCustomerDropdown(false);
                         }} className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">
                           <div className="font-medium">{c.name}</div>
@@ -1557,8 +1567,35 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                     </div>
                   )}
                 </div>
+                {/* Saved addresses dropdown */}
+                {customerId && (() => {
+                  const custAddrs = (customerAddresses || []).filter(a => a.customer_id === customerId);
+                  if (custAddrs.length === 0) return null;
+                  return (
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Địa chỉ đã lưu</label>
+                      <select value={selectedAddressId} onChange={e => {
+                        const addrId = e.target.value;
+                        setSelectedAddressId(addrId);
+                        if (addrId) {
+                          const addr = custAddrs.find(a => a.id === addrId);
+                          if (addr) setShippingAddress([addr.address, addr.ward, addr.district, addr.province].filter(Boolean).join(', '));
+                        } else {
+                          setShippingAddress('');
+                        }
+                      }} className="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="">-- Nhập địa chỉ mới --</option>
+                        {custAddrs.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.label}{a.is_default ? ' ★' : ''}: {[a.address, a.ward, a.district, a.province].filter(Boolean).join(', ')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
                 {/* Address: AddressPicker if VTP token available, else plain input */}
-                {vtpToken ? (
+                {!selectedAddressId && (vtpToken ? (
                   <div className="space-y-2">
                     <AddressPicker token={vtpToken} value={shippingAddressData} onChange={setShippingAddressData} />
                     <input value={shippingAddressDetail} onChange={e => setShippingAddressDetail(e.target.value)}
@@ -1566,13 +1603,10 @@ ${selectedOrder.note ? `<p><b>Ghi chú:</b> ${selectedOrder.note}</p>` : ''}
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      Vui lòng kết nối Viettel Post trong Cài đặt &gt; Vận chuyển để chọn Tỉnh/Quận/Phường
-                    </div>
                     <input value={shippingAddress} onChange={e => setShippingAddress(e.target.value)}
                       placeholder="Địa chỉ giao hàng (nhập tay)" className="w-full border rounded-lg px-3 py-2 text-sm" />
                   </div>
-                )}
+                ))}
               </div>
 
               {/* B2. Vận chuyển (online) */}

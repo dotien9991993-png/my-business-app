@@ -23,7 +23,7 @@ const NoAccess = () => (
 
 export default function SalesModule() {
   const { activeTab, currentUser, tenant, canAccessTab, hasPermission, canEdit, getPermissionLevel, filterByPermission } = useApp();
-  const { orders, customers, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, getSettingValue, shippingConfigs, warrantyCards, warrantyRepairs, comboItems } = useData();
+  const { orders, customers, customerAddresses, products, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob, warehouses, warehouseStock, getSettingValue, shippingConfigs, warrantyCards, warrantyRepairs, comboItems } = useData();
 
   const dynamicCategories = getSettingValue('product', 'categories', null);
 
@@ -50,6 +50,7 @@ export default function SalesModule() {
         <SalesOrdersView
           tenant={tenant} currentUser={currentUser}
           orders={orders} customers={customers} products={products}
+          customerAddresses={customerAddresses}
           loadSalesData={loadSalesData} loadWarehouseData={loadWarehouseData}
           loadFinanceData={loadFinanceData} createTechnicalJob={createTechnicalJob}
           warehouses={warehouses} warehouseStock={warehouseStock}
@@ -64,6 +65,7 @@ export default function SalesModule() {
         <SalesCustomersView
           tenant={tenant} currentUser={currentUser}
           customers={customers} orders={orders}
+          customerAddresses={customerAddresses}
           loadSalesData={loadSalesData}
           warrantyCards={warrantyCards} warrantyRepairs={warrantyRepairs}
           hasPermission={hasPermission} canEdit={canEdit}

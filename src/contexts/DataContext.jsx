@@ -32,6 +32,7 @@ export function DataProvider({ children }) {
   const [transfers, setTransfers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [customerAddresses, setCustomerAddresses] = useState([]);
   const [systemSettings, setSystemSettings] = useState([]);
   const [shippingConfigs, setShippingConfigs] = useState([]);
   const [serials, setSerials] = useState([]);
@@ -216,14 +217,17 @@ export function DataProvider({ children }) {
   const loadSalesData = useCallback(async () => {
     if (!tenant) return;
     try {
-      const [ordersRes, customersRes] = await Promise.all([
+      const [ordersRes, customersRes, addressesRes] = await Promise.all([
         supabase.from('orders').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
-        supabase.from('customers').select('*').eq('tenant_id', tenant.id).order('name', { ascending: true })
+        supabase.from('customers').select('*').eq('tenant_id', tenant.id).order('name', { ascending: true }),
+        supabase.from('customer_addresses').select('*').eq('tenant_id', tenant.id).order('is_default', { ascending: false })
       ]);
       if (ordersRes.error) { console.warn('Sales orders table not ready:', ordersRes.error.message); }
       else if (ordersRes.data) setOrders(ordersRes.data);
       if (customersRes.error) { console.warn('Customers table not ready:', customersRes.error.message); }
       else if (customersRes.data) setCustomers(customersRes.data);
+      if (addressesRes.error) { console.warn('Customer addresses table not ready:', addressesRes.error.message); }
+      else if (addressesRes.data) setCustomerAddresses(addressesRes.data);
     } catch (error) { console.error('Error loading sales data:', error); }
   }, [tenant]);
 
@@ -318,7 +322,8 @@ export function DataProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_transfers' }, () => loadWarehouseData()).subscribe();
     const salesChannel = supabase.channel('sales-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadSalesData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => loadSalesData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => loadSalesData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_addresses' }, () => loadSalesData()).subscribe();
     const settingsChannel = supabase.channel('settings-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, () => loadSettingsData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_configs' }, () => loadSettingsData()).subscribe();
@@ -578,7 +583,7 @@ export function DataProvider({ children }) {
     products, setProducts, stockTransactions, setStockTransactions,
     warehouses, setWarehouses, warehouseStock, setWarehouseStock, comboItems,
     suppliers, stocktakes, transfers,
-    orders, setOrders, customers, setCustomers,
+    orders, setOrders, customers, setCustomers, customerAddresses, setCustomerAddresses,
     systemSettings, shippingConfigs, getSettingValue,
     serials, setSerials, warrantyCards, setWarrantyCards, warrantyRepairs, setWarrantyRepairs, warrantyRequests, setWarrantyRequests, loadWarrantyData,
     // HRM data

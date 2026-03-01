@@ -32,7 +32,7 @@ const INTERACTION_TYPES = {
 
 const TAG_SUGGESTIONS = ['Đại lý miền Bắc', 'Đại lý miền Nam', 'Karaoke', 'Hội trường', 'Nhà thờ', 'Sự kiện', 'Quán cafe', 'Trường học'];
 
-export default function SalesCustomersView({ tenant, currentUser, customers, orders, loadSalesData, warrantyCards, warrantyRepairs, hasPermission, canEdit: canEditSales }) {
+export default function SalesCustomersView({ tenant, currentUser, customers, orders, customerAddresses, loadSalesData, warrantyCards, warrantyRepairs, hasPermission, canEdit: canEditSales }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -42,7 +42,17 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
   const [editMode, setEditMode] = useState(false);
   const [filterType, setFilterType] = useState('all');
   const [viewMode, setViewMode] = useState('list'); // list | churn | birthday
-  const [detailTab, setDetailTab] = useState('orders'); // orders | interactions | warranty
+  const [detailTab, setDetailTab] = useState('orders'); // orders | interactions | warranty | addresses
+  // Address form state
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [editingAddress, setEditingAddress] = useState(null);
+  const [addrLabel, setAddrLabel] = useState('Nhà');
+  const [addrRecipientName, setAddrRecipientName] = useState('');
+  const [addrRecipientPhone, setAddrRecipientPhone] = useState('');
+  const [addrAddress, setAddrAddress] = useState('');
+  const [addrWard, setAddrWard] = useState('');
+  const [addrDistrict, setAddrDistrict] = useState('');
+  const [addrProvince, setAddrProvince] = useState('');
   const [totalCustomerCount, setTotalCustomerCount] = useState(0);
 
   // Debounce search input
@@ -336,6 +346,79 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
       await loadSalesData();
     } catch (err) { console.error(err); alert('Lỗi: ' + err.message); }
     finally { setSubmitting(false); }
+  };
+
+  // ---- Address CRUD ----
+  const getCustomerAddresses = useCallback((custId) => {
+    return (customerAddresses || []).filter(a => a.customer_id === custId);
+  }, [customerAddresses]);
+
+  const resetAddressForm = () => {
+    setAddrLabel('Nhà'); setAddrRecipientName(''); setAddrRecipientPhone('');
+    setAddrAddress(''); setAddrWard(''); setAddrDistrict(''); setAddrProvince('');
+    setEditingAddress(null); setShowAddressForm(false);
+  };
+
+  const openAddressForm = (addr = null) => {
+    if (addr) {
+      setEditingAddress(addr);
+      setAddrLabel(addr.label || 'Nhà');
+      setAddrRecipientName(addr.recipient_name || '');
+      setAddrRecipientPhone(addr.recipient_phone || '');
+      setAddrAddress(addr.address || '');
+      setAddrWard(addr.ward || '');
+      setAddrDistrict(addr.district || '');
+      setAddrProvince(addr.province || '');
+    } else {
+      resetAddressForm();
+      setAddrRecipientName(selectedCustomer?.name || '');
+      setAddrRecipientPhone(selectedCustomer?.phone || '');
+    }
+    setShowAddressForm(true);
+  };
+
+  const handleSaveAddress = async () => {
+    if (!addrAddress.trim()) return alert('Vui lòng nhập địa chỉ');
+    if (!selectedCustomer) return;
+    setSubmitting(true);
+    try {
+      const data = {
+        tenant_id: tenant.id, customer_id: selectedCustomer.id,
+        label: addrLabel, recipient_name: addrRecipientName,
+        recipient_phone: addrRecipientPhone, address: addrAddress.trim(),
+        ward: addrWard, district: addrDistrict, province: addrProvince,
+        updated_at: getNowISOVN()
+      };
+      if (editingAddress) {
+        const { error } = await supabase.from('customer_addresses').update(data).eq('id', editingAddress.id);
+        if (error) throw error;
+      } else {
+        const existing = getCustomerAddresses(selectedCustomer.id);
+        data.is_default = existing.length === 0;
+        const { error } = await supabase.from('customer_addresses').insert([data]);
+        if (error) throw error;
+      }
+      resetAddressForm();
+      await loadSalesData();
+    } catch (err) { console.error(err); alert('Lỗi: ' + err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleDeleteAddress = async (addrId) => {
+    if (!window.confirm('Xóa địa chỉ này?')) return;
+    try {
+      const { error } = await supabase.from('customer_addresses').delete().eq('id', addrId);
+      if (error) throw error;
+      await loadSalesData();
+    } catch (err) { console.error(err); alert('Lỗi: ' + err.message); }
+  };
+
+  const handleSetDefaultAddress = async (addrId, custId) => {
+    try {
+      await supabase.from('customer_addresses').update({ is_default: false }).eq('customer_id', custId);
+      await supabase.from('customer_addresses').update({ is_default: true }).eq('id', addrId);
+      await loadSalesData();
+    } catch (err) { console.error(err); alert('Lỗi: ' + err.message); }
   };
 
   const handleDelete = async (id) => {
@@ -938,10 +1021,11 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
                 </>
               )}
 
-              {/* Tabs: Orders | Interactions | Warranty */}
-              <div className="flex border-b">
+              {/* Tabs: Orders | Addresses | Interactions | Warranty */}
+              <div className="flex border-b overflow-x-auto">
                 {[
                   { key: 'orders', label: `Đơn hàng (${customerOrders.length})` },
+                  { key: 'addresses', label: `Địa chỉ (${getCustomerAddresses(selectedCustomer.id).length})` },
                   { key: 'interactions', label: 'Tương tác' },
                   { key: 'warranty', label: `Bảo hành (${customerWarranty.cards.length})` },
                 ].map(tab => (
@@ -975,6 +1059,72 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
               )}
 
               {/* Tab: Interactions */}
+              {/* Tab: Addresses */}
+              {detailTab === 'addresses' && (
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm font-medium text-gray-700">Địa chỉ giao hàng</div>
+                    {canEditSales('sales') && (
+                      <button onClick={() => openAddressForm()} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium">+ Thêm địa chỉ</button>
+                    )}
+                  </div>
+
+                  {showAddressForm && (
+                    <div className="bg-blue-50 rounded-lg p-3 space-y-2 border border-blue-200">
+                      <div className="text-sm font-medium text-blue-700">{editingAddress ? 'Sửa địa chỉ' : 'Thêm địa chỉ mới'}</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <select value={addrLabel} onChange={e => setAddrLabel(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
+                          {['Nhà', 'Công ty', 'Cửa hàng', 'Kho', 'Khác'].map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                        <input value={addrRecipientName} onChange={e => setAddrRecipientName(e.target.value)} placeholder="Người nhận" className="border rounded-lg px-3 py-1.5 text-sm" />
+                        <input value={addrRecipientPhone} onChange={e => setAddrRecipientPhone(e.target.value)} placeholder="SĐT nhận" className="border rounded-lg px-3 py-1.5 text-sm" />
+                      </div>
+                      <input value={addrAddress} onChange={e => setAddrAddress(e.target.value)} placeholder="Địa chỉ (số nhà, đường) *" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                      <div className="grid grid-cols-3 gap-2">
+                        <input value={addrWard} onChange={e => setAddrWard(e.target.value)} placeholder="Phường/Xã" className="border rounded-lg px-3 py-1.5 text-sm" />
+                        <input value={addrDistrict} onChange={e => setAddrDistrict(e.target.value)} placeholder="Quận/Huyện" className="border rounded-lg px-3 py-1.5 text-sm" />
+                        <input value={addrProvince} onChange={e => setAddrProvince(e.target.value)} placeholder="Tỉnh/TP" className="border rounded-lg px-3 py-1.5 text-sm" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={resetAddressForm} className="flex-1 px-3 py-1.5 bg-gray-200 rounded-lg text-xs font-medium">Hủy</button>
+                        <button onClick={handleSaveAddress} disabled={submitting}
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white ${submitting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                          {submitting ? 'Đang lưu...' : editingAddress ? 'Cập nhật' : 'Lưu'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {getCustomerAddresses(selectedCustomer.id).length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-4">Chưa có địa chỉ nào</p>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {getCustomerAddresses(selectedCustomer.id).map(addr => (
+                        <div key={addr.id} className={`p-3 rounded-lg border text-sm ${addr.is_default ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="font-medium">{addr.label}</span>
+                              {addr.is_default && <span className="ml-2 px-1.5 py-0.5 bg-green-200 text-green-800 rounded text-[10px]">Mặc định</span>}
+                            </div>
+                            {canEditSales('sales') && (
+                              <div className="flex gap-1">
+                                {!addr.is_default && (
+                                  <button onClick={() => handleSetDefaultAddress(addr.id, addr.customer_id)} className="text-xs text-blue-600 hover:underline">Đặt MĐ</button>
+                                )}
+                                <button onClick={() => openAddressForm(addr)} className="text-xs text-amber-600 hover:underline">Sửa</button>
+                                <button onClick={() => handleDeleteAddress(addr.id)} className="text-xs text-red-600 hover:underline">Xóa</button>
+                              </div>
+                            )}
+                          </div>
+                          {addr.recipient_name && <div className="text-gray-600">{addr.recipient_name} {addr.recipient_phone && `- ${addr.recipient_phone}`}</div>}
+                          <div className="text-gray-700">{[addr.address, addr.ward, addr.district, addr.province].filter(Boolean).join(', ')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {detailTab === 'interactions' && (
                 <div className="space-y-3">
                   {/* Add interaction */}
