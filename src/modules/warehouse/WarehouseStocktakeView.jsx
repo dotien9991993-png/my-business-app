@@ -392,10 +392,15 @@ export default function WarehouseStocktakeView({
     if (!sku || !sku.trim()) return;
     const normalized = sku.trim().toLowerCase();
 
-    const item = stocktakeItems.find(i =>
-      (i.product_sku || '').toLowerCase() === normalized ||
-      (i.product_name || '').toLowerCase() === normalized
-    );
+    // Search by SKU, name, or barcode (lookup product barcode via products array)
+    const item = stocktakeItems.find(i => {
+      if ((i.product_sku || '').toLowerCase() === normalized) return true;
+      if ((i.product_name || '').toLowerCase() === normalized) return true;
+      // Also check product barcode
+      const prod = (products || []).find(p => p.id === i.product_id);
+      if (prod && prod.barcode && prod.barcode.toLowerCase() === normalized) return true;
+      return false;
+    });
 
     if (item) {
       const newQty = (item.actual_qty || 0) + 1;

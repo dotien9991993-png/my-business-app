@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { getTodayVN, getDateStrVN, getNowISOVN } from '../../utils/dateUtils';
 import { logActivity } from '../../lib/activityLog';
 import { isAdmin } from '../../utils/permissionUtils';
+import QRScanner from '../../components/shared/QRScanner';
 
 export default function WarehouseImportView({ products, warehouses, stockTransactions, loadWarehouseData, tenant, currentUser, suppliers, hasPermission, getPermissionLevel }) {
   const permLevel = getPermissionLevel('warehouse');
@@ -58,6 +59,29 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
   const [formDate, setFormDate] = useState(getTodayVN());
   const [formNote, setFormNote] = useState('');
   const [formItems, setFormItems] = useState([{ product_id: '', quantity: 1, unit_price: 0, serials: [] }]);
+  const [showScanner, setShowScanner] = useState(false);
+
+  const handleBarcodeScan = (scannedText) => {
+    if (!scannedText) return;
+    const text = scannedText.trim();
+    const match = (products || []).find(p =>
+      (p.barcode && p.barcode === text) || (p.sku && p.sku.toLowerCase() === text.toLowerCase())
+    );
+    if (!match || match.is_combo) {
+      alert('Không tìm thấy sản phẩm với mã: ' + text);
+      return;
+    }
+    setFormItems(prev => {
+      const existing = prev.findIndex(i => i.product_id === match.id);
+      if (existing >= 0) {
+        return prev.map((item, idx) => idx === existing ? { ...item, quantity: item.quantity + 1 } : item);
+      }
+      const newItem = { product_id: match.id, quantity: 1, unit_price: parseFloat(match.import_price) || 0, serials: [] };
+      // Replace empty first item or append
+      if (prev.length === 1 && !prev[0].product_id) return [newItem];
+      return [...prev, newItem];
+    });
+  };
 
   const importTransactions = stockTransactions.filter(t => t.type === 'import');
 
@@ -551,7 +575,10 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-gray-700">Sản phẩm nhập</label>
-                  <button onClick={addItem} className="text-sm text-green-600 hover:text-green-700">+ Thêm dòng</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowScanner(true)} className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">📷 Quét mã</button>
+                    <button onClick={addItem} className="text-sm text-green-600 hover:text-green-700">+ Thêm dòng</button>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   {formItems.map((item, index) => {
@@ -790,6 +817,7 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
           </div>
         </div>
       )}
+      <QRScanner isOpen={showScanner} onScanSuccess={handleBarcodeScan} onClose={() => setShowScanner(false)} />
     </div>
   );
 }

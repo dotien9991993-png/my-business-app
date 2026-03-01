@@ -5,6 +5,7 @@ import { getNowISOVN, getTodayVN, formatDateTimeVN } from '../../utils/dateUtils
 import { warehouseCategories, warehouseUnits } from '../../constants/warehouseConstants';
 import { logActivity } from '../../lib/activityLog';
 import { uploadImage, getThumbnailUrl } from '../../utils/cloudinaryUpload';
+import JsBarcode from 'jsbarcode';
 
 export default function WarehouseInventoryView({ products, warehouses, warehouseStock, loadWarehouseData, tenant, currentUser, dynamicCategories, dynamicUnits, comboItems, productVariants, orders, suppliers, hasPermission, canEdit, getPermissionLevel }) {
   const { pendingOpenRecord, setPendingOpenRecord } = useApp();
@@ -208,6 +209,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   }, [products, formComboItems, comboChildSearch]);
 
   const generateSku = () => 'SP' + Date.now().toString().slice(-6);
+  const generateBarcode = () => 'HNA' + Date.now().toString().slice(-8).toUpperCase();
 
   // Avg cost helper: use avg_cost if set, fallback to import_price
   const avgCost = (p) => (p.avg_cost > 0 ? p.avg_cost : (p.import_price || 0));
@@ -263,7 +265,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     if (formHasVariants && formVariants.length === 0) { alert('Vui lòng tạo ít nhất 1 biến thể!'); return; }
     try {
       const { data: newProd, error } = await supabase.from('products').insert([{
-        tenant_id: tenant.id, sku: formSku || generateSku(), barcode: formBarcode,
+        tenant_id: tenant.id, sku: formSku || generateSku(), barcode: formBarcode || generateBarcode(),
         name: formName, category: formCategory, unit: formUnit,
         import_price: parseFloat(formImportPrice) || 0, sell_price: parseFloat(formSellPrice) || 0,
         stock_quantity: 0, min_stock: parseInt(formMinStock) || 5,
@@ -1064,6 +1066,32 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                   <div className="text-sm text-gray-400">Chưa có ảnh</div>
                 )}
               </div>
+
+              {/* Barcode display */}
+              {selectedProduct.barcode && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-medium text-gray-700">Mã vạch</h3>
+                    <button onClick={() => {
+                      const printWin = window.open('', '_blank', 'width=400,height=300');
+                      if (!printWin) return;
+                      printWin.document.write(`<html><head><title>In mã vạch - ${selectedProduct.name}</title><style>body{font-family:sans-serif;text-align:center;padding:20px}h3{margin:4px 0;font-size:14px}p{margin:2px 0;font-size:11px;color:#666}svg{max-width:280px;height:auto}</style></head><body>`);
+                      printWin.document.write(`<h3>${selectedProduct.name}</h3>`);
+                      printWin.document.write(`<p>SKU: ${selectedProduct.sku || '—'}</p>`);
+                      const svgEl = document.getElementById('barcode-detail-svg');
+                      if (svgEl) printWin.document.write(svgEl.outerHTML);
+                      printWin.document.write('</body></html>');
+                      printWin.document.close();
+                      setTimeout(() => { printWin.print(); }, 300);
+                    }} className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200">
+                      In mã vạch
+                    </button>
+                  </div>
+                  <div className="flex justify-center">
+                    <svg id="barcode-detail-svg" ref={el => { if (el && selectedProduct.barcode) { try { JsBarcode(el, selectedProduct.barcode, { format: 'CODE128', width: 2, height: 60, displayValue: true, fontSize: 14, margin: 5 }); } catch {} } }} />
+                  </div>
+                </div>
+              )}
 
               {/* Warehouse stock breakdown */}
               {warehouses && warehouses.length > 0 && (
