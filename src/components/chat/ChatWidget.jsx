@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
-import { playMessageSound, showBrowserNotification, incrementTabUnread, resetTabTitle } from '../../utils/notificationSound';
+import { playMessageSound, showBrowserNotification, incrementTabUnread, resetTabTitle, shouldNotify } from '../../utils/notificationSound';
 
 export default function ChatWidget() {
   const { currentUser, tenant, activeModule, navigateTo } = useApp();
@@ -73,15 +73,21 @@ export default function ChatWidget() {
           const msg = payload.new;
           if (msg.sender_id !== currentUser?.id) {
             setTotalUnread(prev => prev + 1);
-            playMessageSound();
+            const notify = shouldNotify(msg, currentUser?.id, currentUser?.name);
+            if (notify.shouldSound) {
+              playMessageSound();
+            }
             // Tab title + browser push khi tab ẩn hoặc không ở module chat
             if (document.hidden || activeModule !== 'chat') {
               incrementTabUnread();
-              showBrowserNotification(
-                `💬 ${msg.sender_name || 'Tin nhắn mới'}`,
-                msg.content || (msg.file_name ? `📎 ${msg.file_name}` : 'Tin nhắn mới'),
-                () => navigateTo('chat', 'messages')
-              );
+              if (notify.shouldPush) {
+                const prefix = notify.isPriority ? '🔴 ' : '';
+                showBrowserNotification(
+                  `${prefix}💬 ${msg.sender_name || 'Tin nhắn mới'}`,
+                  msg.content || (msg.file_name ? `📎 ${msg.file_name}` : 'Tin nhắn mới'),
+                  () => navigateTo('chat', 'messages')
+                );
+              }
             }
           }
         })

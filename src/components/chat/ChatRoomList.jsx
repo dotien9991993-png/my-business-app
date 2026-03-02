@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { getNotificationSettings } from '../../utils/notificationSound';
 
 // Format thời gian tin nhắn cuối
 const formatLastTime = (dateStr) => {
@@ -28,10 +29,12 @@ export default function ChatRoomList({
   onNewChat,
   onNewGroup,
   onOpenSearch,
+  onOpenNotifySettings,
   selectedRoomId
 }) {
   const [search, setSearch] = useState('');
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const notifyMode = getNotificationSettings().chatNotifyMode;
 
   // Tìm tên hiển thị cho phòng
   const getRoomDisplayInfo = (room) => {
@@ -83,14 +86,30 @@ export default function ChatRoomList({
           <span className="text-lg">💬</span>
           <span className="font-bold text-base text-gray-900">Tin nhắn</span>
         </div>
-        <div className="relative">
-          <button
-            onClick={() => setShowNewMenu(!showNewMenu)}
-            className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center hover:bg-green-200 transition-colors font-bold text-sm"
-            title="Tạo mới"
-          >
-            +
-          </button>
+        <div className="flex items-center gap-1">
+          {onOpenNotifySettings && (
+            <button
+              onClick={onOpenNotifySettings}
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors text-sm ${
+                notifyMode === 'dnd'
+                  ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                  : notifyMode === 'mentions'
+                    ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+              title={notifyMode === 'dnd' ? 'Không làm phiền' : notifyMode === 'mentions' ? 'Chỉ @mention' : 'Thông báo'}
+            >
+              {notifyMode === 'dnd' ? '🔕' : notifyMode === 'mentions' ? '📢' : '🔔'}
+            </button>
+          )}
+          <div className="relative">
+            <button
+              onClick={() => setShowNewMenu(!showNewMenu)}
+              className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center hover:bg-green-200 transition-colors font-bold text-sm"
+              title="Tạo mới"
+            >
+              +
+            </button>
           {showNewMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
@@ -110,6 +129,7 @@ export default function ChatRoomList({
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
 

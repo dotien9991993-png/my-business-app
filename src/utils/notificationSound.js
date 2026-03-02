@@ -26,6 +26,12 @@ const DEFAULT_SETTINGS = {
   soundMessage: true,      // Âm thanh tin nhắn mới
   soundSystem: true,       // Âm thanh thông báo hệ thống
   browserPush: true,       // Push notification trên trình duyệt
+  // Smart notification settings
+  chatNotifyMode: 'all',   // 'all' | 'mentions' | 'dnd'
+  afterHoursEnabled: false, // Tự động DND ngoài giờ làm
+  afterHoursStart: 18,      // Giờ bắt đầu DND (18:00)
+  afterHoursEnd: 8,         // Giờ kết thúc DND (08:00)
+  mutedRooms: [],           // Room IDs bị tắt thông báo
 };
 
 export function getNotificationSettings() {
@@ -40,6 +46,90 @@ export function saveNotificationSettings(settings) {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch (_e) { /* ignore */ }
+}
+
+// ============================================================
+// Smart notification logic
+// ============================================================
+
+/** Check if current time is in after-hours DND period */
+function isAfterHours(settings) {
+  if (!settings.afterHoursEnabled) return false;
+  const now = new Date();
+  const vnHour = parseInt(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Ho_Chi_Minh' }));
+  const start = settings.afterHoursStart;
+  const end = settings.afterHoursEnd;
+  // e.g., start=18, end=8 → DND from 18:00 to 08:00
+  if (start > end) {
+    return vnHour >= start || vnHour < end;
+  }
+  return vnHour >= start && vnHour < end;
+}
+
+/** Check if a room is muted */
+export function isRoomMuted(roomId) {
+  const settings = getNotificationSettings();
+  return (settings.mutedRooms || []).includes(roomId);
+}
+
+/** Toggle mute for a room */
+export function toggleRoomMute(roomId) {
+  const settings = getNotificationSettings();
+  const mutedRooms = settings.mutedRooms || [];
+  if (mutedRooms.includes(roomId)) {
+    settings.mutedRooms = mutedRooms.filter(id => id !== roomId);
+  } else {
+    settings.mutedRooms = [...mutedRooms, roomId];
+  }
+  saveNotificationSettings(settings);
+  return settings.mutedRooms.includes(roomId);
+}
+
+/**
+ * Determine whether a chat message should trigger a notification.
+ * @param {object} msg - The incoming message { content, sender_id, sender_name, room_id }
+ * @param {string} currentUserId - The current user's ID
+ * @param {string} currentUserName - The current user's display name
+ * @returns {{ shouldSound: boolean, shouldPush: boolean, isPriority: boolean }}
+ */
+export function shouldNotify(msg, currentUserId, currentUserName) {
+  // Never notify for own messages
+  if (msg.sender_id === currentUserId) return { shouldSound: false, shouldPush: false, isPriority: false };
+
+  const settings = getNotificationSettings();
+  const isPriority = msg.content?.startsWith('!!');
+  const isMentioned = currentUserName && msg.content?.includes(`@${currentUserName}`);
+  const isMentionAll = msg.content?.includes('@Tất cả') || msg.content?.includes('@Tat ca');
+  const isRoomSilenced = (settings.mutedRooms || []).includes(msg.room_id);
+
+  // Priority messages always notify (override DND/mute)
+  if (isPriority) {
+    return { shouldSound: true, shouldPush: true, isPriority: true };
+  }
+
+  // DND mode: block all except priority
+  if (settings.chatNotifyMode === 'dnd') {
+    return { shouldSound: false, shouldPush: false, isPriority: false };
+  }
+
+  // After-hours auto-DND
+  if (isAfterHours(settings)) {
+    return { shouldSound: false, shouldPush: false, isPriority: false };
+  }
+
+  // Muted room: no sound/push
+  if (isRoomSilenced) {
+    return { shouldSound: false, shouldPush: false, isPriority: false };
+  }
+
+  // Mentions-only mode: only notify if mentioned
+  if (settings.chatNotifyMode === 'mentions') {
+    const mentioned = isMentioned || isMentionAll;
+    return { shouldSound: mentioned, shouldPush: mentioned, isPriority: false };
+  }
+
+  // Default: 'all' mode — notify everything
+  return { shouldSound: true, shouldPush: true, isPriority: false };
 }
 
 // ============================================================

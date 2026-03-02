@@ -4,10 +4,11 @@ import { useApp } from '../../contexts/AppContext';
 import ChatRoomList from '../../components/chat/ChatRoomList';
 import ChatWindow from '../../components/chat/ChatWindow';
 import ChatSearchPanel from '../../components/chat/ChatSearchPanel';
+import ChatNotificationSettings from '../../components/chat/ChatNotificationSettings';
 import NewChatModal from '../../components/chat/NewChatModal';
 import ChatGroupModal from '../../components/chat/ChatGroupModal';
 import ZaloChatView from './ZaloChatView';
-import { playMessageSound } from '../../utils/notificationSound';
+import { playMessageSound, shouldNotify } from '../../utils/notificationSound';
 
 const CHAT_TABS = [
   { id: 'internal', label: 'Nội bộ', icon: '💬' },
@@ -24,6 +25,7 @@ export default function ChatModule() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showNotifySettings, setShowNotifySettings] = useState(false);
   const [scrollToMessageId, setScrollToMessageId] = useState(null);
 
   const loadingRef = useRef(false);
@@ -172,8 +174,11 @@ export default function ChatModule() {
                 ...prev,
                 [roomId]: (prev[roomId] || 0) + 1
               }));
-              // Phát âm thanh khi tin nhắn ở room khác
-              playMessageSound();
+              // Smart notification: kiểm tra trước khi phát âm thanh
+              const notify = shouldNotify(msg, currentUser?.id, currentUser?.name);
+              if (notify.shouldSound) {
+                playMessageSound();
+              }
             }
           }
         })
@@ -401,6 +406,10 @@ export default function ChatModule() {
                   onSelectRoom={handleSelectRoom}
                   onClose={() => setShowSearch(false)}
                 />
+              ) : showNotifySettings ? (
+                <ChatNotificationSettings
+                  onClose={() => setShowNotifySettings(false)}
+                />
               ) : (
                 <ChatRoomList
                   rooms={rooms}
@@ -411,6 +420,7 @@ export default function ChatModule() {
                   onNewChat={() => setShowNewChat(true)}
                   onNewGroup={() => setShowNewGroup(true)}
                   onOpenSearch={() => setShowSearch(true)}
+                  onOpenNotifySettings={() => setShowNotifySettings(true)}
                   selectedRoomId={activeRoom?.id}
                 />
               )}
