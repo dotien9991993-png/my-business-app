@@ -8,7 +8,9 @@ import ChatNotificationSettings from '../../components/chat/ChatNotificationSett
 import NewChatModal from '../../components/chat/NewChatModal';
 import ChatGroupModal from '../../components/chat/ChatGroupModal';
 import ZaloChatView from './ZaloChatView';
+import ChatDashboard from '../../components/chat/ChatDashboard';
 import { playMessageSound, shouldNotify } from '../../utils/notificationSound';
+import { isAdmin } from '../../utils/permissionUtils';
 
 const CHAT_TABS = [
   { id: 'internal', label: 'Nội bộ', icon: '💬' },
@@ -389,10 +391,25 @@ export default function ChatModule() {
             <span>{tab.label}</span>
           </button>
         ))}
+        {isAdmin(currentUser) && (
+          <button
+            onClick={() => setChatTab('dashboard')}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              chatTab === 'dashboard'
+                ? 'border-blue-500 text-blue-600 bg-white'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <span>📊</span>
+            <span>Thống kê</span>
+          </button>
+        )}
       </div>
 
       {/* Tab content */}
-      {chatTab === 'internal' ? (
+      {chatTab === 'dashboard' ? (
+        <ChatDashboard />
+      ) : chatTab === 'internal' ? (
         <>
           {/* Desktop: 2 columns */}
           <div className="flex flex-1 min-h-0">
