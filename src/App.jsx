@@ -29,7 +29,7 @@ const WarrantyModule = React.lazy(() => import('./modules/warranty'));
 const HrmModule = React.lazy(() => import('./modules/hrm'));
 const PublicWarrantyCheck = React.lazy(() => import('./components/shared/PublicWarrantyCheck'));
 const ChatModule = React.lazy(() => import('./modules/chat'));
-const ChatWidget = React.lazy(() => import('./components/chat/ChatWidget'));
+const ChatPopupManager = React.lazy(() => import('./components/chat/ChatPopupManager'));
 import { isAdmin } from './utils/permissionUtils';
 import { requestNotificationPermission } from './utils/notificationSound';
 
@@ -303,9 +303,9 @@ function AppContent() {
         canAccessTab={canAccessTab}
       />
 
-      {/* Chat Widget */}
+      {/* Chat Popup System */}
       <Suspense fallback={null}>
-        <ChatWidget />
+        <ChatPopupManager />
       </Suspense>
 
       {/* Floating Attendance Button - Desktop */}
