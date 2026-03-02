@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
 import ChatRoomList from '../../components/chat/ChatRoomList';
 import ChatWindow from '../../components/chat/ChatWindow';
+import ChatSearchPanel from '../../components/chat/ChatSearchPanel';
 import NewChatModal from '../../components/chat/NewChatModal';
 import ChatGroupModal from '../../components/chat/ChatGroupModal';
 import ZaloChatView from './ZaloChatView';
@@ -22,6 +23,8 @@ export default function ChatModule() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const [showNewChat, setShowNewChat] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [scrollToMessageId, setScrollToMessageId] = useState(null);
 
   const loadingRef = useRef(false);
   const activeRoomRef = useRef(null);
@@ -184,9 +187,10 @@ export default function ChatModule() {
     };
   }, [currentUser?.id, roomIdsKey]);
 
-  // Select room
-  const handleSelectRoom = (room) => {
+  // Select room (optionally scroll to a specific message)
+  const handleSelectRoom = (room, messageId) => {
     setActiveRoom(room);
+    setScrollToMessageId(messageId || null);
     setUnreadCounts(prev => {
       const next = { ...prev };
       delete next[room.id];
@@ -389,16 +393,27 @@ export default function ChatModule() {
           <div className="flex flex-1 min-h-0">
             {/* Sidebar - desktop always visible, mobile only when no active room */}
             <div className={`${activeRoom ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 md:border-r md:flex-shrink-0`}>
-              <ChatRoomList
-                rooms={rooms}
-                currentUser={currentUser}
-                allUsers={allUsers}
-                unreadCounts={unreadCounts}
-                onSelectRoom={handleSelectRoom}
-                onNewChat={() => setShowNewChat(true)}
-                onNewGroup={() => setShowNewGroup(true)}
-                selectedRoomId={activeRoom?.id}
-              />
+              {showSearch ? (
+                <ChatSearchPanel
+                  rooms={rooms}
+                  currentUser={currentUser}
+                  allUsers={allUsers}
+                  onSelectRoom={handleSelectRoom}
+                  onClose={() => setShowSearch(false)}
+                />
+              ) : (
+                <ChatRoomList
+                  rooms={rooms}
+                  currentUser={currentUser}
+                  allUsers={allUsers}
+                  unreadCounts={unreadCounts}
+                  onSelectRoom={handleSelectRoom}
+                  onNewChat={() => setShowNewChat(true)}
+                  onNewGroup={() => setShowNewGroup(true)}
+                  onOpenSearch={() => setShowSearch(true)}
+                  selectedRoomId={activeRoom?.id}
+                />
+              )}
             </div>
 
             {/* Chat area - desktop always visible, mobile only when room selected */}
@@ -411,6 +426,8 @@ export default function ChatModule() {
                   onBack={handleBackToList}
                   onRoomUpdated={loadRooms}
                   onNavigate={navigateTo}
+                  scrollToMessageId={scrollToMessageId}
+                  onScrollComplete={() => setScrollToMessageId(null)}
                 />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-gray-400">

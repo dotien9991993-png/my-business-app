@@ -51,7 +51,9 @@ export default function ChatWindow({
   allUsers,
   onBack,
   onRoomUpdated,
-  onNavigate
+  onNavigate,
+  scrollToMessageId,
+  onScrollComplete
 }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -227,13 +229,38 @@ export default function ChatWindow({
   // Scroll to bottom on initial load + load reactions
   useEffect(() => {
     if (initialLoadRef.current && messages.length > 0 && !loading) {
-      messagesEndRef.current?.scrollIntoView();
+      // If scrollToMessageId, try to scroll to that message instead of bottom
+      if (scrollToMessageId) {
+        const targetEl = document.getElementById(`msg-${scrollToMessageId}`);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targetEl.classList.add('bg-yellow-100');
+          setTimeout(() => targetEl.classList.remove('bg-yellow-100'), 2500);
+          onScrollComplete?.();
+        } else {
+          messagesEndRef.current?.scrollIntoView();
+        }
+      } else {
+        messagesEndRef.current?.scrollIntoView();
+      }
       initialLoadRef.current = false;
       // Load reactions for initial messages
       const msgIds = messages.map(m => m.id);
       loadReactions(msgIds);
     }
-  }, [messages, loading, loadReactions]);
+  }, [messages, loading, loadReactions, scrollToMessageId, onScrollComplete]);
+
+  // Handle scrollToMessageId change for already-loaded room
+  useEffect(() => {
+    if (!scrollToMessageId || loading || initialLoadRef.current) return;
+    const targetEl = document.getElementById(`msg-${scrollToMessageId}`);
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetEl.classList.add('bg-yellow-100');
+      setTimeout(() => targetEl.classList.remove('bg-yellow-100'), 2500);
+      onScrollComplete?.();
+    }
+  }, [scrollToMessageId, loading, onScrollComplete]);
 
   // Mark as read
   useEffect(() => {
@@ -1107,7 +1134,7 @@ export default function ChatWindow({
               }
               const msg = item.data;
               return (
-                <div key={msg.id} data-msg-id={msg.id} className="transition-colors duration-500">
+                <div key={msg.id} id={`msg-${msg.id}`} data-msg-id={msg.id} className="transition-colors duration-500">
                   <ChatMessage
                     message={msg}
                     isOwn={msg.sender_id === currentUser?.id}
