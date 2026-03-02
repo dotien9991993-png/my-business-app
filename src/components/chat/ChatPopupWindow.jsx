@@ -412,14 +412,14 @@ export default function ChatPopupWindow({
     return (
       <div
         onClick={onMinimize}
-        className="flex items-center gap-2 px-3 py-2 bg-white border rounded-t-lg shadow-lg cursor-pointer hover:bg-gray-50 transition-colors min-w-[200px] max-w-[260px]"
+        className="flex items-center gap-2 px-3 py-2.5 bg-white border rounded-t-lg shadow-lg cursor-pointer hover:bg-gray-50 transition-colors min-w-[220px] max-w-[300px]"
         style={{ boxShadow: '0 -2px 12px rgba(0,0,0,0.15)' }}
       >
-        <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xs flex-shrink-0 overflow-hidden relative">
+        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xs flex-shrink-0 overflow-hidden relative">
           {roomAvatar ? (
-            <img src={roomAvatar} alt="" className="w-7 h-7 rounded-full object-cover" />
+            <img src={roomAvatar} alt="" className="w-8 h-8 rounded-full object-cover" />
           ) : isGroup ? (
-            <span className="text-sm">👥</span>
+            <span className="text-base">👥</span>
           ) : (
             <span>{roomName.charAt(0).toUpperCase()}</span>
           )}
@@ -427,12 +427,12 @@ export default function ChatPopupWindow({
             <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
           )}
         </div>
-        <span className="text-sm font-medium text-gray-800 truncate flex-1">{roomName}</span>
-        <button onClick={(e) => { e.stopPropagation(); onExpand(); }} className="text-gray-400 hover:text-blue-500 text-xs p-0.5" title="Mở rộng">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+        <span className="text-[15px] font-medium text-gray-800 truncate flex-1">{roomName}</span>
+        <button onClick={(e) => { e.stopPropagation(); onExpand(); }} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-gray-100 rounded-full" title="Mở rộng">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
         </button>
-        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-400 hover:text-red-500 text-xs p-0.5" title="Đóng">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-full" title="Đóng">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
     );
@@ -441,10 +441,10 @@ export default function ChatPopupWindow({
   return (
     <div
       className="flex flex-col bg-white border rounded-t-lg shadow-xl"
-      style={{ width: 328, height: 455, boxShadow: '0 12px 28px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)' }}
+      style={{ width: 380, height: 520, boxShadow: '0 12px 28px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)' }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-[#1B5E20] text-white rounded-t-lg flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 bg-[#16a34a] text-white rounded-t-lg flex-shrink-0" style={{ height: 48 }}>
         <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xs flex-shrink-0 overflow-hidden">
           {roomAvatar ? (
             <img src={roomAvatar} alt="" className="w-8 h-8 rounded-full object-cover" />
@@ -455,18 +455,18 @@ export default function ChatPopupWindow({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold truncate">{roomName}</div>
+          <div className="text-[15px] font-bold truncate">{roomName}</div>
           {isGroup && (
-            <div className="text-[10px] text-green-200">{activeMembers.length + 1} thành viên</div>
+            <div className="text-[11px] text-green-200">{activeMembers.length + 1} thành viên</div>
           )}
         </div>
-        <button onClick={onMinimize} className="text-white/70 hover:text-white p-0.5" title="Thu nhỏ">
+        <button onClick={onMinimize} className="w-8 h-8 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 rounded-full" title="Thu nhỏ">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
         </button>
-        <button onClick={onExpand} className="text-white/70 hover:text-white p-0.5" title="Mở rộng">
+        <button onClick={onExpand} className="w-8 h-8 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 rounded-full" title="Mở rộng">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
         </button>
-        <button onClick={onClose} className="text-white/70 hover:text-white p-0.5" title="Đóng">
+        <button onClick={onClose} className="w-8 h-8 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 rounded-full" title="Đóng">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -490,7 +490,7 @@ export default function ChatPopupWindow({
             {hasMore && (
               <button
                 onClick={() => loadMessages(messages[0]?.created_at)}
-                className="w-full text-center py-1 text-[10px] text-blue-500 hover:underline"
+                className="w-full text-center py-2 text-xs text-blue-500 hover:underline"
               >
                 Xem tin cũ hơn
               </button>
@@ -498,8 +498,8 @@ export default function ChatPopupWindow({
             {messageGroups.map((item, idx) => {
               if (item.type === 'date') {
                 return (
-                  <div key={`d-${idx}`} className="flex justify-center my-1.5">
-                    <span className="text-[9px] text-gray-400 bg-gray-200 rounded-full px-2 py-0.5">{formatDateSep(item.date)}</span>
+                  <div key={`d-${idx}`} className="flex justify-center my-2">
+                    <span className="text-xs text-gray-400 bg-gray-200 rounded-full px-2.5 py-0.5">{formatDateSep(item.date)}</span>
                   </div>
                 );
               }
@@ -513,15 +513,15 @@ export default function ChatPopupWindow({
 
               if (msg.is_deleted) {
                 return (
-                  <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} px-2 mb-0.5`}>
-                    <span className="italic text-gray-400 text-[11px]">Tin nhắn đã xóa</span>
+                  <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} px-2 mb-2`}>
+                    <span className="italic text-gray-400 text-xs">Tin nhắn đã xóa</span>
                   </div>
                 );
               }
               if (isSystem) {
                 return (
-                  <div key={msg.id} className="flex justify-center mb-1 px-2">
-                    <span className="text-[9px] text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{msg.content}</span>
+                  <div key={msg.id} className="flex justify-center mb-2 px-2">
+                    <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2.5 py-0.5">{msg.content}</span>
                   </div>
                 );
               }
@@ -529,19 +529,19 @@ export default function ChatPopupWindow({
               return (
                 <div
                   key={msg.id}
-                  className={`flex ${isOwn ? 'justify-end' : 'justify-start'} px-2 mb-0.5 group relative`}
+                  className={`flex ${isOwn ? 'justify-end' : 'justify-start'} px-2 mb-2 group relative`}
                   onMouseEnter={() => setHoverMsgId(msg.id)}
                   onMouseLeave={() => { setHoverMsgId(null); setShowEmojiPicker(null); }}
                 >
                   <div className={`max-w-[85%] ${isOwn ? 'order-1' : 'order-2'}`}>
                     {/* Sender name (group, not own) */}
                     {isGroup && !isOwn && (
-                      <div className="text-[9px] text-gray-500 mb-0.5 ml-1 font-medium">{msg.sender_name}</div>
+                      <div className="text-sm text-green-800 mb-0.5 ml-1 font-bold">{msg.sender_name}</div>
                     )}
 
                     {/* Reply ref */}
                     {reply && (
-                      <div className={`text-[10px] rounded-t-md px-2 py-0.5 border-l-2 mb-0.5 ${
+                      <div className={`text-xs rounded-t-md px-2.5 py-1 border-l-2 mb-0.5 ${
                         isOwn ? 'bg-green-800/30 border-green-300 text-green-100' : 'bg-gray-200 border-gray-400 text-gray-600'
                       }`}>
                         <span className="font-medium">{reply.sender_name}: </span>
@@ -550,8 +550,8 @@ export default function ChatPopupWindow({
                     )}
 
                     {/* Bubble */}
-                    <div className={`relative rounded-2xl px-2.5 py-1 text-[13px] leading-snug ${
-                      isOwn ? 'bg-[#1B5E20] text-white rounded-br-sm' : 'bg-white text-gray-900 rounded-bl-sm border'
+                    <div className={`relative rounded-[18px] px-4 py-3 text-[15px] leading-snug ${
+                      isOwn ? 'bg-[#16a34a] text-white rounded-br-sm' : 'bg-[#f3f4f6] text-gray-900 rounded-bl-sm'
                     }`}>
                       {/* Image */}
                       {isImage && msg.file_url && (
@@ -579,7 +579,7 @@ export default function ChatPopupWindow({
                       {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
 
                       {/* Time */}
-                      <div className={`text-[9px] mt-0.5 ${isOwn ? 'text-green-200 text-right' : 'text-gray-400'}`}>
+                      <div className={`text-xs mt-0.5 ${isOwn ? 'text-green-200 text-right' : 'text-gray-400'}`}>
                         {msg.is_edited && <span>sửa · </span>}
                         {formatPopupTime(msg.created_at)}
                       </div>
@@ -608,9 +608,9 @@ export default function ChatPopupWindow({
 
                   {/* Hover action bar */}
                   {hoverMsgId === msg.id && !isSystem && (
-                    <div className={`absolute ${isOwn ? 'left-2' : 'right-2'} top-0 flex items-center gap-0.5 bg-white border rounded-lg shadow-sm px-1 py-0.5 z-10`}>
-                      <button onClick={() => setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)} className="hover:bg-gray-100 rounded p-0.5 text-xs" title="React">😀</button>
-                      <button onClick={() => { setReplyTo(msg); inputRef.current?.focus(); }} className="hover:bg-gray-100 rounded p-0.5 text-xs" title="Reply">↩️</button>
+                    <div className={`absolute ${isOwn ? 'left-2' : 'right-2'} top-0 flex items-center gap-0.5 bg-white border rounded-lg shadow-sm px-1.5 py-1 z-10`}>
+                      <button onClick={() => setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-100 rounded text-sm" title="React">😀</button>
+                      <button onClick={() => { setReplyTo(msg); inputRef.current?.focus(); }} className="w-7 h-7 flex items-center justify-center hover:bg-gray-100 rounded text-sm" title="Reply">↩️</button>
                     </div>
                   )}
 
@@ -632,21 +632,21 @@ export default function ChatPopupWindow({
 
       {/* Reply bar */}
       {replyTo && (
-        <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 border-t text-[10px]">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border-t text-xs">
           <span className="text-gray-500">Trả lời</span>
           <span className="font-medium text-gray-700 truncate flex-1">{replyTo.sender_name}: {replyTo.content || '📎'}</span>
-          <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500">✕</button>
+          <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500 text-base">✕</button>
         </div>
       )}
 
       {/* @Mention popup */}
       {showMention && filteredMembers.length > 0 && (
-        <div className="border-t bg-white max-h-28 overflow-y-auto">
+        <div className="border-t bg-white max-h-32 overflow-y-auto">
           {filteredMembers.slice(0, 6).map(m => (
             <button
               key={m.user_id}
               onClick={() => handleSelectMention(m)}
-              className="w-full text-left px-3 py-1.5 text-xs hover:bg-green-50 flex items-center gap-2"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 flex items-center gap-2"
             >
               {m.isAll ? '📢' : '👤'} {m.user_name}
             </button>
@@ -655,18 +655,18 @@ export default function ChatPopupWindow({
       )}
 
       {/* Input area */}
-      <div className="flex items-end gap-1 px-2 py-1.5 border-t bg-white flex-shrink-0">
+      <div className="flex items-end gap-1.5 px-3 py-2 border-t bg-white flex-shrink-0">
         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
         <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
         <button
           onClick={() => imageInputRef.current?.click()}
-          className="p-1 text-gray-400 hover:text-green-600 flex-shrink-0"
+          className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-green-600 hover:bg-gray-100 rounded-full flex-shrink-0"
           title="Gửi ảnh"
           disabled={uploading}
         >🖼️</button>
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="p-1 text-gray-400 hover:text-green-600 flex-shrink-0"
+          className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-green-600 hover:bg-gray-100 rounded-full flex-shrink-0"
           title="Đính kèm file"
           disabled={uploading}
         >📎</button>
@@ -676,14 +676,15 @@ export default function ChatPopupWindow({
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Nhập tin nhắn..."
-          className="flex-1 resize-none text-[13px] py-1.5 px-2.5 bg-gray-100 rounded-full max-h-16 focus:outline-none focus:ring-1 focus:ring-green-500"
+          className="flex-1 resize-none text-[15px] py-2 px-3 bg-gray-100 rounded-full max-h-20 focus:outline-none focus:ring-1 focus:ring-green-500"
           rows={1}
+          style={{ minHeight: 40 }}
           disabled={sending || uploading}
         />
         <button
           onClick={() => sendMsg(newMessage)}
           disabled={(!newMessage.trim() && !uploading) || sending}
-          className="p-1 text-green-600 hover:text-green-700 disabled:text-gray-300 flex-shrink-0"
+          className="w-9 h-9 flex items-center justify-center text-green-600 hover:text-green-700 disabled:text-gray-300 flex-shrink-0"
           title="Gửi"
         >
           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>

@@ -6,7 +6,7 @@ import ChatPopupWindow from './ChatPopupWindow';
 import ChatNotificationSettings from './ChatNotificationSettings';
 import { playMessageSound, shouldNotify, showBrowserNotification, incrementTabUnread } from '../../utils/notificationSound';
 
-const MAX_WINDOWS = 3;
+const MAX_WINDOWS = 2;
 
 export default function ChatPopupManager() {
   const { currentUser, tenant, allUsers, activeModule, navigateTo } = useApp();
@@ -319,7 +319,7 @@ export default function ChatPopupManager() {
             setShowNewChat(false);
           }
         }}
-        className="fixed bottom-20 md:bottom-6 right-4 md:right-24 z-[9998] w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 bg-[#1B5E20] text-white"
+        className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-[9998] w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-all hover:scale-110 bg-[#16a34a] text-white"
         title="Tin nhắn (Ctrl+Shift+M)"
       >
         💬
@@ -332,7 +332,7 @@ export default function ChatPopupManager() {
 
       {/* Popup List */}
       {showList && !isMobile && !showSettings && !showNewChat && (
-        <div className="fixed bottom-20 md:bottom-[88px] right-4 md:right-24 z-[9999]">
+        <div className="fixed bottom-20 md:bottom-[80px] right-4 md:right-6 z-[9999]">
           <ChatPopupList
             rooms={rooms}
             currentUser={currentUser}
@@ -349,8 +349,8 @@ export default function ChatPopupManager() {
 
       {/* Settings panel (in popup position) */}
       {showSettings && !isMobile && (
-        <div className="fixed bottom-20 md:bottom-[88px] right-4 md:right-24 z-[9999]">
-          <div className="bg-white rounded-lg shadow-xl border overflow-hidden" style={{ width: 360, maxHeight: 500, boxShadow: '0 12px 28px rgba(0,0,0,0.2)' }}>
+        <div className="fixed bottom-20 md:bottom-[80px] right-4 md:right-6 z-[9999]">
+          <div className="bg-white rounded-lg shadow-xl border overflow-hidden" style={{ width: 400, maxHeight: 550, boxShadow: '0 12px 28px rgba(0,0,0,0.2)' }}>
             <ChatNotificationSettings onClose={() => { setShowSettings(false); setShowList(true); }} />
           </div>
         </div>
@@ -358,8 +358,8 @@ export default function ChatPopupManager() {
 
       {/* New chat panel */}
       {showNewChat && !isMobile && (
-        <div className="fixed bottom-20 md:bottom-[88px] right-4 md:right-24 z-[9999]">
-          <div className="bg-white rounded-lg shadow-xl border overflow-hidden flex flex-col" style={{ width: 360, maxHeight: 500, boxShadow: '0 12px 28px rgba(0,0,0,0.2)' }}>
+        <div className="fixed bottom-20 md:bottom-[80px] right-4 md:right-6 z-[9999]">
+          <div className="bg-white rounded-lg shadow-xl border overflow-hidden flex flex-col" style={{ width: 400, maxHeight: 550, boxShadow: '0 12px 28px rgba(0,0,0,0.2)' }}>
             <div className="flex items-center gap-2 px-4 py-3 border-b">
               <button onClick={() => { setShowNewChat(false); setShowList(true); }} className="p-1 hover:bg-gray-100 rounded-full text-gray-500">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -407,8 +407,8 @@ export default function ChatPopupManager() {
 
       {/* Chat Windows (desktop only) */}
       {!isMobile && openWindows.map((win, idx) => {
-        const rightOffset = 88 + (showList || showSettings || showNewChat ? 368 : 0);
-        const winRight = rightOffset + idx * 336;
+        const rightOffset = 24 + 56 + 8 + (showList || showSettings || showNewChat ? 408 : 0);
+        const winRight = rightOffset + idx * 388;
 
         return (
           <div

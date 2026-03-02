@@ -308,25 +308,6 @@ function AppContent() {
         <ChatPopupManager />
       </Suspense>
 
-      {/* Floating Attendance Button - Desktop */}
-      {(() => {
-        const currentShift = todayAttendances.find(a => a.check_in && !a.check_out);
-        const totalHours = todayAttendances.reduce((sum, a) => sum + parseFloat(a.work_hours || 0), 0);
-        const allCheckedOut = todayAttendances.length > 0 && todayAttendances.every(a => a.check_out);
-
-        return (
-          <button
-            onClick={() => setShowAttendancePopup(true)}
-            className={`hidden md:flex fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg items-center justify-center text-2xl transition-all hover:scale-110 ${
-              currentShift ? 'bg-blue-500 text-white' : allCheckedOut ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white animate-bounce'
-            }`}
-            title={currentShift ? 'Đang làm việc' : allCheckedOut ? `Đã làm ${totalHours.toFixed(1)}h` : 'Chấm công'}
-          >
-            {currentShift ? '🟢' : allCheckedOut ? '✅' : '⏰'}
-          </button>
-        );
-      })()}
-
       {showAttendancePopup && (
         <AttendancePopup
           currentUser={currentUser}
