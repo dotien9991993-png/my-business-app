@@ -1,4 +1,4 @@
-import React, { useEffect, Suspense } from 'react';
+import React, { useEffect, Suspense, Component } from 'react';
 import { supabase } from './supabaseClient';
 
 // Context providers
@@ -16,28 +16,76 @@ import MobileBottomTabs from './components/layout/MobileBottomTabs';
 import AttendancePopup from './components/shared/AttendancePopup';
 import PermissionsModal from './components/shared/PermissionsModal';
 
-// Module components (lazy loaded)
-const DashboardModule = React.lazy(() => import('./modules/dashboard'));
-const MediaModule = React.lazy(() => import('./modules/media'));
-const TechnicalModule = React.lazy(() => import('./modules/technical'));
-const WarehouseModule = React.lazy(() => import('./modules/warehouse'));
-const SalesModule = React.lazy(() => import('./modules/sales'));
-const FinanceModule = React.lazy(() => import('./modules/finance'));
-const MySalaryView = React.lazy(() => import('./modules/finance/MySalaryView'));
-const SettingsModule = React.lazy(() => import('./modules/settings'));
-const WarrantyModule = React.lazy(() => import('./modules/warranty'));
-const HrmModule = React.lazy(() => import('./modules/hrm'));
-const PublicWarrantyCheck = React.lazy(() => import('./components/shared/PublicWarrantyCheck'));
-const ChatModule = React.lazy(() => import('./modules/chat'));
-const ChatPopupManager = React.lazy(() => import('./components/chat/ChatPopupManager'));
+// Lazy import with retry (handles chunk load failures)
+const lazyWithRetry = (importFn) => React.lazy(() =>
+  importFn().catch(() => {
+    const key = 'chunk_reload';
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1');
+      window.location.reload();
+    }
+    return { default: () => null };
+  })
+);
+
+// Module components (lazy loaded with retry)
+const DashboardModule = lazyWithRetry(() => import('./modules/dashboard'));
+const MediaModule = lazyWithRetry(() => import('./modules/media'));
+const TechnicalModule = lazyWithRetry(() => import('./modules/technical'));
+const WarehouseModule = lazyWithRetry(() => import('./modules/warehouse'));
+const SalesModule = lazyWithRetry(() => import('./modules/sales'));
+const FinanceModule = lazyWithRetry(() => import('./modules/finance'));
+const MySalaryView = lazyWithRetry(() => import('./modules/finance/MySalaryView'));
+const SettingsModule = lazyWithRetry(() => import('./modules/settings'));
+const WarrantyModule = lazyWithRetry(() => import('./modules/warranty'));
+const HrmModule = lazyWithRetry(() => import('./modules/hrm'));
+const PublicWarrantyCheck = lazyWithRetry(() => import('./components/shared/PublicWarrantyCheck'));
+const ChatModule = lazyWithRetry(() => import('./modules/chat'));
+const ChatPopupManager = lazyWithRetry(() => import('./components/chat/ChatPopupManager'));
 import { isAdmin } from './utils/permissionUtils';
 import { requestNotificationPermission } from './utils/notificationSound';
 
-// Global modals (lazy loaded)
-const CreateTaskModal = React.lazy(() => import('./modules/media/CreateTaskModal'));
-const TaskModal = React.lazy(() => import('./modules/media/TaskModal'));
-const CreateJobModal = React.lazy(() => import('./modules/technical/CreateJobModal'));
-const JobDetailModal = React.lazy(() => import('./modules/technical/JobDetailModal'));
+// Global modals (lazy loaded with retry)
+const CreateTaskModal = lazyWithRetry(() => import('./modules/media/CreateTaskModal'));
+const TaskModal = lazyWithRetry(() => import('./modules/media/TaskModal'));
+const CreateJobModal = lazyWithRetry(() => import('./modules/technical/CreateJobModal'));
+const JobDetailModal = lazyWithRetry(() => import('./modules/technical/JobDetailModal'));
+
+// ErrorBoundary — catches JS errors in module rendering
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(err, info) {
+    console.error('ErrorBoundary caught:', err, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h2 className="text-xl font-bold text-red-800 mb-2">Đã xảy ra lỗi</h2>
+            <p className="text-red-600 mb-4 text-sm">{this.state.error?.message || 'Không thể tải module'}</p>
+            <button
+              onClick={() => { this.setState({ hasError: false, error: null }); }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mr-2"
+            >Thử lại</button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            >Tải lại trang</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const ModuleLoading = () => (
   <div className="flex items-center justify-center py-20">
@@ -88,6 +136,11 @@ function AppContent() {
     markAsRead, markAllAsRead, deleteNotification, clearReadNotifications,
     addNotification, checkDeadlineNotifications
   } = useNotifications();
+
+  // Clear chunk reload flag on successful load
+  useEffect(() => {
+    sessionStorage.removeItem('chunk_reload');
+  }, []);
 
   // Xin quyền browser notification sau khi đăng nhập
   useEffect(() => {
@@ -250,45 +303,40 @@ function AppContent() {
       />
 
       <div className="max-w-7xl mx-auto pb-20 md:pb-0">
-        <Suspense fallback={<ModuleLoading />}>
-          {activeModule === 'dashboard' && !canAccessModule('dashboard') && <NoModuleAccess moduleName="Báo Cáo" />}
-          {activeModule === 'dashboard' && canAccessModule('dashboard') && <DashboardModule />}
+        <ErrorBoundary key={activeModule}>
+          <Suspense fallback={<ModuleLoading />}>
+            {activeModule === 'dashboard' && (canAccessModule('dashboard') ? <DashboardModule /> : <NoModuleAccess moduleName="Báo Cáo" />)}
 
-          {activeModule === 'media' && !canAccessModule('media') && <NoModuleAccess moduleName="Media" />}
-          {activeModule === 'media' && canAccessModule('media') && <MediaModule />}
+            {activeModule === 'media' && (canAccessModule('media') ? <MediaModule /> : <NoModuleAccess moduleName="Media" />)}
 
-          {activeModule === 'warehouse' && !canAccessModule('warehouse') && <NoModuleAccess moduleName="Kho" />}
-          {activeModule === 'warehouse' && canAccessModule('warehouse') && <WarehouseModule />}
+            {activeModule === 'warehouse' && (canAccessModule('warehouse') ? <WarehouseModule /> : <NoModuleAccess moduleName="Kho" />)}
 
-          {activeModule === 'sales' && !canAccessModule('sales') && <NoModuleAccess moduleName="Sale" />}
-          {activeModule === 'sales' && canAccessModule('sales') && <SalesModule />}
+            {activeModule === 'sales' && (canAccessModule('sales') ? <SalesModule /> : <NoModuleAccess moduleName="Sale" />)}
 
-          {activeModule === 'technical' && !canAccessModule('technical') && <NoModuleAccess moduleName="Kỹ thuật" />}
-          {activeModule === 'technical' && canAccessModule('technical') && <TechnicalModule />}
+            {activeModule === 'technical' && (canAccessModule('technical') ? <TechnicalModule /> : <NoModuleAccess moduleName="Kỹ thuật" />)}
 
-          {activeModule === 'finance' && !canAccessModule('finance') && activeTab === 'salaries' && currentUser?.role !== 'Admin' && currentUser?.role !== 'admin' && <MySalaryView />}
-          {activeModule === 'finance' && !canAccessModule('finance') && activeTab !== 'salaries' && <NoModuleAccess moduleName="Tài chính" />}
-          {activeModule === 'finance' && canAccessModule('finance') && <FinanceModule />}
+            {activeModule === 'finance' && (canAccessModule('finance') ? <FinanceModule /> : activeTab === 'salaries' && !isAdmin(currentUser) ? <MySalaryView /> : <NoModuleAccess moduleName="Tài chính" />)}
 
-          {activeModule === 'warranty' && !canAccessModule('warranty') && <NoModuleAccess moduleName="Bảo hành" />}
-          {activeModule === 'warranty' && canAccessModule('warranty') && <WarrantyModule />}
+            {activeModule === 'warranty' && (canAccessModule('warranty') ? <WarrantyModule /> : <NoModuleAccess moduleName="Bảo hành" />)}
 
-          {activeModule === 'hrm' && !canAccessModule('hrm') && <NoModuleAccess moduleName="Nhân sự" />}
-          {activeModule === 'hrm' && canAccessModule('hrm') && <HrmModule />}
+            {activeModule === 'hrm' && (canAccessModule('hrm') ? <HrmModule /> : <NoModuleAccess moduleName="Nhân sự" />)}
 
-          {activeModule === 'settings' && isAdmin(currentUser) && <SettingsModule />}
+            {activeModule === 'settings' && (isAdmin(currentUser) ? <SettingsModule /> : <NoModuleAccess moduleName="Cài đặt" />)}
 
-          {activeModule === 'chat' && <ChatModule />}
-        </Suspense>
+            {activeModule === 'chat' && <ChatModule />}
+          </Suspense>
+        </ErrorBoundary>
       </div>
 
       {/* Global modals */}
-      <Suspense fallback={null}>
-        {showModal && <TaskModal selectedTask={selectedTask} setSelectedTask={setSelectedTask} setShowModal={setShowModal} currentUser={currentUser} allUsers={allUsers} tenant={tenant} changeStatus={changeStatus} addComment={addComment} addPostLink={addPostLink} removePostLink={removePostLink} deleteTask={deleteTask} loadTasks={loadTasks} addNotification={addNotification} />}
-        {showCreateTaskModal && <CreateTaskModal currentUser={currentUser} allUsers={allUsers} tenant={tenant} setShowCreateTaskModal={setShowCreateTaskModal} createNewTask={createNewTask} />}
-        {showCreateJobModal && <CreateJobModal showCreateJobModal={showCreateJobModal} setShowCreateJobModal={setShowCreateJobModal} prefillJobData={prefillJobData} currentUser={currentUser} allUsers={allUsers} createTechnicalJob={createTechnicalJob} />}
-        {showJobModal && <JobDetailModal selectedJob={selectedJob} setSelectedJob={setSelectedJob} showJobModal={showJobModal} setShowJobModal={setShowJobModal} currentUser={currentUser} tenant={tenant} allUsers={allUsers} loadTechnicalJobs={loadTechnicalJobs} loadFinanceData={loadFinanceData} saveJobEditDraft={saveJobEditDraft} loadJobEditDraft={loadJobEditDraft} clearJobEditDraft={clearJobEditDraft} deleteTechnicalJob={deleteTechnicalJob} addNotification={addNotification} />}
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          {showModal && <TaskModal selectedTask={selectedTask} setSelectedTask={setSelectedTask} setShowModal={setShowModal} currentUser={currentUser} allUsers={allUsers} tenant={tenant} changeStatus={changeStatus} addComment={addComment} addPostLink={addPostLink} removePostLink={removePostLink} deleteTask={deleteTask} loadTasks={loadTasks} addNotification={addNotification} />}
+          {showCreateTaskModal && <CreateTaskModal currentUser={currentUser} allUsers={allUsers} tenant={tenant} setShowCreateTaskModal={setShowCreateTaskModal} createNewTask={createNewTask} />}
+          {showCreateJobModal && <CreateJobModal showCreateJobModal={showCreateJobModal} setShowCreateJobModal={setShowCreateJobModal} prefillJobData={prefillJobData} currentUser={currentUser} allUsers={allUsers} createTechnicalJob={createTechnicalJob} />}
+          {showJobModal && <JobDetailModal selectedJob={selectedJob} setSelectedJob={setSelectedJob} showJobModal={showJobModal} setShowJobModal={setShowJobModal} currentUser={currentUser} tenant={tenant} allUsers={allUsers} loadTechnicalJobs={loadTechnicalJobs} loadFinanceData={loadFinanceData} saveJobEditDraft={saveJobEditDraft} loadJobEditDraft={loadJobEditDraft} clearJobEditDraft={clearJobEditDraft} deleteTechnicalJob={deleteTechnicalJob} addNotification={addNotification} />}
+        </Suspense>
+      </ErrorBoundary>
       {showPermissionsModal && <PermissionsModal allUsers={allUsers} onClose={() => setShowPermissionsModal(false)} loadUsers={loadUsers} supabase={supabase} />}
 
       <MobileBottomTabs
