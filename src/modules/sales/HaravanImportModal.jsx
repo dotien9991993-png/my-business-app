@@ -2,7 +2,8 @@ import React, { useState, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN } from '../../utils/dateUtils';
-import * as XLSX from 'xlsx';
+// XLSX loaded dynamically khi cần
+const getXLSX = () => import('xlsx');
 import { logActivity } from '../../lib/activityLog';
 
 // Haravan header → field mapping
@@ -147,8 +148,9 @@ export default function HaravanImportModal({ isOpen, onClose, tenant, currentUse
     if (!file) return;
     setFileName(file.name);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await getXLSX();
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
         const sheet = wb.Sheets[wb.SheetNames[0]];

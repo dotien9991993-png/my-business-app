@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 import { shippingProviders as defaultShippingProviders } from '../../constants/salesConstants';
@@ -6,7 +6,8 @@ import { shippingProviders as defaultShippingProviders } from '../../constants/s
 import SalesOrdersView from './SalesOrdersView';
 import SalesCustomersView from './SalesCustomersView';
 import SalesProductsView from './SalesProductsView';
-import SalesReportView from './SalesReportView';
+// Lazy load view dùng recharts
+const SalesReportView = React.lazy(() => import('./SalesReportView'));
 import SalesReconciliationView from './SalesReconciliationView';
 import SalesShippingView from './SalesShippingView';
 import SalesCodView from './SalesCodView';
@@ -46,8 +47,10 @@ export default function SalesModule() {
     return defaultShippingProviders;
   }, [shippingConfigs, getSettingValue]);
 
+  const tabFallback = <div className="flex items-center justify-center py-20"><div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+
   return (
-    <>
+    <Suspense fallback={tabFallback}>
       {activeTab === 'orders' && canAccessTab('sales', 'orders') && (
         <SalesOrdersView
           tenant={tenant} currentUser={currentUser}
@@ -128,6 +131,6 @@ export default function SalesModule() {
         />
       )}
       {!canAccessTab('sales', activeTab) && activeTab !== 'reconciliation' && <NoAccess />}
-    </>
+    </Suspense>
   );
 }

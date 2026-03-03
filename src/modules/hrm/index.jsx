@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 
 import HrmEmployeesView from './HrmEmployeesView';
 import HrmAttendanceView from './HrmAttendanceView';
 import HrmScheduleView from './HrmScheduleView';
-import HrmKpiView from './HrmKpiView';
 import HrmPayrollView from './HrmPayrollView';
 import HrmLeaveRequestsView from './HrmLeaveRequestsView';
-import HrmReportView from './HrmReportView';
+
+// Lazy load views dùng recharts
+const HrmKpiView = React.lazy(() => import('./HrmKpiView'));
+const HrmReportView = React.lazy(() => import('./HrmReportView'));
 import HrmSettingsView from './HrmSettingsView';
 
 const NoAccess = () => (
@@ -30,8 +32,10 @@ export default function HrmModule() {
     loadHrmData, getSettingValue
   } = useData();
 
+  const tabFallback = <div className="flex items-center justify-center py-20"><div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+
   return (
-    <>
+    <Suspense fallback={tabFallback}>
       {activeTab === 'employees' && canAccessTab('hrm', 'employees') && (
         <HrmEmployeesView
           employees={hrmEmployees} departments={hrmDepartments} positions={hrmPositions}
@@ -94,6 +98,6 @@ export default function HrmModule() {
         />
       )}
       {!canAccessTab('hrm', activeTab) && <NoAccess />}
-    </>
+    </Suspense>
   );
 }

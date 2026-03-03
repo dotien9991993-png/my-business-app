@@ -102,4 +102,15 @@ export default defineConfig({
     drop: ['debugger'],
     pure: ['console.log', 'console.debug'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-recharts': ['recharts'],
+          'vendor-xlsx': ['xlsx'],
+        },
+      },
+    },
+  },
 })

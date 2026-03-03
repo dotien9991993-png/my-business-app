@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 
@@ -9,7 +9,8 @@ import WarehouseHistoryView from './WarehouseHistoryView';
 import WarehousesView from './WarehousesView';
 import WarehouseStocktakeView from './WarehouseStocktakeView';
 import WarehouseTransferView from './WarehouseTransferView';
-import WarehouseReportView from './WarehouseReportView';
+// Lazy load view dùng recharts
+const WarehouseReportView = React.lazy(() => import('./WarehouseReportView'));
 import WarehouseSuppliersView from './WarehouseSuppliersView';
 
 const NoAccess = () => (
@@ -34,8 +35,10 @@ export default function WarehouseModule() {
   };
   const getTabPermission = (tab) => tabPermissionMap[tab] || tab;
 
+  const tabFallback = <div className="flex items-center justify-center py-20"><div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+
   return (
-    <>
+    <Suspense fallback={tabFallback}>
       {activeTab === 'inventory' && canAccessTab('warehouse', 'inventory') && <WarehouseInventoryView products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} dynamicCategories={dynamicCategories} dynamicUnits={dynamicUnits} comboItems={comboItems} productVariants={productVariants} orders={orders} suppliers={suppliers} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
       {activeTab === 'import' && canAccessTab('warehouse', 'import') && <WarehouseImportView products={products} warehouses={warehouses} warehouseStock={warehouseStock} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} suppliers={suppliers} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
       {activeTab === 'export' && canAccessTab('warehouse', 'export') && <WarehouseExportView products={products} warehouses={warehouses} warehouseStock={warehouseStock} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
@@ -46,6 +49,6 @@ export default function WarehouseModule() {
       {activeTab === 'suppliers' && canAccessTab('warehouse', 'suppliers') && <WarehouseSuppliersView suppliers={suppliers} products={products} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} warehouses={warehouses} hasPermission={hasPermission} canEdit={canEdit} />}
       {activeTab === 'warehouses' && canAccessTab('warehouse', 'warehouses') && <WarehousesView warehouses={warehouses} warehouseStock={warehouseStock} products={products} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
       {!canAccessTab('warehouse', getTabPermission(activeTab)) && <NoAccess />}
-    </>
+    </Suspense>
   );
 }

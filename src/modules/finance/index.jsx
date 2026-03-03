@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { isAdmin } from '../../utils/permissionUtils';
 
 import { receiptCategories as defaultReceiptCategories } from '../../constants/financeConstants';
-import FinanceDashboard from './FinanceDashboard';
 import ReceiptsView from './ReceiptsView';
 import DebtsView from './DebtsView';
 import SalariesView from './SalariesView';
 import MySalaryView from './MySalaryView';
-import ReportsView from './ReportsView';
+
+// Lazy load views dùng recharts
+const FinanceDashboard = React.lazy(() => import('./FinanceDashboard'));
+const ReportsView = React.lazy(() => import('./ReportsView'));
 
 const NoAccess = () => (
   <div className="p-6">
@@ -32,8 +34,10 @@ export default function FinanceModule() {
   };
   const { createNotification } = useNotifications();
 
+  const tabFallback = <div className="flex items-center justify-center py-20"><div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+
   return (
-    <>
+    <Suspense fallback={tabFallback}>
       {activeTab === 'dashboard' && canAccessTab('finance', 'overview') && <FinanceDashboard currentUser={currentUser} receiptsPayments={receiptsPayments} debts={debts} salaries={salaries} getPermissionLevel={getPermissionLevel} navigateTo={navigateTo} />}
       {activeTab === 'receipts' && canAccessTab('finance', 'receipts') && <ReceiptsView currentUser={currentUser} tenant={tenant} allUsers={allUsers} receiptsPayments={receiptsPayments} getPermissionLevel={getPermissionLevel} canCreateFinance={canCreateFinance} canEditOwnFinance={canEditOwnFinance} createNotification={createNotification} loadFinanceData={loadFinanceData} receiptCategories={dynamicReceiptCategories} />}
       {activeTab === 'debts' && canAccessTab('finance', 'debts') && <DebtsView currentUser={currentUser} tenant={tenant} debts={debts} receiptsPayments={receiptsPayments} getPermissionLevel={getPermissionLevel} canCreateFinance={canCreateFinance} canEditOwnFinance={canEditOwnFinance} loadFinanceData={loadFinanceData} />}
@@ -46,6 +50,6 @@ export default function FinanceModule() {
       {activeTab === 'reports' && canAccessTab('finance', 'reports') && <ReportsView currentUser={currentUser} receiptsPayments={receiptsPayments} debts={debts} salaries={salaries} getPermissionLevel={getPermissionLevel} />}
       {!canAccessTab('finance', activeTab === 'dashboard' ? 'overview' : activeTab) && activeTab !== 'salaries' && <NoAccess />}
       {activeTab === 'salaries' && !canAccessTab('finance', 'salaries') && isAdmin(currentUser) && <NoAccess />}
-    </>
+    </Suspense>
   );
 }

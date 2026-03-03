@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 
@@ -6,7 +6,8 @@ import WarrantyLookupView from './WarrantyLookupView';
 import WarrantySerialView from './WarrantySerialView';
 import WarrantyCardsView from './WarrantyCardsView';
 import WarrantyRepairView from './WarrantyRepairView';
-import WarrantyDashboard from './WarrantyDashboard';
+// Lazy load view dùng recharts
+const WarrantyDashboard = React.lazy(() => import('./WarrantyDashboard'));
 import WarrantyRequestsView from './WarrantyRequestsView';
 
 const NoAccess = () => (
@@ -26,8 +27,10 @@ export default function WarrantyModule() {
   const permissionProps = { hasPermission, canEdit, getPermissionLevel };
   const commonProps = { tenant, currentUser, serials, warrantyCards, warrantyRepairs, products, customers, warehouses, loadWarrantyData, loadFinanceData, loadWarehouseData, ...permissionProps };
 
+  const tabFallback = <div className="flex items-center justify-center py-20"><div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+
   return (
-    <>
+    <Suspense fallback={tabFallback}>
       {activeTab === 'lookup' && canAccessTab('warranty', 'lookup') && <WarrantyLookupView {...commonProps} />}
       {activeTab === 'serials' && canAccessTab('warranty', 'serials') && <WarrantySerialView {...commonProps} />}
       {activeTab === 'cards' && canAccessTab('warranty', 'cards') && <WarrantyCardsView {...commonProps} />}
@@ -35,6 +38,6 @@ export default function WarrantyModule() {
       {activeTab === 'dashboard' && canAccessTab('warranty', 'dashboard') && <WarrantyDashboard {...commonProps} />}
       {activeTab === 'requests' && canAccessTab('warranty', 'requests') && <WarrantyRequestsView {...commonProps} warrantyRequests={warrantyRequests} />}
       {!canAccessTab('warranty', activeTab) && <NoAccess />}
-    </>
+    </Suspense>
   );
 }

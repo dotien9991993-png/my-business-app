@@ -3,7 +3,8 @@ import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN, getDateStrVN } from '../../utils/dateUtils';
-import * as XLSX from 'xlsx';
+// XLSX loaded dynamically khi cần (giảm initial bundle ~300KB)
+const getXLSX = () => import('xlsx');
 import { logActivity } from '../../lib/activityLog';
 
 const CUSTOMER_TYPES = {
@@ -621,8 +622,9 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
     if (!file) return;
     setImportFileName(file.name);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await getXLSX();
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -737,7 +739,8 @@ export default function SalesCustomersView({ tenant, currentUser, customers, ord
     await loadSalesData();
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await getXLSX();
     const wb = XLSX.utils.book_new();
     const data = [
       ['Họ tên', 'SĐT', 'Email', 'Địa chỉ', 'Ngày sinh', 'Ghi chú', 'Tags'],

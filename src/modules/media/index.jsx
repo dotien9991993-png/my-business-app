@@ -1,18 +1,20 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 
 import MyTasksView from './MyTasksView';
-import DashboardView from './DashboardView';
 import TasksView from './TasksView';
 import CalendarView from './CalendarView';
-import ReportView from './ReportView';
-import PerformanceView from './PerformanceView';
 import UserManagementView from './UserManagementView';
 import IntegrationsView from '../../components/shared/IntegrationsView';
 import AutomationView from '../../components/shared/AutomationView';
 import EkipManagementView from './EkipManagementView';
-import MediaDashboard from './MediaDashboard';
+
+// Lazy load views dùng recharts (giảm initial bundle)
+const DashboardView = React.lazy(() => import('./DashboardView'));
+const ReportView = React.lazy(() => import('./ReportView'));
+const PerformanceView = React.lazy(() => import('./PerformanceView'));
+const MediaDashboard = React.lazy(() => import('./MediaDashboard'));
 
 const NoAccess = () => (
   <div className="p-6">
@@ -51,8 +53,10 @@ export default function MediaModule() {
     }
   }, [pendingOpenRecord, tasks, setSelectedTask, setShowModal, setPendingOpenRecord]);
 
+  const tabFallback = <div className="flex items-center justify-center py-20"><div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+
   return (
-    <>
+    <Suspense fallback={tabFallback}>
       {activeTab === 'mytasks' && <MyTasksView tasks={tasks} currentUser={currentUser} setSelectedTask={setSelectedTask} setShowModal={setShowModal} />}
       {activeTab === 'dashboard' && <DashboardView currentUser={currentUser} visibleTasks={visibleTasks} reportData={reportData} setSelectedTask={setSelectedTask} setShowModal={setShowModal} allUsers={allUsers} />}
       {activeTab === 'tasks' && canAccessTab('media', 'videos') && <TasksView visibleTasks={visibleTasks} setSelectedTask={setSelectedTask} setShowModal={setShowModal} setShowCreateTaskModal={setShowCreateTaskModal} taskFilterTeam={taskFilterTeam} setTaskFilterTeam={setTaskFilterTeam} taskFilterStatus={taskFilterStatus} setTaskFilterStatus={setTaskFilterStatus} taskFilterAssignee={taskFilterAssignee} setTaskFilterAssignee={setTaskFilterAssignee} taskFilterCategory={taskFilterCategory} setTaskFilterCategory={setTaskFilterCategory} taskDateFilter={taskDateFilter} setTaskDateFilter={setTaskDateFilter} taskCustomStartDate={taskCustomStartDate} setTaskCustomStartDate={setTaskCustomStartDate} taskCustomEndDate={taskCustomEndDate} setTaskCustomEndDate={setTaskCustomEndDate} taskFilterCrew={taskFilterCrew} setTaskFilterCrew={setTaskFilterCrew} taskFilterActor={taskFilterActor} setTaskFilterActor={setTaskFilterActor} taskFilterProduct={taskFilterProduct} setTaskFilterProduct={setTaskFilterProduct} tenant={tenant} />}
@@ -67,6 +71,6 @@ export default function MediaModule() {
       {((activeTab === 'tasks' && !canAccessTab('media', 'videos')) ||
         (activeTab === 'calendar' && !canAccessTab('media', 'calendar')) ||
         (activeTab === 'report' && !canAccessTab('media', 'report'))) && <NoAccess />}
-    </>
+    </Suspense>
   );
 }
