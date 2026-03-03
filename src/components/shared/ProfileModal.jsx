@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
+import { uploadImage } from '../../utils/cloudinaryUpload';
 import { getNotificationSettings, saveNotificationSettings, playMessageSound, playNotificationSound } from '../../utils/notificationSound';
 
 export default function ProfileModal({ onClose }) {
@@ -16,7 +17,9 @@ export default function ProfileModal({ onClose }) {
   });
   const [pwForm, setPwForm] = useState({ old: '', new: '', confirm: '' });
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [notifSettings, setNotifSettings] = useState(getNotificationSettings);
+  const avatarInputRef = useRef(null);
 
   const toggleNotifSetting = (key) => {
     const updated = { ...notifSettings, [key]: !notifSettings[key] };
@@ -26,6 +29,36 @@ export default function ProfileModal({ onClose }) {
     if (updated[key]) {
       if (key === 'soundMessage') playMessageSound();
       if (key === 'soundSystem') playNotificationSound();
+    }
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      alert('Chỉ hỗ trợ ảnh JPG, PNG, GIF, WebP');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Ảnh quá lớn (tối đa 5MB)');
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const result = await uploadImage(file, 'avatars');
+      const { error } = await supabase
+        .from('users')
+        .update({ avatar_url: result.url })
+        .eq('id', currentUser.id);
+      if (error) throw error;
+      setCurrentUser({ ...currentUser, avatar_url: result.url });
+      alert('Cập nhật ảnh đại diện thành công!');
+    } catch (err) {
+      console.error('Error uploading avatar:', err);
+      alert('Lỗi khi tải ảnh lên!');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
     }
   };
 
@@ -90,9 +123,26 @@ export default function ProfileModal({ onClose }) {
         {/* Header */}
         <div className="p-6 border-b bg-gradient-to-r from-green-600 to-green-700 text-white rounded-t-xl">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">
-              {currentUser.name?.charAt(0)?.toUpperCase()}
-            </div>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            <button
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="relative w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold flex-shrink-0 overflow-hidden group"
+              title="Đổi ảnh đại diện"
+            >
+              {currentUser.avatar_url ? (
+                <img src={currentUser.avatar_url} alt="" className="w-16 h-16 rounded-full object-cover" />
+              ) : (
+                currentUser.name?.charAt(0)?.toUpperCase()
+              )}
+              <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                {uploadingAvatar ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span className="text-sm">📷</span>
+                )}
+              </div>
+            </button>
             <div>
               <h2 className="text-xl font-bold">{currentUser.name}</h2>
               <p className="text-green-100 text-sm">{roleLabel[currentUser.role] || currentUser.role} - {currentUser.team}</p>
