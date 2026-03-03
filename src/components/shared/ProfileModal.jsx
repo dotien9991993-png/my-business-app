@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
-import { uploadImage } from '../../utils/cloudinaryUpload';
 import { getNotificationSettings, saveNotificationSettings, playMessageSound, playNotificationSound } from '../../utils/notificationSound';
 
 export default function ProfileModal({ onClose }) {
@@ -45,13 +44,18 @@ export default function ProfileModal({ onClose }) {
     }
     setUploadingAvatar(true);
     try {
-      const result = await uploadImage(file, 'avatars');
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `avatars/${currentUser.id}_${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('chat-files').upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
+      const avatarUrl = urlData.publicUrl;
       const { error } = await supabase
         .from('users')
-        .update({ avatar_url: result.url })
+        .update({ avatar_url: avatarUrl })
         .eq('id', currentUser.id);
       if (error) throw error;
-      setCurrentUser({ ...currentUser, avatar_url: result.url });
+      setCurrentUser({ ...currentUser, avatar_url: avatarUrl });
       alert('Cập nhật ảnh đại diện thành công!');
     } catch (err) {
       console.error('Error uploading avatar:', err);
