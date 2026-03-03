@@ -55,7 +55,7 @@ export default function ProfileModal({ onClose }) {
       alert('Cập nhật ảnh đại diện thành công!');
     } catch (err) {
       console.error('Error uploading avatar:', err);
-      alert('Lỗi khi tải ảnh lên!');
+      alert('Lỗi khi tải ảnh lên: ' + (err.message || err));
     } finally {
       setUploadingAvatar(false);
       if (avatarInputRef.current) avatarInputRef.current.value = '';
