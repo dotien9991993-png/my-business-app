@@ -87,6 +87,25 @@ class ErrorBoundary extends Component {
   }
 }
 
+// SilentErrorBoundary — for layout/popup components outside main content
+// Renders nothing on error (graceful degradation) instead of crashing entire app
+class SilentErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(err, info) {
+    console.error('SilentErrorBoundary caught:', err, info);
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
 const ModuleLoading = () => (
   <div className="flex items-center justify-center py-20">
     <div className="animate-spin text-4xl">⚙️</div>
@@ -337,33 +356,39 @@ function AppContent() {
           {showJobModal && <JobDetailModal selectedJob={selectedJob} setSelectedJob={setSelectedJob} showJobModal={showJobModal} setShowJobModal={setShowJobModal} currentUser={currentUser} tenant={tenant} allUsers={allUsers} loadTechnicalJobs={loadTechnicalJobs} loadFinanceData={loadFinanceData} saveJobEditDraft={saveJobEditDraft} loadJobEditDraft={loadJobEditDraft} clearJobEditDraft={clearJobEditDraft} deleteTechnicalJob={deleteTechnicalJob} addNotification={addNotification} />}
         </Suspense>
       </ErrorBoundary>
-      {showPermissionsModal && <PermissionsModal allUsers={allUsers} onClose={() => setShowPermissionsModal(false)} loadUsers={loadUsers} supabase={supabase} />}
+      {showPermissionsModal && <SilentErrorBoundary><PermissionsModal allUsers={allUsers} onClose={() => setShowPermissionsModal(false)} loadUsers={loadUsers} supabase={supabase} /></SilentErrorBoundary>}
 
-      <MobileBottomTabs
-        activeModule={activeModule}
-        activeTab={activeTab}
-        navigateTo={navigateTo}
-        technicalJobs={technicalJobs}
-        tasks={tasks}
-        currentUser={currentUser}
-        receiptsPayments={receiptsPayments}
-        orders={orders}
-        canAccessTab={canAccessTab}
-      />
+      <SilentErrorBoundary>
+        <MobileBottomTabs
+          activeModule={activeModule}
+          activeTab={activeTab}
+          navigateTo={navigateTo}
+          technicalJobs={technicalJobs}
+          tasks={tasks}
+          currentUser={currentUser}
+          receiptsPayments={receiptsPayments}
+          orders={orders}
+          canAccessTab={canAccessTab}
+        />
+      </SilentErrorBoundary>
 
       {/* Chat Popup System */}
-      <Suspense fallback={null}>
-        <ChatPopupManager />
-      </Suspense>
+      <SilentErrorBoundary>
+        <Suspense fallback={null}>
+          <ChatPopupManager />
+        </Suspense>
+      </SilentErrorBoundary>
 
       {showAttendancePopup && (
-        <AttendancePopup
-          currentUser={currentUser}
-          tenant={tenant}
-          todayAttendances={todayAttendances}
-          setTodayAttendances={setTodayAttendances}
-          onClose={() => setShowAttendancePopup(false)}
-        />
+        <SilentErrorBoundary>
+          <AttendancePopup
+            currentUser={currentUser}
+            tenant={tenant}
+            todayAttendances={todayAttendances}
+            setTodayAttendances={setTodayAttendances}
+            onClose={() => setShowAttendancePopup(false)}
+          />
+        </SilentErrorBoundary>
       )}
 
     </div>
