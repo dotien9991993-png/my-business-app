@@ -353,7 +353,7 @@ export default function ZaloChatWindow({
         </div>
       );
     } catch {
-      return <p className="text-sm">{content}</p>;
+      return <p className="text-sm">{typeof content === 'string' ? content : JSON.stringify(content)}</p>;
     }
   };
 

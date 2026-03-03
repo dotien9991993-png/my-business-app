@@ -171,8 +171,8 @@ export default function ChatPopupList({
                   <div className="flex items-center justify-between mt-0.5">
                     <p className={`text-[13px] truncate ${unread > 0 ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
                       {room.last_message_by && room.type === 'group' && room.last_message_by !== currentUser?.name
-                        ? `${room.last_message_by}: ${room.last_message || ''}`
-                        : room.last_message || 'Chưa có tin nhắn'
+                        ? `${typeof room.last_message_by === 'string' ? room.last_message_by : ''}: ${typeof room.last_message === 'string' ? room.last_message : ''}`
+                        : (typeof room.last_message === 'string' ? room.last_message : '') || 'Chưa có tin nhắn'
                       }
                     </p>
                     {unread > 0 && (

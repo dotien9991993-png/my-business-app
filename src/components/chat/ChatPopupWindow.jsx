@@ -545,7 +545,7 @@ export default function ChatPopupWindow({
                         isOwn ? 'bg-green-800/30 border-green-300 text-green-100' : 'bg-gray-200 border-gray-400 text-gray-600'
                       }`}>
                         <span className="font-medium">{reply.sender_name}: </span>
-                        <span className="opacity-80 truncate">{reply.content || '📎 File'}</span>
+                        <span className="opacity-80 truncate">{(typeof reply.content === 'string' ? reply.content : '') || '📎 File'}</span>
                       </div>
                     )}
 
@@ -576,7 +576,7 @@ export default function ChatPopupWindow({
                       )}
 
                       {/* Text */}
-                      {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                      {msg.content && <p className="whitespace-pre-wrap break-words">{typeof msg.content === 'string' ? msg.content : String(msg.content)}</p>}
 
                       {/* Time */}
                       <div className={`text-xs mt-0.5 ${isOwn ? 'text-green-200 text-right' : 'text-gray-400'}`}>
@@ -634,7 +634,7 @@ export default function ChatPopupWindow({
       {replyTo && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border-t text-xs">
           <span className="text-gray-500">Trả lời</span>
-          <span className="font-medium text-gray-700 truncate flex-1">{replyTo.sender_name}: {replyTo.content || '📎'}</span>
+          <span className="font-medium text-gray-700 truncate flex-1">{replyTo.sender_name}: {(typeof replyTo.content === 'string' ? replyTo.content : '') || '📎'}</span>
           <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500 text-base">✕</button>
         </div>
       )}

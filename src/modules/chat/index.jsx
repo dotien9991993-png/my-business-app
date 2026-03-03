@@ -163,9 +163,9 @@ export default function ChatModule() {
             if (r.id !== roomId) return r;
             return {
               ...r,
-              last_message: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : ''),
+              last_message: (typeof msg.content === 'string' ? msg.content : '') || (msg.file_name ? `📎 ${msg.file_name}` : ''),
               last_message_at: msg.created_at,
-              last_message_by: msg.sender_name
+              last_message_by: typeof msg.sender_name === 'string' ? msg.sender_name : ''
             };
           }));
 

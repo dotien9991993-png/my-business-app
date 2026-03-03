@@ -1036,7 +1036,7 @@ export default function ChatWindow({
           <div className="flex-1 min-w-0">
             <span className="text-xs font-medium text-gray-700">{pinnedMessages[0].sender_name}: </span>
             <span className="text-xs text-gray-500 truncate">
-              {pinnedMessages[0].content || (pinnedMessages[0].attachments?.length > 0 ? `${TYPE_ICONS[pinnedMessages[0].attachments[0]?.type] || '📎'} ${pinnedMessages[0].attachments[0]?.title}` : '📎 File')}
+              {(typeof pinnedMessages[0].content === 'string' ? pinnedMessages[0].content : '') || (pinnedMessages[0].attachments?.length > 0 ? `${TYPE_ICONS[pinnedMessages[0].attachments[0]?.type] || '📎'} ${pinnedMessages[0].attachments[0]?.title || ''}` : '📎 File')}
             </span>
           </div>
           <button

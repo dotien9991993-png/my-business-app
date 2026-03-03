@@ -175,7 +175,7 @@ export default function ChatMessage({
     return (
       <div className="flex justify-center mb-2 px-3">
         <div className="text-xs text-gray-400 bg-gray-100 rounded-full px-3 py-1">
-          {message.content}
+          {typeof message.content === 'string' ? message.content : String(message.content ?? '')}
         </div>
       </div>
     );
@@ -238,7 +238,7 @@ export default function ChatMessage({
               isOwn ? 'bg-green-800/30 border-green-300 text-green-100' : 'bg-gray-200 border-gray-400 text-gray-600'
             }`}>
               <span className="font-medium">{replyMessage.sender_name}</span>
-              <p className="truncate opacity-80">{replyMessage.content || (replyMessage.file_name ? `📎 ${replyMessage.file_name}` : 'Ảnh')}</p>
+              <p className="truncate opacity-80">{(typeof replyMessage.content === 'string' ? replyMessage.content : '') || (replyMessage.file_name ? `📎 ${replyMessage.file_name}` : 'Ảnh')}</p>
             </div>
           )}
 
@@ -315,9 +315,11 @@ export default function ChatMessage({
             {/* Text content with @mentions */}
             {message.content && (
               <p className="text-[13.5px] leading-snug whitespace-pre-wrap break-words">
-                {message.mentions?.length > 0
-                  ? renderContentWithMentions(message.content)
-                  : message.content
+                {typeof message.content !== 'string'
+                  ? String(message.content)
+                  : message.mentions?.length > 0
+                    ? renderContentWithMentions(message.content)
+                    : message.content
                 }
               </p>
             )}

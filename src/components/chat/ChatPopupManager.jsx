@@ -116,7 +116,7 @@ export default function ChatPopupManager() {
           // Update room list preview
           setRooms(prev => prev.map(r => {
             if (r.id !== roomId) return r;
-            return { ...r, last_message: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : ''), last_message_at: msg.created_at, last_message_by: msg.sender_name };
+            return { ...r, last_message: (typeof msg.content === 'string' ? msg.content : '') || (msg.file_name ? `📎 ${msg.file_name}` : ''), last_message_at: msg.created_at, last_message_by: typeof msg.sender_name === 'string' ? msg.sender_name : '' };
           }));
 
           if (msg.sender_id === currentUser?.id) return;
@@ -289,13 +289,7 @@ export default function ChatPopupManager() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  // Hide everything when on chat module
-  if (!currentUser || !tenant) return null;
-  if (activeModule === 'chat') return null;
-
-  // Only desktop
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-
+  // Must call ALL hooks before any early return (React Rules of Hooks)
   const filteredUsers = useMemo(() => {
     if (!showNewChat) return [];
     const q = newChatSearch.toLowerCase();
@@ -304,6 +298,13 @@ export default function ChatPopupManager() {
       (!q || u.name?.toLowerCase().includes(q))
     );
   }, [allUsers, currentUser, showNewChat, newChatSearch]);
+
+  // Hide everything when on chat module
+  if (!currentUser || !tenant) return null;
+  if (activeModule === 'chat') return null;
+
+  // Only desktop
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   return (
     <>
