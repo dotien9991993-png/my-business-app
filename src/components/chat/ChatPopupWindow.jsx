@@ -2,12 +2,20 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from '../../supabaseClient';
 import { uploadImage } from '../../utils/cloudinaryUpload';
 import { getChatImageUrl, getFullImageUrl, isCloudinaryUrl } from '../../utils/cloudinaryUpload';
+import AttachmentPicker from './AttachmentPicker';
+import AttachmentCard from './AttachmentCard';
+import { useApp } from '../../contexts/AppContext';
 
 const PAGE_SIZE = 30;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 const EMOJIS = ['👍', '❤️', '😄', '😮', '😢', '✅', '❌'];
+
+const TYPE_ICONS = {
+  order: '📦', task: '🎬', product: '📦', customer: '👥',
+  technical_job: '🔧', warranty: '🛡️'
+};
 
 const formatPopupTime = (dateStr) => {
   if (!dateStr) return '';
@@ -50,6 +58,8 @@ export default function ChatPopupWindow({
   isMinimized,
   newMessagePulse,
 }) {
+  const { navigateTo } = useApp();
+
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -61,6 +71,8 @@ export default function ChatPopupWindow({
   const [hoverMsgId, setHoverMsgId] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
 
   // @mention
   const [showMention, setShowMention] = useState(false);
@@ -135,6 +147,8 @@ export default function ChatPopupWindow({
     setHasMore(true);
     setReplyTo(null);
     setReactions({});
+    setPendingAttachments([]);
+    setShowAttachmentPicker(false);
     loadMessages().finally(() => setLoading(false));
   }, [loadMessages]);
 
@@ -204,7 +218,7 @@ export default function ChatPopupWindow({
   // Send message
   const sendMsg = useCallback(async (content, msgType = 'text', fileData = null) => {
     if (sendingRef.current) return;
-    if (!content?.trim() && !fileData) return;
+    if (!content?.trim() && !fileData && pendingAttachments.length === 0) return;
     sendingRef.current = true;
     setSending(true);
 
@@ -217,7 +231,7 @@ export default function ChatPopupWindow({
       content: content?.trim() || null,
       message_type: msgType,
       reply_to: replyTo?.id || null,
-      attachments: [],
+      attachments: pendingAttachments.length > 0 ? pendingAttachments : [],
       mentions: mentions.length > 0 ? mentions : [],
     };
     if (fileData) {
@@ -229,12 +243,14 @@ export default function ChatPopupWindow({
     setNewMessage('');
     setReplyTo(null);
     setMentionedUsers([]);
+    setPendingAttachments([]);
     if (inputRef.current) inputRef.current.value = '';
 
     try {
       const { error } = await supabase.from('chat_messages').insert([msgData]);
       if (error) throw error;
-      const preview = content?.trim() || (fileData ? `📎 ${fileData.name}` : '');
+      const attPreview = msgData.attachments.length > 0 ? `📎 ${msgData.attachments.map(a => a.title).join(', ')}` : '';
+      const preview = content?.trim() || (fileData ? `📎 ${fileData.name}` : attPreview);
       await supabase.from('chat_rooms').update({
         last_message: preview,
         last_message_at: new Date().toISOString(),
@@ -265,7 +281,7 @@ export default function ChatPopupWindow({
       sendingRef.current = false;
       setSending(false);
     }
-  }, [room, currentUser, replyTo, mentionedUsers, activeMembers]);
+  }, [room, currentUser, replyTo, mentionedUsers, activeMembers, pendingAttachments]);
 
   // Handle keydown
   const handleKeyDown = (e) => {
@@ -317,6 +333,17 @@ export default function ChatPopupWindow({
     const q = mentionSearch.toLowerCase();
     return all.filter(m => m.user_name.toLowerCase().includes(q));
   }, [activeMembers, mentionSearch]);
+
+  // Entity attachment handlers
+  const handleAttachmentSelect = (attachment) => {
+    setPendingAttachments(prev => [...prev, attachment]);
+    setShowAttachmentPicker(false);
+    inputRef.current?.focus();
+  };
+
+  const removePendingAttachment = (index) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+  };
 
   // Image upload
   const handleImageSelect = async (e) => {
@@ -578,6 +605,11 @@ export default function ChatPopupWindow({
                       {/* Text */}
                       {msg.content && <p className="whitespace-pre-wrap break-words">{typeof msg.content === 'string' ? msg.content : String(msg.content)}</p>}
 
+                      {/* Entity attachments */}
+                      {(msg.attachments || []).filter(a => a.type !== 'image').map((att, i) => (
+                        <AttachmentCard key={i} attachment={att} isOwn={isOwn} onNavigate={navigateTo} />
+                      ))}
+
                       {/* Time */}
                       <div className={`text-xs mt-0.5 ${isOwn ? 'text-green-200 text-right' : 'text-gray-400'}`}>
                         {msg.is_edited && <span>sửa · </span>}
@@ -639,6 +671,19 @@ export default function ChatPopupWindow({
         </div>
       )}
 
+      {/* Pending entity attachments */}
+      {pendingAttachments.length > 0 && (
+        <div className="px-3 py-1.5 bg-gray-50 border-t flex flex-wrap gap-1.5">
+          {pendingAttachments.map((att, i) => (
+            <div key={i} className="flex items-center gap-1 bg-white border rounded-lg px-2 py-1 text-xs">
+              <span>{TYPE_ICONS[att.type] || '📎'}</span>
+              <span className="font-medium text-gray-700 max-w-[100px] truncate">{att.title}</span>
+              <button onClick={() => removePendingAttachment(i)} className="text-gray-400 hover:text-red-500">&times;</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* @Mention popup */}
       {showMention && filteredMembers.length > 0 && (
         <div className="border-t bg-white max-h-32 overflow-y-auto">
@@ -658,18 +703,24 @@ export default function ChatPopupWindow({
       <div className="flex items-end gap-1.5 px-3 py-2 border-t bg-white flex-shrink-0">
         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
         <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
-        <button
-          onClick={() => imageInputRef.current?.click()}
-          className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-green-600 hover:bg-gray-100 rounded-full flex-shrink-0"
-          title="Gửi ảnh"
-          disabled={uploading}
-        >🖼️</button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-green-600 hover:bg-gray-100 rounded-full flex-shrink-0"
-          title="Đính kèm file"
-          disabled={uploading}
-        >📎</button>
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={() => setShowAttachmentPicker(!showAttachmentPicker)}
+            disabled={uploading}
+            className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-green-600 hover:bg-gray-100 rounded-full"
+            title="Đính kèm"
+          >
+            {uploading ? <span className="animate-spin inline-block">⏳</span> : '📎'}
+          </button>
+          {showAttachmentPicker && (
+            <AttachmentPicker
+              onSelect={handleAttachmentSelect}
+              onFileClick={() => { fileInputRef.current?.click(); setShowAttachmentPicker(false); }}
+              onImageClick={() => { imageInputRef.current?.click(); setShowAttachmentPicker(false); }}
+              onClose={() => setShowAttachmentPicker(false)}
+            />
+          )}
+        </div>
         <textarea
           ref={inputRef}
           value={newMessage}
@@ -683,7 +734,7 @@ export default function ChatPopupWindow({
         />
         <button
           onClick={() => sendMsg(newMessage)}
-          disabled={(!newMessage.trim() && !uploading) || sending}
+          disabled={(!newMessage.trim() && !uploading && pendingAttachments.length === 0) || sending}
           className="w-9 h-9 flex items-center justify-center text-green-600 hover:text-green-700 disabled:text-gray-300 flex-shrink-0"
           title="Gửi"
         >
