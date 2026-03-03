@@ -44,18 +44,28 @@ export default function ProfileModal({ onClose }) {
     }
     setUploadingAvatar(true);
     try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const path = `avatars/${currentUser.id}_${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('chat-files').upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
-      const avatarUrl = urlData.publicUrl;
-      const { error } = await supabase
-        .from('users')
-        .update({ avatar_url: avatarUrl })
-        .eq('id', currentUser.id);
-      if (error) throw error;
-      setCurrentUser({ ...currentUser, avatar_url: avatarUrl });
+      // Convert file to base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const resp = await fetch('/api/upload-avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          fileName: file.name,
+          fileBase64: base64,
+          mimeType: file.type,
+        }),
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || 'Upload thất bại');
+
+      setCurrentUser({ ...currentUser, avatar_url: result.url });
       alert('Cập nhật ảnh đại diện thành công!');
     } catch (err) {
       console.error('Error uploading avatar:', err);
