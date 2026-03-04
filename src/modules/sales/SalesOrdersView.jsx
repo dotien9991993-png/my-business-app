@@ -789,13 +789,19 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         }
       }
 
-      // Increment coupon usage
+      // Atomic coupon usage with row-level lock
       if (appliedCoupon) {
-        await supabase.rpc('increment_coupon_usage', { p_coupon_id: appliedCoupon.id });
-        await supabase.from('coupon_usage').insert([{
-          tenant_id: tenant.id, coupon_id: appliedCoupon.id, order_id: order.id,
-          customer_phone: customerPhone.trim() || null, discount_amount: couponDiscount
-        }]);
+        const { data: couponResult, error: couponErr } = await supabase.rpc('use_coupon_atomic', {
+          p_coupon_id: appliedCoupon.id,
+          p_tenant_id: tenant.id,
+          p_order_id: order.id,
+          p_customer_phone: customerPhone.trim() || null,
+          p_discount_amount: couponDiscount
+        });
+        if (couponErr) console.error('Coupon usage error:', couponErr);
+        else if (couponResult && !couponResult.success) {
+          console.warn('Coupon usage warning:', couponResult.error);
+        }
       }
 
       // Persist payment splits to payment_transactions (Bug 4)

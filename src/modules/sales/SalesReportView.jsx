@@ -190,16 +190,17 @@ export default function SalesReportView({ orders, products, tenant }) {
       try {
         const { data } = await supabase
           .from('order_items')
-          .select('product_id, product_name, quantity, total_price, orders!inner(status, order_status, created_at)')
+          .select('product_id, product_name, quantity, total_price, cost_price, orders!inner(status, order_status, created_at)')
           .gte('orders.created_at', dateRange.start)
           .lte('orders.created_at', dateRange.end)
           .in('orders.order_status', ['completed']);
         const map = {};
         (data || []).forEach(item => {
           const key = item.product_id || item.product_name;
-          if (!map[key]) map[key] = { product_id: item.product_id, name: item.product_name, quantity: 0, revenue: 0 };
+          if (!map[key]) map[key] = { product_id: item.product_id, name: item.product_name, quantity: 0, revenue: 0, totalCost: 0 };
           map[key].quantity += item.quantity;
           map[key].revenue += parseFloat(item.total_price || 0);
+          map[key].totalCost += parseFloat(item.cost_price || 0) * item.quantity;
         });
         setTopProducts(Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 10));
       } catch (err) {
@@ -211,19 +212,15 @@ export default function SalesReportView({ orders, products, tenant }) {
     loadTopProducts();
   }, [dateRange.start, dateRange.end]);
 
-  // ---- Profit calculation ----
+  // ---- Profit calculation (uses cost_price snapshot from order_items) ----
   const profitStats = useMemo(() => {
-    let totalCost = 0;
-    topProducts.forEach(p => {
-      const product = (products || []).find(pr => pr.id === p.product_id);
-      if (product) totalCost += parseFloat(product.import_price || 0) * p.quantity;
-    });
+    const totalCost = topProducts.reduce((sum, p) => sum + (p.totalCost || 0), 0);
     return {
       revenue: stats.revenue, cost: totalCost,
       profit: stats.revenue - totalCost,
       margin: stats.revenue > 0 ? ((stats.revenue - totalCost) / stats.revenue * 100) : 0
     };
-  }, [topProducts, products, stats.revenue]);
+  }, [topProducts, stats.revenue]);
 
   // ---- Previous period comparison ----
   const prevStats = useMemo(() => {
