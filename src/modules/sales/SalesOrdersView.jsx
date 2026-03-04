@@ -563,6 +563,17 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   };
 
   const updateCartItem = (idx, field, value) => {
+    if (field === 'quantity') {
+      const qty = parseInt(value) || 0;
+      if (qty <= 0) return;
+      if (qty > 9999) { alert('Số lượng tối đa là 9,999'); return; }
+      const item = cartItems[idx];
+      if (item && qty > (item.stock || Infinity)) {
+        alert(`Tồn khả dụng chỉ còn ${item.stock}. Không thể đặt ${qty}.`);
+        return;
+      }
+      value = qty;
+    }
     setCartItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
@@ -632,6 +643,16 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
     if (cartItems.length === 0) return alert('Vui lòng thêm sản phẩm');
     if (submitting) return;
+    // Validate quantity > 0
+    for (const item of cartItems) {
+      const qty = parseInt(item.quantity);
+      if (!qty || qty <= 0) return alert(`Số lượng ${item.product_name} phải lớn hơn 0`);
+      if (qty > 9999) return alert(`Số lượng ${item.product_name} tối đa là 9,999`);
+    }
+    // Validate discount không vượt subtotal
+    const totalDiscount = (parseFloat(discountAmount || 0)) + couponDiscount + pointsDiscount;
+    if (totalDiscount > subtotal) return alert(`Tổng giảm giá (${formatMoney(totalDiscount)}) không được vượt quá tổng tiền hàng (${formatMoney(subtotal)})`);
+    if (totalAmount < 0) return alert('Tổng tiền đơn hàng không thể âm');
     // Pre-check stock at selected warehouse (combo: check each child)
     for (const item of cartItems) {
       if (item.is_combo) {
@@ -878,6 +899,16 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   // ---- Change order status ----
   const changeOrderStatus = async (orderId, newStatus, order) => {
     if (!hasPermission('sales', 2)) { alert('Bạn không có quyền thực hiện thao tác này'); return; }
+    // Validate cancel: chặn huỷ đơn đã giao hoặc đã thanh toán
+    if (newStatus === 'cancelled') {
+      if (['delivered', 'shipped'].includes(order.shipping_status)) {
+        alert('Không thể huỷ đơn đã giao/đang giao. Vui lòng dùng chức năng trả hàng.');
+        return;
+      }
+      if (parseFloat(order.paid_amount || 0) > 0) {
+        if (!window.confirm(`Đơn hàng đã thanh toán ${formatMoney(order.paid_amount)}. Huỷ đơn sẽ hoàn tiền. Tiếp tục?`)) return;
+      }
+    }
     const statusLabel = orderStatuses[newStatus]?.label || newStatus;
     if (!window.confirm(`Chuyển đơn hàng sang "${statusLabel}"?`)) return;
     if (submitting) return;
