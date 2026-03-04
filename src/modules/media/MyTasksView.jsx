@@ -2,10 +2,14 @@ import React from 'react';
 import { getStatusColor, getTeamColor } from '../../utils/formatUtils';
 
 const MyTasksView = ({ tasks, currentUser, setSelectedTask, setShowModal }) => {
+  // Hiển thị task khi user tham gia ở BẤT KỲ vai trò nào
+  const userName = currentUser.name;
   const myTasks = tasks.filter(t =>
-    t.assignee === currentUser.name ||
-    (t.editors || []).includes(currentUser.name) ||
-    (t.cameramen || []).includes(currentUser.name)
+    t.assignee === userName ||
+    t.created_by === userName ||
+    (t.cameramen || []).includes(userName) ||
+    (t.editors || []).includes(userName) ||
+    (t.actors || []).includes(userName)
   );
 
   return (

@@ -594,7 +594,7 @@ const TaskModal = ({
               )}
             </div>
             <div className="flex items-center gap-1 md:gap-2 shrink-0">
-              {currentUser && (isAdmin(currentUser) || currentUser.role === 'Manager' || selectedTask.assignee === currentUser.name || (selectedTask.editors || []).includes(currentUser.name) || (selectedTask.cameramen || []).includes(currentUser.name)) && (
+              {currentUser && (isAdmin(currentUser) || currentUser.role === 'Manager' || selectedTask.assignee === currentUser.name || (selectedTask.cameramen || []).includes(currentUser.name) || (selectedTask.editors || []).includes(currentUser.name) || (selectedTask.actors || []).includes(currentUser.name)) && (
               <button
                 onClick={openEditMode}
                 className="px-2 md:px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs md:text-sm font-medium min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"

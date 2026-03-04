@@ -142,7 +142,8 @@ export function DataProvider({ children }) {
         product_ids: task.product_ids || [],
         media_salary: task.media_salary || null,
         filmed_at: task.filmed_at || null, edited_at: task.edited_at || null, edit_started_at: task.edit_started_at || null,
-        created_at: task.created_at, updated_at: task.updated_at, completed_at: task.completed_at || null
+        created_at: task.created_at, updated_at: task.updated_at, completed_at: task.completed_at || null,
+        created_by: task.created_by || null
       }));
       setTasks(formattedTasks);
       setLoading(false);
@@ -594,11 +595,14 @@ export function DataProvider({ children }) {
       const userTeams = currentUser.teams || [currentUser.team].filter(Boolean);
       return tasks.filter(t => userTeams.includes(t.team));
     }
-    // Level 1 (Member): xem task được giao, task mình là editor/cameraman, và task hoàn thành
+    // Level 1 (Member): xem task mình tham gia bất kỳ vai trò nào + task hoàn thành
+    const userName = currentUser.name;
     return tasks.filter(t =>
-      t.assignee === currentUser.name ||
-      (t.editors || []).includes(currentUser.name) ||
-      (t.cameramen || []).includes(currentUser.name) ||
+      t.assignee === userName ||
+      t.created_by === userName ||
+      (t.cameramen || []).includes(userName) ||
+      (t.editors || []).includes(userName) ||
+      (t.actors || []).includes(userName) ||
       t.status === 'Hoàn Thành'
     );
   }, [currentUser, tasks, getPermissionLevel]);
