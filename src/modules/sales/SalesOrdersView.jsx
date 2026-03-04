@@ -690,11 +690,10 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         finalShippingAddress = shippingAddress;
       }
 
-      // Insert order with hard defaults
-      const { data: order, error: orderErr } = await supabase.from('orders').insert([{
+      // Build order + items data
+      let order;
+      const orderPayload = {
         tenant_id: tenant.id, order_number: orderNumber, order_type: orderType,
-        status: 'confirmed',
-        order_status: 'confirmed', shipping_status: 'pending',
         customer_id: resolvedCustomerId,
         customer_name: customerName, customer_phone: customerPhone,
         shipping_address: finalShippingAddress,
@@ -706,58 +705,55 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         points_used: pointsToUse > 0 ? pointsToUse : 0,
         points_discount: pointsDiscount > 0 ? pointsDiscount : 0,
         subtotal, total_amount: totalAmount,
-        payment_method: paymentMethod, payment_status: 'unpaid',
-        paid_amount: 0,
-        payment_splits: [],
+        payment_method: paymentMethod,
         note: '', needs_installation: false,
         created_by: currentUser.name,
-        warehouse_id: selectedWarehouseId || null,
         order_source: 'manual',
         internal_note: internalNote || null,
         total_weight: 0,
         shipping_service: null
-      }]).select().single();
-      if (orderErr) throw orderErr;
-
-      // Insert order items
-      const itemsData = cartItems.map(item => ({
-        order_id: order.id, product_id: item.product_id,
+      };
+      const itemsPayload = cartItems.map(item => ({
+        product_id: item.product_id,
         product_name: item.variant_name ? `${item.product_name} - ${item.variant_name}` : item.product_name,
         product_sku: item.product_sku, quantity: parseInt(item.quantity),
         unit_price: parseFloat(item.unit_price), discount: parseFloat(item.discount || 0),
         total_price: (parseFloat(item.unit_price) - parseFloat(item.discount || 0)) * parseInt(item.quantity),
         warranty_months: item.warranty_months || null,
         variant_id: item.variant_id || null,
-        variant_name: item.variant_name || null
+        variant_name: item.variant_name || null,
+        is_combo: item.is_combo || false
       }));
-      const { error: itemsErr } = await supabase.from('order_items').insert(itemsData);
-      if (itemsErr) throw itemsErr;
 
-      // Deduct stock atomically for all orders (POS + online đều tạo với status 'confirmed')
-      for (const item of cartItems) {
-        if (item.is_combo) {
-          // Combo: trừ kho từng SP con
-          const children = (comboItems || []).filter(ci => ci.combo_product_id === item.product_id);
-          for (const child of children) {
-            const delta = -(child.quantity * parseInt(item.quantity));
-            if (selectedWarehouseId) {
-              const { error: stockErr } = await supabase.rpc('adjust_warehouse_stock', {
-                p_warehouse_id: selectedWarehouseId, p_product_id: child.child_product_id, p_delta: delta
-              });
-              if (stockErr) throw new Error(`Không đủ tồn kho SP con trong combo: ${item.product_name}`);
-            } else {
+      // Use atomic RPC if warehouse selected (order + items + stock in 1 transaction)
+      if (selectedWarehouseId) {
+        const { data: rpcResult, error: rpcErr } = await supabase.rpc('create_order_atomic', {
+          p_order: orderPayload, p_items: itemsPayload, p_warehouse_id: selectedWarehouseId
+        });
+        if (rpcErr) throw new Error(rpcErr.message);
+        if (!rpcResult?.success) throw new Error('Tạo đơn thất bại');
+        order = { id: rpcResult.order_id };
+      } else {
+        // Fallback: non-atomic flow (no warehouse)
+        const { data: insertedOrder, error: orderErr } = await supabase.from('orders').insert([{
+          ...orderPayload, status: 'confirmed', order_status: 'confirmed', shipping_status: 'pending',
+          payment_status: 'unpaid', paid_amount: 0, payment_splits: [],
+          warehouse_id: null
+        }]).select().single();
+        if (orderErr) throw orderErr;
+        order = insertedOrder;
+        const itemsData = itemsPayload.map(item => ({ order_id: order.id, ...item }));
+        const { error: itemsErr } = await supabase.from('order_items').insert(itemsData);
+        if (itemsErr) throw itemsErr;
+        for (const item of cartItems) {
+          if (item.is_combo) {
+            const children = (comboItems || []).filter(ci => ci.combo_product_id === item.product_id);
+            for (const child of children) {
               const { error: stockErr } = await supabase.rpc('adjust_stock', {
-                p_product_id: child.child_product_id, p_delta: delta
+                p_product_id: child.child_product_id, p_delta: -(child.quantity * parseInt(item.quantity))
               });
               if (stockErr) throw new Error(`Không đủ tồn kho SP con trong combo: ${item.product_name}`);
             }
-          }
-        } else {
-          if (selectedWarehouseId) {
-            const { error: stockErr } = await supabase.rpc('adjust_warehouse_stock', {
-              p_warehouse_id: selectedWarehouseId, p_product_id: item.product_id, p_delta: -parseInt(item.quantity)
-            });
-            if (stockErr) throw new Error(`Không đủ tồn kho: ${item.product_name}`);
           } else {
             const { error: stockErr } = await supabase.rpc('adjust_stock', {
               p_product_id: item.product_id, p_delta: -parseInt(item.quantity)
@@ -774,6 +770,28 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
           tenant_id: tenant.id, coupon_id: appliedCoupon.id, order_id: order.id,
           customer_phone: customerPhone.trim() || null, discount_amount: couponDiscount
         }]);
+      }
+
+      // Persist payment splits to payment_transactions (Bug 4)
+      const validSplits = paymentSplits.filter(s => parseFloat(s.amount) > 0);
+      if (validSplits.length > 0) {
+        for (const split of validSplits) {
+          await supabase.from('payment_transactions').insert([{
+            tenant_id: tenant.id, order_id: order.id,
+            amount: parseFloat(split.amount),
+            payment_method: split.method,
+            note: `Thanh toán khi tạo đơn - ${paymentMethods[split.method]?.label || split.method}`,
+            created_by: currentUser.name, created_at: getNowISOVN()
+          }]);
+        }
+        const totalPaidSplits = validSplits.reduce((sum, s) => sum + parseFloat(s.amount), 0);
+        if (totalPaidSplits > 0) {
+          await supabase.from('orders').update({
+            paid_amount: totalPaidSplits,
+            payment_status: totalPaidSplits >= totalAmount ? 'paid' : 'partial',
+            payment_splits: validSplits
+          }).eq('id', order.id);
+        }
       }
 
       // Redeem loyalty points
@@ -976,27 +994,51 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         if (order.coupon_id) {
           await supabase.rpc('decrement_coupon_usage', { p_coupon_id: order.coupon_id });
         }
+        // Restore loyalty points if order used points
+        if (order.points_used > 0 && order.customer_id && loyaltyEnabled) {
+          await supabase.from('point_transactions').insert([{
+            tenant_id: tenant.id, customer_id: order.customer_id, order_id: orderId,
+            type: 'earn', points: order.points_used,
+            description: `Hoàn ${order.points_used} điểm do hủy đơn ${order.order_number}`,
+            created_by: currentUser.name, created_at: getNowISOVN()
+          }]).then(() => {}).catch(() => {});
+          const { data: pts } = await supabase.from('customer_points').select('*')
+            .eq('tenant_id', tenant.id).eq('customer_id', order.customer_id).maybeSingle();
+          if (pts) {
+            await supabase.from('customer_points').update({
+              used_points: Math.max(0, (pts.used_points || 0) - order.points_used),
+              updated_at: getNowISOVN()
+            }).eq('id', pts.id).then(() => {}).catch(() => {});
+          }
+        }
       }
 
       // Returned → restore stock to order's warehouse + create refund receipt + restore serials
       if (newStatus === 'returned') {
-        const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
-        for (const item of (items || [])) {
-          const { data: comboChildren } = await supabase.from('product_combo_items').select('*').eq('combo_product_id', item.product_id);
-          if (comboChildren && comboChildren.length > 0) {
-            for (const child of comboChildren) {
-              const delta = child.quantity * item.quantity;
-              if (order.warehouse_id) {
-                await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: order.warehouse_id, p_product_id: child.child_product_id, p_delta: delta });
-              } else {
-                await supabase.rpc('adjust_stock', { p_product_id: child.child_product_id, p_delta: delta });
+        // Skip stock restore if already handled by reconciliation (prevent double-restore)
+        const { data: existingReturn } = await supabase.from('order_reconciliation')
+          .select('id').eq('order_id', orderId).eq('type', 'return_confirm').limit(1);
+        const stockAlreadyRestored = existingReturn && existingReturn.length > 0;
+
+        if (!stockAlreadyRestored) {
+          const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
+          for (const item of (items || [])) {
+            const { data: comboChildren } = await supabase.from('product_combo_items').select('*').eq('combo_product_id', item.product_id);
+            if (comboChildren && comboChildren.length > 0) {
+              for (const child of comboChildren) {
+                const delta = child.quantity * item.quantity;
+                if (order.warehouse_id) {
+                  await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: order.warehouse_id, p_product_id: child.child_product_id, p_delta: delta });
+                } else {
+                  await supabase.rpc('adjust_stock', { p_product_id: child.child_product_id, p_delta: delta });
+                }
               }
-            }
-          } else {
-            if (order.warehouse_id) {
-              await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: order.warehouse_id, p_product_id: item.product_id, p_delta: item.quantity });
             } else {
-              await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: item.quantity });
+              if (order.warehouse_id) {
+                await supabase.rpc('adjust_warehouse_stock', { p_warehouse_id: order.warehouse_id, p_product_id: item.product_id, p_delta: item.quantity });
+              } else {
+                await supabase.rpc('adjust_stock', { p_product_id: item.product_id, p_delta: item.quantity });
+              }
             }
           }
         }
@@ -1029,6 +1071,23 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         // Decrement coupon usage if order used a coupon
         if (order.coupon_id) {
           await supabase.rpc('decrement_coupon_usage', { p_coupon_id: order.coupon_id });
+        }
+        // Restore loyalty points if order used points
+        if (order.points_used > 0 && order.customer_id && loyaltyEnabled) {
+          await supabase.from('point_transactions').insert([{
+            tenant_id: tenant.id, customer_id: order.customer_id, order_id: orderId,
+            type: 'earn', points: order.points_used,
+            description: `Hoàn ${order.points_used} điểm do trả hàng đơn ${order.order_number}`,
+            created_by: currentUser.name, created_at: getNowISOVN()
+          }]).then(() => {}).catch(() => {});
+          const { data: pts } = await supabase.from('customer_points').select('*')
+            .eq('tenant_id', tenant.id).eq('customer_id', order.customer_id).maybeSingle();
+          if (pts) {
+            await supabase.from('customer_points').update({
+              used_points: Math.max(0, (pts.used_points || 0) - order.points_used),
+              updated_at: getNowISOVN()
+            }).eq('id', pts.id).then(() => {}).catch(() => {});
+          }
         }
       }
 
@@ -1249,7 +1308,7 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
         note: paymentNoteInput || null, created_by: currentUser.name, created_at: getNowISOVN()
       }]);
       const receiptNumber = await genReceiptNumber('thu');
-      const ptttLabel = (paymentMethods.find(p => p.value === paymentMethodInput) || {}).label || paymentMethodInput;
+      const ptttLabel = paymentMethods[paymentMethodInput]?.label || paymentMethodInput;
       await supabase.from('receipts_payments').insert([{
         tenant_id: tenant.id, receipt_number: receiptNumber, type: 'thu',
         amount, description: `Thanh toán (${ptttLabel}) - ${selectedOrder.order_number}${selectedOrder.customer_name ? ' - ' + selectedOrder.customer_name : ''}`,
@@ -2976,7 +3035,7 @@ table.summary td{padding:3px 6px;font-size:12px}
                       <div className="flex items-center gap-2">
                         <span className="text-gray-400 font-mono">{i + 1}.</span>
                         <span className="font-medium text-green-700">{formatMoney(pt.amount)}</span>
-                        <span className="text-gray-500">({(paymentMethods.find(p => p.value === pt.payment_method) || {}).label || pt.payment_method})</span>
+                        <span className="text-gray-500">({paymentMethods[pt.payment_method]?.label || pt.payment_method})</span>
                       </div>
                       <div className="flex items-center gap-2 text-gray-400">
                         {pt.note && <span className="text-gray-500 truncate max-w-[120px]" title={pt.note}>{pt.note}</span>}

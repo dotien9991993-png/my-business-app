@@ -133,6 +133,13 @@ export default function SalesReconciliationView({
       showToast('Đơn hàng không ở trạng thái có thể xác nhận giao', 'error');
       return;
     }
+    // Check duplicate reconciliation (Bug 3)
+    const { data: existingDelivery } = await supabase.from('order_reconciliation')
+      .select('id').eq('order_id', scannedOrder.id).eq('type', 'delivery_confirm').limit(1);
+    if (existingDelivery && existingDelivery.length > 0) {
+      showToast('Đơn hàng này đã được xác nhận giao rồi!', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
       const updates = { status: 'completed', order_status: 'completed', shipping_status: 'delivered', updated_at: getNowISOVN() };
@@ -184,6 +191,18 @@ export default function SalesReconciliationView({
     const rss = scannedOrder.shipping_status || scannedOrder.status;
     if (!['shipped', 'in_transit', 'delivered', 'shipping', 'delivered', 'completed'].includes(rss) && !['completed'].includes(scannedOrder.order_status)) {
       showToast('Đơn hàng không ở trạng thái có thể hoàn', 'error');
+      return;
+    }
+    // Check duplicate reconciliation (Bug 3)
+    const { data: existingReturn } = await supabase.from('order_reconciliation')
+      .select('id').eq('order_id', scannedOrder.id).eq('type', 'return_confirm').limit(1);
+    if (existingReturn && existingReturn.length > 0) {
+      showToast('Đơn hàng này đã được xử lý hoàn hàng rồi!', 'error');
+      return;
+    }
+    // Prevent double stock restore (already returned/cancelled via changeOrderStatus)
+    if (['cancelled', 'returned'].includes(scannedOrder.order_status || scannedOrder.status)) {
+      showToast('Đơn hàng đã được xử lý hoàn/hủy trước đó', 'error');
       return;
     }
     setSubmitting(true);
