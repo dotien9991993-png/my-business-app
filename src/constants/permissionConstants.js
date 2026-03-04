@@ -33,6 +33,7 @@ export const moduleTabs = {
     { id: 'transfer', name: '🔄 Chuyển kho', desc: 'Chuyển hàng giữa các kho' },
     { id: 'stocktake', name: '📝 Kiểm kê', desc: 'Kiểm kê tồn kho' },
     { id: 'report', name: '📊 Báo cáo', desc: 'Báo cáo xuất nhập tồn' },
+    { id: 'po', name: '📋 Đơn Mua Hàng', desc: 'Quản lý đơn đặt hàng NCC' },
     { id: 'suppliers', name: '🏢 Nhà cung cấp', desc: 'Quản lý nhà cung cấp' },
     { id: 'warehouses', name: '🏭 Quản lý kho', desc: 'CRUD kho' }
   ],

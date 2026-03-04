@@ -15,7 +15,8 @@ export default function WarehouseSuppliersView({
   currentUser,
   warehouses,
   hasPermission,
-  canEdit
+  canEdit,
+  supplierPayments
 }) {
   // --- State ---
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -24,6 +25,15 @@ export default function WarehouseSuppliersView({
   const [searchTerm, setSearchTerm] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentSupplierId, setPaymentSupplierId] = useState(null);
+
+  // Payment form state
+  const [payAmount, setPayAmount] = useState('');
+  const [payMethod, setPayMethod] = useState('cash');
+  const [payDate, setPayDate] = useState('');
+  const [payReference, setPayReference] = useState('');
+  const [payNotes, setPayNotes] = useState('');
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -53,27 +63,46 @@ export default function WarehouseSuppliersView({
     );
   }, [activeSuppliers, searchTerm]);
 
-  // Import stats per supplier (with debt)
+  // Import stats per supplier
   const supplierImportStats = useMemo(() => {
     const stats = {};
     (stockTransactions || []).forEach((tx) => {
       if (tx.type === 'import' && tx.supplier_id) {
         if (!stats[tx.supplier_id]) {
-          stats[tx.supplier_id] = { count: 0, totalAmount: 0, paidAmount: 0 };
+          stats[tx.supplier_id] = { count: 0, totalAmount: 0 };
         }
         stats[tx.supplier_id].count += 1;
         stats[tx.supplier_id].totalAmount += Number(tx.total_amount || 0);
-        stats[tx.supplier_id].paidAmount += Number(tx.paid_amount || 0);
       }
     });
     return stats;
   }, [stockTransactions]);
 
+  // Payment stats per supplier (from supplier_payments table)
+  const supplierPaymentStats = useMemo(() => {
+    const stats = {};
+    (supplierPayments || []).forEach((p) => {
+      if (!stats[p.supplier_id]) stats[p.supplier_id] = 0;
+      stats[p.supplier_id] += Number(p.amount || 0);
+    });
+    return stats;
+  }, [supplierPayments]);
+
   const getSupplierDebt = (supplierId) => {
-    const s = supplierImportStats[supplierId];
-    if (!s) return 0;
-    return s.totalAmount - s.paidAmount;
+    const importTotal = supplierImportStats[supplierId]?.totalAmount || 0;
+    const paidTotal = supplierPaymentStats[supplierId] || 0;
+    return importTotal - paidTotal;
   };
+
+  const getSupplierPaid = (supplierId) => supplierPaymentStats[supplierId] || 0;
+
+  // Payment history for selected supplier
+  const selectedSupplierPayments = useMemo(() => {
+    if (!selectedSupplier) return [];
+    return (supplierPayments || [])
+      .filter(p => p.supplier_id === selectedSupplier.id)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }, [selectedSupplier, supplierPayments]);
 
   // Overall stats
   const totalSuppliers = activeSuppliers.length;
@@ -83,9 +112,12 @@ export default function WarehouseSuppliersView({
   const suppliersWithImports = useMemo(() => {
     return Object.keys(supplierImportStats).length;
   }, [supplierImportStats]);
+  const totalPaid = useMemo(() => {
+    return Object.values(supplierPaymentStats).reduce((sum, v) => sum + v, 0);
+  }, [supplierPaymentStats]);
   const totalDebt = useMemo(() => {
-    return Object.values(supplierImportStats).reduce((sum, s) => sum + (s.totalAmount - s.paidAmount), 0);
-  }, [supplierImportStats]);
+    return totalImportValue - totalPaid;
+  }, [totalImportValue, totalPaid]);
 
   // Products of selected supplier
   const supplierProducts = useMemo(() => {
@@ -439,6 +471,19 @@ export default function WarehouseSuppliersView({
                         })()}
                       </td>
                       <td className="px-4 py-3 text-center">
+                        <div className="flex gap-1 justify-center">
+                        {(() => {
+                          const d = getSupplierDebt(supplier.id);
+                          return d > 0 && hasPermission('warehouse', 2) ? (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setPaymentSupplierId(supplier.id); setPayAmount(''); setPayMethod('cash'); setPayDate(new Date().toISOString().split('T')[0]); setPayReference(''); setPayNotes(''); setShowPaymentModal(true); }}
+                              className="text-green-600 hover:text-green-800 transition-colors p-1"
+                              title="Thanh toán"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                            </button>
+                          ) : null;
+                        })()}
                         {canEdit('warehouse') && (
                           <button
                             onClick={(e) => {
@@ -458,6 +503,7 @@ export default function WarehouseSuppliersView({
                             </svg>
                           </button>
                         )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -803,13 +849,24 @@ export default function WarehouseSuppliersView({
                   {/* Debt summary */}
                   {(() => {
                     const debt = getSupplierDebt(selectedSupplier.id);
-                    const stats = supplierImportStats[selectedSupplier.id] || { totalAmount: 0, paidAmount: 0 };
+                    const importTotal = supplierImportStats[selectedSupplier.id]?.totalAmount || 0;
+                    const paidTotal = getSupplierPaid(selectedSupplier.id);
                     return (
                       <div className={`rounded-xl p-4 ${debt > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
-                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Công nợ</h4>
+                        <div className="flex justify-between items-center mb-2">
+                          <h4 className="text-sm font-semibold text-gray-700">Công nợ</h4>
+                          {debt > 0 && hasPermission('warehouse', 2) && (
+                            <button
+                              onClick={() => { setPaymentSupplierId(selectedSupplier.id); setPayAmount(''); setPayMethod('cash'); setPayDate(new Date().toISOString().split('T')[0]); setPayReference(''); setPayNotes(''); setShowPaymentModal(true); }}
+                              className="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                            >
+                              💰 Thanh toán
+                            </button>
+                          )}
+                        </div>
                         <div className="grid grid-cols-3 gap-3 text-sm">
-                          <div><span className="text-gray-500">Tổng nhập:</span><div className="font-bold">{formatMoney(stats.totalAmount)}</div></div>
-                          <div><span className="text-gray-500">Đã thanh toán:</span><div className="font-bold text-green-700">{formatMoney(stats.paidAmount)}</div></div>
+                          <div><span className="text-gray-500">Tổng nhập:</span><div className="font-bold">{formatMoney(importTotal)}</div></div>
+                          <div><span className="text-gray-500">Đã thanh toán:</span><div className="font-bold text-green-700">{formatMoney(paidTotal)}</div></div>
                           <div><span className="text-gray-500">Còn nợ:</span><div className={`font-bold ${debt > 0 ? 'text-red-700' : 'text-green-700'}`}>{formatMoney(debt)}</div></div>
                         </div>
                       </div>
@@ -904,6 +961,58 @@ export default function WarehouseSuppliersView({
                       </div>
                     )}
                   </div>
+
+                  {/* Payment history */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      💰 Lịch sử thanh toán ({selectedSupplierPayments.length})
+                    </h4>
+                    {selectedSupplierPayments.length === 0 ? (
+                      <div className="text-center py-6 text-gray-400 text-sm bg-gray-50 rounded-xl">
+                        Chưa có thanh toán nào
+                      </div>
+                    ) : (
+                      <div className="border border-gray-100 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-gray-50 border-b border-gray-100">
+                                <th className="text-left px-3 py-2.5 font-semibold text-gray-600">Ngày</th>
+                                <th className="text-right px-3 py-2.5 font-semibold text-gray-600">Số tiền</th>
+                                <th className="text-left px-3 py-2.5 font-semibold text-gray-600">PT thanh toán</th>
+                                <th className="text-left px-3 py-2.5 font-semibold text-gray-600">Mã tham chiếu</th>
+                                <th className="text-left px-3 py-2.5 font-semibold text-gray-600">Ghi chú</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedSupplierPayments.map(p => (
+                                <tr key={p.id} className="border-b border-gray-50">
+                                  <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+                                    {p.payment_date ? new Date(p.payment_date).toLocaleDateString('vi-VN') : '-'}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-medium text-green-700">{formatMoney(p.amount)}</td>
+                                  <td className="px-3 py-2.5 text-gray-600">
+                                    {p.payment_method === 'cash' ? 'Tiền mặt' : p.payment_method === 'bank' ? 'Chuyển khoản' : p.payment_method || '-'}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-gray-500 text-xs">{p.reference_number || '-'}</td>
+                                  <td className="px-3 py-2.5 text-gray-500 text-xs">{p.notes || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-green-50 border-t border-green-100">
+                                <td className="px-3 py-2.5 text-right font-semibold text-green-700">Tổng:</td>
+                                <td className="px-3 py-2.5 text-right font-bold text-green-700">
+                                  {formatMoney(selectedSupplierPayments.reduce((s, p) => s + Number(p.amount || 0), 0))}
+                                </td>
+                                <td colSpan={3}></td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -963,8 +1072,98 @@ export default function WarehouseSuppliersView({
           </div>
         </div>
       )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && paymentSupplierId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md">
+            <div className="p-6 border-b">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-bold">💰 Thanh toán NCC</h2>
+                <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                {getSupplierNameById(paymentSupplierId)} — Còn nợ: <span className="text-red-600 font-medium">{formatMoney(getSupplierDebt(paymentSupplierId))}</span>
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Số tiền thanh toán *</label>
+                <input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                  placeholder="Nhập số tiền" className="w-full px-3 py-2 border rounded-lg" min="1" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phương thức</label>
+                <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg">
+                  <option value="cash">Tiền mặt</option>
+                  <option value="bank">Chuyển khoản</option>
+                  <option value="other">Khác</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ngày thanh toán</label>
+                <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mã tham chiếu</label>
+                <input type="text" value={payReference} onChange={e => setPayReference(e.target.value)}
+                  placeholder="Số phiếu / mã giao dịch" className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
+                <textarea value={payNotes} onChange={e => setPayNotes(e.target.value)} rows={2}
+                  className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+            </div>
+            <div className="p-6 border-t flex gap-3 justify-end">
+              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 border rounded-lg">Hủy</button>
+              <button onClick={handlePayment} disabled={saving}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50">
+                {saving ? 'Đang xử lý...' : 'Xác nhận thanh toán'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+
+  function getSupplierNameById(id) {
+    const s = (suppliers || []).find(su => su.id === id);
+    return s ? s.name : '';
+  }
+
+  async function handlePayment() {
+    const amount = parseFloat(payAmount);
+    if (!amount || amount <= 0) { alert('Vui lòng nhập số tiền hợp lệ!'); return; }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('supplier_payments').insert({
+        tenant_id: tenant.id,
+        supplier_id: paymentSupplierId,
+        amount,
+        payment_method: payMethod,
+        payment_date: payDate || new Date().toISOString().split('T')[0],
+        reference_number: payReference || null,
+        notes: payNotes || null,
+        created_by: currentUser.id,
+      });
+      if (error) throw error;
+
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'warehouse', action: 'create', entityType: 'supplier_payment', entityId: paymentSupplierId, entityName: getSupplierNameById(paymentSupplierId), description: `Thanh toán NCC ${getSupplierNameById(paymentSupplierId)}: ${formatMoney(amount)}` });
+
+      alert('Thanh toán thành công!');
+      setShowPaymentModal(false);
+      await loadWarehouseData();
+    } catch (err) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 }
 
 /* Small helper for detail info rows */

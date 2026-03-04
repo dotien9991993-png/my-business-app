@@ -7,7 +7,7 @@ const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(num || 0);
 
 const getXLSX = () => import('xlsx');
 
-export default function WarehouseReportView({ products, stockTransactions, warehouses, warehouseStock, tenant, hasPermission, getPermissionLevel }) {
+export default function WarehouseReportView({ products, stockTransactions, warehouses, warehouseStock, tenant, hasPermission, getPermissionLevel, suppliers, supplierPayments }) {
   const permLevel = getPermissionLevel('warehouse');
 
   const now = new Date();
@@ -545,6 +545,7 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
           { id: 'lowstock', label: 'Cảnh Báo Tồn Kho' },
           { id: 'slowmoving', label: 'Hàng Chậm Bán' },
           { id: 'history', label: 'Lịch Sử Kho' },
+          { id: 'supplier_debt', label: 'Công Nợ NCC' },
         ].map(tab => (
           <button key={tab.id}
             onClick={() => setReportType(tab.id)}
@@ -1214,6 +1215,119 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
                 className="px-3 py-1.5 border rounded-lg text-sm disabled:opacity-40 hover:bg-gray-50">&gt;</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Supplier Debt Report */}
+      {reportType === 'supplier_debt' && (
+        <div className="space-y-4">
+          {(() => {
+            // Calculate debt data
+            const importBySupplier = {};
+            (stockTransactions || []).forEach(tx => {
+              if (tx.type === 'import' && tx.supplier_id) {
+                if (!importBySupplier[tx.supplier_id]) importBySupplier[tx.supplier_id] = 0;
+                importBySupplier[tx.supplier_id] += Number(tx.total_amount || 0);
+              }
+            });
+            const paidBySupplier = {};
+            (supplierPayments || []).forEach(p => {
+              if (!paidBySupplier[p.supplier_id]) paidBySupplier[p.supplier_id] = 0;
+              paidBySupplier[p.supplier_id] += Number(p.amount || 0);
+            });
+            const allSupplierIds = [...new Set([...Object.keys(importBySupplier), ...Object.keys(paidBySupplier)])];
+            const debtData = allSupplierIds.map(sid => {
+              const supplier = (suppliers || []).find(s => s.id === sid);
+              const totalImport = importBySupplier[sid] || 0;
+              const totalPaid = paidBySupplier[sid] || 0;
+              return { id: sid, name: supplier?.name || 'N/A', phone: supplier?.phone || '', totalImport, totalPaid, debt: totalImport - totalPaid };
+            }).filter(d => d.totalImport > 0).sort((a, b) => b.debt - a.debt);
+            const totalImportAll = debtData.reduce((s, d) => s + d.totalImport, 0);
+            const totalPaidAll = debtData.reduce((s, d) => s + d.totalPaid, 0);
+            const totalDebtAll = totalImportAll - totalPaidAll;
+
+            return (
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="bg-white rounded-xl p-4 border-l-4 border-blue-500">
+                    <div className="text-lg font-bold text-blue-600">{formatCurrency(totalImportAll)}</div>
+                    <div className="text-gray-600 text-sm">Tổng mua hàng</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-4 border-l-4 border-green-500">
+                    <div className="text-lg font-bold text-green-600">{formatCurrency(totalPaidAll)}</div>
+                    <div className="text-gray-600 text-sm">Đã thanh toán</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-4 border-l-4 border-red-500">
+                    <div className="text-lg font-bold text-red-600">{formatCurrency(totalDebtAll)}</div>
+                    <div className="text-gray-600 text-sm">Còn nợ</div>
+                  </div>
+                </div>
+
+                {/* Export button */}
+                <div className="flex justify-end">
+                  <button onClick={async () => {
+                    try {
+                      const XLSX = await getXLSX();
+                      const ws = XLSX.utils.json_to_sheet(debtData.map(d => ({
+                        'Nhà cung cấp': d.name, 'SĐT': d.phone,
+                        'Tổng mua': d.totalImport, 'Đã thanh toán': d.totalPaid, 'Còn nợ': d.debt
+                      })));
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, 'Công nợ NCC');
+                      XLSX.writeFile(wb, `cong-no-ncc-${new Date().toISOString().split('T')[0]}.xlsx`);
+                    } catch (e) { console.error(e); alert('Lỗi export: ' + e.message); }
+                  }} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+                    📥 Xuất Excel
+                  </button>
+                </div>
+
+                {/* Table */}
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-600">Nhà cung cấp</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">SĐT</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-600">Tổng mua</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-600">Đã thanh toán</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-600">Còn nợ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {debtData.length === 0 ? (
+                          <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-500">Chưa có dữ liệu công nợ</td></tr>
+                        ) : debtData.map(d => (
+                          <tr key={d.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium">{d.name}</td>
+                            <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{d.phone || '-'}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(d.totalImport)}</td>
+                            <td className="px-4 py-3 text-right text-green-600">{formatCurrency(d.totalPaid)}</td>
+                            <td className="px-4 py-3 text-right">
+                              <span className={`font-medium ${d.debt > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {formatCurrency(d.debt)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {debtData.length > 0 && (
+                        <tfoot className="bg-blue-50">
+                          <tr>
+                            <td className="px-4 py-3 font-bold" colSpan="2">Tổng cộng</td>
+                            <td className="px-4 py-3 text-right font-bold">{formatCurrency(totalImportAll)}</td>
+                            <td className="px-4 py-3 text-right font-bold text-green-600">{formatCurrency(totalPaidAll)}</td>
+                            <td className="px-4 py-3 text-right font-bold text-red-600">{formatCurrency(totalDebtAll)}</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

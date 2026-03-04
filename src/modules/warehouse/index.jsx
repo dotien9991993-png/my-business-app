@@ -9,8 +9,9 @@ import WarehouseHistoryView from './WarehouseHistoryView';
 import WarehousesView from './WarehousesView';
 import WarehouseStocktakeView from './WarehouseStocktakeView';
 import WarehouseTransferView from './WarehouseTransferView';
-// Lazy load view dùng recharts
+// Lazy load views
 const WarehouseReportView = React.lazy(() => import('./WarehouseReportView'));
+const PurchaseOrderView = React.lazy(() => import('./PurchaseOrderView'));
 import WarehouseSuppliersView from './WarehouseSuppliersView';
 
 const NoAccess = () => (
@@ -25,7 +26,7 @@ const NoAccess = () => (
 
 export default function WarehouseModule() {
   const { activeTab, currentUser, tenant, canAccessTab, hasPermission, canEdit, getPermissionLevel } = useApp();
-  const { products, stockTransactions, loadWarehouseData, warehouses, warehouseStock, getSettingValue, comboItems, productVariants, suppliers, stocktakes, transfers, orders } = useData();
+  const { products, stockTransactions, loadWarehouseData, warehouses, warehouseStock, getSettingValue, comboItems, productVariants, suppliers, stocktakes, transfers, orders, purchaseOrders, purchaseOrderItems, supplierPayments } = useData();
 
   const dynamicCategories = getSettingValue('product', 'categories', null);
   const dynamicUnits = getSettingValue('product', 'units', null);
@@ -45,8 +46,9 @@ export default function WarehouseModule() {
       {activeTab === 'transfer' && canAccessTab('warehouse', 'transfer') && <WarehouseTransferView transfers={transfers} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
       {activeTab === 'stocktake' && canAccessTab('warehouse', 'stocktake') && <WarehouseStocktakeView stocktakes={stocktakes} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} productVariants={productVariants} />}
       {activeTab === 'history' && canAccessTab('warehouse', 'products') && <WarehouseHistoryView stockTransactions={stockTransactions} warehouses={warehouses} />}
-      {activeTab === 'report' && canAccessTab('warehouse', 'report') && <WarehouseReportView products={products} stockTransactions={stockTransactions} warehouses={warehouses} warehouseStock={warehouseStock} tenant={tenant} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} />}
-      {activeTab === 'suppliers' && canAccessTab('warehouse', 'suppliers') && <WarehouseSuppliersView suppliers={suppliers} products={products} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} warehouses={warehouses} hasPermission={hasPermission} canEdit={canEdit} />}
+      {activeTab === 'report' && canAccessTab('warehouse', 'report') && <WarehouseReportView products={products} stockTransactions={stockTransactions} warehouses={warehouses} warehouseStock={warehouseStock} tenant={tenant} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} suppliers={suppliers} supplierPayments={supplierPayments} />}
+      {activeTab === 'po' && canAccessTab('warehouse', 'po') && <PurchaseOrderView purchaseOrders={purchaseOrders} purchaseOrderItems={purchaseOrderItems} suppliers={suppliers} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
+      {activeTab === 'suppliers' && canAccessTab('warehouse', 'suppliers') && <WarehouseSuppliersView suppliers={suppliers} products={products} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} warehouses={warehouses} hasPermission={hasPermission} canEdit={canEdit} supplierPayments={supplierPayments} />}
       {activeTab === 'warehouses' && canAccessTab('warehouse', 'warehouses') && <WarehousesView warehouses={warehouses} warehouseStock={warehouseStock} products={products} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
       {!canAccessTab('warehouse', getTabPermission(activeTab)) && <NoAccess />}
     </Suspense>

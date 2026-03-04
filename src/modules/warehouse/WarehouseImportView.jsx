@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { getTodayVN, getDateStrVN, getNowISOVN } from '../../utils/dateUtils';
 import { logActivity } from '../../lib/activityLog';
 import { isAdmin } from '../../utils/permissionUtils';
+import { calculateWAC } from '../../utils/wacUtils';
 import QRScanner from '../../components/shared/QRScanner';
 
 export default function WarehouseImportView({ products, warehouses, stockTransactions, loadWarehouseData, tenant, currentUser, suppliers, hasPermission, getPermissionLevel }) {
@@ -165,6 +166,51 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
     return wh ? wh.name : '';
   };
 
+  // Update WAC (Weighted Average Cost) after import
+  const updateWAC = async (items, stockTransactionId) => {
+    try {
+      // Group by product_id (in case same product appears multiple times)
+      const grouped = {};
+      for (const item of items) {
+        const pid = item.product_id;
+        const qty = parseInt(item.quantity) || 0;
+        const price = parseFloat(item.unit_price) || 0;
+        if (!grouped[pid]) grouped[pid] = { totalQty: 0, totalValue: 0 };
+        grouped[pid].totalQty += qty;
+        grouped[pid].totalValue += qty * price;
+      }
+
+      for (const [productId, { totalQty, totalValue }] of Object.entries(grouped)) {
+        if (totalQty <= 0) continue;
+        const avgImportPrice = totalValue / totalQty;
+
+        // Get current product stock & avg_cost
+        const product = products.find(p => p.id === productId);
+        if (!product) continue;
+
+        const oldQty = Math.max(0, (product.stock || 0) - totalQty); // stock before this import
+        const oldAvgCost = parseFloat(product.avg_cost) || 0;
+        const newAvgCost = calculateWAC(oldQty, oldAvgCost, totalQty, avgImportPrice);
+
+        // Update product avg_cost
+        await supabase.from('products').update({ avg_cost: Math.round(newAvgCost) }).eq('id', productId);
+
+        // Insert cost_price_history
+        await supabase.from('cost_price_history').insert({
+          tenant_id: tenant.id,
+          product_id: productId,
+          old_avg_cost: oldAvgCost,
+          new_avg_cost: Math.round(newAvgCost),
+          import_quantity: totalQty,
+          import_price: avgImportPrice,
+          stock_transaction_id: stockTransactionId
+        });
+      }
+    } catch (err) {
+      console.error('Error updating WAC:', err);
+    }
+  };
+
   const handleCreateImport = async () => {
     if (!hasPermission('warehouse', 2)) { alert('Ban khong co quyen tao phieu nhap'); return; }
     const validItems = formItems.filter(item => item.product_id && item.quantity > 0);
@@ -266,6 +312,9 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
             }
           }
         }
+
+        // WAC calculation after stock adjustment
+        await updateWAC(validItems, transaction.id);
       }
 
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'warehouse', action: 'create', entityType: 'import', entityId: transactionNumber, entityName: transactionNumber, description: 'Tạo phiếu nhập ' + transactionNumber + (autoApprove ? ' (tự động duyệt)' : ' (chờ duyệt)') });
@@ -324,6 +373,9 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
         });
         if (rpcError) throw rpcError;
       }
+
+      // WAC calculation after stock adjustment
+      await updateWAC(transactionItems, selectedTransaction.id);
 
       // Stock OK → update approval status
       const { error: updateErr } = await supabase.from('stock_transactions')

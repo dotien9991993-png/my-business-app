@@ -31,6 +31,9 @@ export function DataProvider({ children }) {
   const [suppliers, setSuppliers] = useState([]);
   const [stocktakes, setStocktakes] = useState([]);
   const [transfers, setTransfers] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [purchaseOrderItems, setPurchaseOrderItems] = useState([]);
+  const [supplierPayments, setSupplierPayments] = useState([]);
   const [orders, setOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [customerAddresses, setCustomerAddresses] = useState([]);
@@ -191,7 +194,7 @@ export function DataProvider({ children }) {
   const loadWarehouseData = useCallback(async () => {
     if (!tenant) return;
     try {
-      const [productsRes, transactionsRes, warehousesRes, warehouseStockRes, comboItemsRes, suppliersRes, stocktakesRes, transfersRes, variantsRes] = await Promise.all([
+      const [productsRes, transactionsRes, warehousesRes, warehouseStockRes, comboItemsRes, suppliersRes, stocktakesRes, transfersRes, variantsRes, poRes, poItemsRes, spRes] = await Promise.all([
         supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name', { ascending: true }),
         supabase.from('stock_transactions').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100),
         supabase.from('warehouses').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order', { ascending: true }),
@@ -200,7 +203,10 @@ export function DataProvider({ children }) {
         supabase.from('suppliers').select('*').eq('tenant_id', tenant.id).order('name', { ascending: true }),
         supabase.from('stocktakes').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100),
         supabase.from('warehouse_transfers').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(100),
-        supabase.from('product_variants').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order', { ascending: true })
+        supabase.from('product_variants').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order', { ascending: true }),
+        supabase.from('purchase_orders').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
+        supabase.from('purchase_order_items').select('*'),
+        supabase.from('supplier_payments').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false })
       ]);
       if (productsRes.data) setProducts(productsRes.data);
       if (transactionsRes.data) setStockTransactions(transactionsRes.data);
@@ -215,6 +221,12 @@ export function DataProvider({ children }) {
       if (transfersRes.data) setTransfers(transfersRes.data);
       if (variantsRes.error) { console.warn('product_variants table not ready:', variantsRes.error.message); }
       else if (variantsRes.data) setProductVariants(variantsRes.data);
+      if (poRes.error) { console.warn('purchase_orders table not ready:', poRes.error.message); }
+      else if (poRes.data) setPurchaseOrders(poRes.data);
+      if (poItemsRes.error) { console.warn('purchase_order_items table not ready:', poItemsRes.error.message); }
+      else if (poItemsRes.data) setPurchaseOrderItems(poItemsRes.data);
+      if (spRes.error) { console.warn('supplier_payments table not ready:', spRes.error.message); }
+      else if (spRes.data) setSupplierPayments(spRes.data);
     } catch (error) { console.error('Error loading warehouse data:', error); }
   }, [tenant]);
 
@@ -323,7 +335,10 @@ export function DataProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'product_combo_items' }, () => loadWarehouseData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => loadWarehouseData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stocktakes' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_transfers' }, () => loadWarehouseData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_transfers' }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_order_items' }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_payments' }, () => loadWarehouseData()).subscribe();
     const salesChannel = supabase.channel('sales-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadSalesData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => loadSalesData())
@@ -586,7 +601,7 @@ export function DataProvider({ children }) {
     attendances, setAttendances, todayAttendances, setTodayAttendances,
     products, setProducts, stockTransactions, setStockTransactions,
     warehouses, setWarehouses, warehouseStock, setWarehouseStock, comboItems, productVariants,
-    suppliers, stocktakes, transfers,
+    suppliers, stocktakes, transfers, purchaseOrders, purchaseOrderItems, supplierPayments,
     orders, setOrders, customers, setCustomers, customerAddresses, setCustomerAddresses,
     systemSettings, shippingConfigs, getSettingValue,
     serials, setSerials, warrantyCards, setWarrantyCards, warrantyRepairs, setWarrantyRepairs, warrantyRequests, setWarrantyRequests, loadWarrantyData,

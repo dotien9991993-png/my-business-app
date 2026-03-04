@@ -325,6 +325,7 @@ export default function MobileBottomTabs({
     const setShowMoreMenu = setShowWarehouseMoreMenu;
     const moreTabs = [
       { id: 'stocktake', icon: '📝', label: 'Kiểm Kê', tabKey: 'stocktake' },
+      { id: 'po', icon: '📋', label: 'Đơn Mua', tabKey: 'po' },
       { id: 'history', icon: '📋', label: 'Lịch Sử', tabKey: 'products' },
       { id: 'report', icon: '📊', label: 'Báo Cáo', tabKey: 'report' },
       { id: 'suppliers', icon: '🏢', label: 'NCC', tabKey: 'suppliers' },
