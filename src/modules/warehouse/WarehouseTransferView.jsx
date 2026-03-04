@@ -174,7 +174,6 @@ export default function WarehouseTransferView({
       if (tErr) throw tErr;
 
       const itemRows = validItems.map(it => ({
-        tenant_id: tenant.id,
         transfer_id: transfer.id,
         product_id: it.product_id,
         sent_qty: parseInt(it.quantity),
