@@ -5,6 +5,8 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, L
 const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
 const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(num || 0);
 
+const getXLSX = () => import('xlsx');
+
 export default function WarehouseReportView({ products, stockTransactions, warehouses, warehouseStock, tenant, hasPermission, getPermissionLevel }) {
   const permLevel = getPermissionLevel('warehouse');
 
@@ -299,6 +301,96 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
     outOfStock: lowStockProducts.filter(p => p.currentStock === 0).length,
   }), [lowStockProducts]);
 
+  // ===== Export report to Excel =====
+  const [exportingReport, setExportingReport] = useState(false);
+
+  const exportReportToExcel = async (type) => {
+    setExportingReport(true);
+    try {
+      const XLSX = await getXLSX();
+      const wb = XLSX.utils.book_new();
+      const today = new Date().toISOString().split('T')[0];
+      const { startDate, endDate } = getDateRange();
+      const whName = filterWarehouse ? (warehouses || []).find(w => w.id === filterWarehouse)?.name : 'Tất cả kho';
+
+      // Company header rows
+      const headerRows = [
+        [tenant?.name || 'Hoàng Nam Audio'],
+        [`Kho: ${whName} | Kỳ: ${startDate} - ${endDate}`],
+        [''],
+      ];
+
+      if (type === 'xnt') {
+        const title = 'BÁO CÁO XUẤT NHẬP TỒN';
+        const dataRows = xntData.map((r, idx) => ({
+          'STT': idx + 1,
+          'Mã SP': r.sku || '',
+          'Tên SP': r.product_name,
+          'Tồn đầu kỳ': r.ton_dau,
+          'Nhập': r.nhap,
+          'Xuất': r.xuat,
+          'Tồn cuối kỳ': r.ton_cuoi,
+          'GT Nhập': r.nhap_value,
+          'GT Xuất': r.xuat_value,
+        }));
+        const aoa = [...headerRows, [title], []];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        XLSX.utils.sheet_add_json(ws, dataRows, { origin: -1 });
+        // Add totals row
+        const totalRow = { 'STT': '', 'Mã SP': '', 'Tên SP': 'TỔNG CỘNG', 'Tồn đầu kỳ': xntData.reduce((s, r) => s + r.ton_dau, 0), 'Nhập': xntSummary.totalNhapQty, 'Xuất': xntSummary.totalXuatQty, 'Tồn cuối kỳ': xntData.reduce((s, r) => s + r.ton_cuoi, 0), 'GT Nhập': xntSummary.totalNhapValue, 'GT Xuất': xntSummary.totalXuatValue };
+        XLSX.utils.sheet_add_json(ws, [totalRow], { origin: -1, skipHeader: true });
+        ws['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 15 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Xuất Nhập Tồn');
+        XLSX.writeFile(wb, `bao-cao-xnt_${today}.xlsx`);
+      } else if (type === 'value') {
+        const title = 'BÁO CÁO GIÁ TRỊ KHO';
+        const dataRows = valueData.top10ByValue.map((p, idx) => ({
+          'STT': idx + 1,
+          'Mã SP': p.sku || '',
+          'Tên SP': p.name,
+          'Tồn kho': p.stock_quantity || 0,
+          'Giá nhập': p.import_price || 0,
+          'Giá trị tồn': p.tiedValue,
+        }));
+        const summaryRows = [
+          [''],
+          ['TỔNG HỢP'],
+          ['Giá trị nhập (vốn)', valueData.totalCostValue],
+          ['Giá trị bán (doanh thu tiềm năng)', valueData.totalSellValue],
+          ['Lợi nhuận dự kiến', valueData.expectedProfit],
+        ];
+        const aoa = [...headerRows, [title], []];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        XLSX.utils.sheet_add_json(ws, dataRows, { origin: -1 });
+        XLSX.utils.sheet_add_aoa(ws, summaryRows, { origin: -1 });
+        ws['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 15 }, { wch: 18 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Giá Trị Kho');
+        XLSX.writeFile(wb, `bao-cao-gia-tri-kho_${today}.xlsx`);
+      } else if (type === 'lowstock') {
+        const title = 'BÁO CÁO CẢNH BÁO TỒN KHO';
+        const dataRows = lowStockProducts.map((p, idx) => ({
+          'STT': idx + 1,
+          'Mã SP': p.sku || '',
+          'Tên SP': p.name,
+          'Tồn hiện tại': p.currentStock,
+          'Tồn tối thiểu': p.minStock,
+          'Cần nhập thêm': p.needMore,
+          'Trạng thái': p.currentStock === 0 ? 'Hết hàng' : 'Sắp hết',
+        }));
+        const aoa = [...headerRows, [title], [`Tổng: ${lowStockSummary.total} SP | Hết hàng: ${lowStockSummary.outOfStock} SP`], []];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        XLSX.utils.sheet_add_json(ws, dataRows, { origin: -1 });
+        ws['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Cảnh Báo Tồn');
+        XLSX.writeFile(wb, `bao-cao-canh-bao-ton_${today}.xlsx`);
+      }
+    } catch (err) {
+      alert('Lỗi xuất báo cáo: ' + err.message);
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   // ---- Stock history (paginated) ----
   const loadHistory = useCallback(async () => {
     if (!tenant?.id) return;
@@ -339,6 +431,100 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
     setHistoryPage(0);
   }, [filterWarehouse]);
 
+  // ---- Slow-moving inventory ----
+  const [slowMovingThreshold, setSlowMovingThreshold] = useState(30); // ngày không bán
+  const [slowMovingSort, setSlowMovingSort] = useState('days_desc');
+
+  const slowMovingData = useMemo(() => {
+    const now = Date.now();
+    return (products || [])
+      .filter(p => (p.stock_quantity || 0) > 0 && p.is_active !== false)
+      .map(p => {
+        // Find last export (sale) date for this product
+        const exports = (stockTransactions || []).filter(tx =>
+          tx.type === 'export' && tx.product_id === p.id
+        );
+        let lastSoldDate = null;
+        exports.forEach(tx => {
+          const d = tx.transaction_date || tx.created_at;
+          if (d && (!lastSoldDate || d > lastSoldDate)) lastSoldDate = d;
+        });
+        const daysSinceLastSale = lastSoldDate
+          ? Math.floor((now - new Date(lastSoldDate).getTime()) / (1000 * 60 * 60 * 24))
+          : 999; // never sold
+
+        const stock = p.stock_quantity || 0;
+        const costValue = stock * (p.avg_cost || p.import_price || 0);
+
+        // Days of stock forecast (based on avg daily sales last 90 days)
+        const last90 = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const sales90 = exports.filter(tx => (tx.transaction_date || '') >= last90);
+        const totalSold90 = sales90.reduce((s, tx) => s + (tx.total_quantity || tx.quantity || 0), 0);
+        const avgDailySales = totalSold90 / 90;
+        const daysOfStock = avgDailySales > 0 ? Math.round(stock / avgDailySales) : null; // null = no sales
+
+        return {
+          ...p,
+          lastSoldDate,
+          daysSinceLastSale,
+          costValue,
+          avgDailySales: Math.round(avgDailySales * 100) / 100,
+          daysOfStock,
+          isSlowMoving: daysSinceLastSale >= slowMovingThreshold,
+        };
+      })
+      .filter(p => p.isSlowMoving)
+      .sort((a, b) => {
+        if (slowMovingSort === 'days_desc') return b.daysSinceLastSale - a.daysSinceLastSale;
+        if (slowMovingSort === 'days_asc') return a.daysSinceLastSale - b.daysSinceLastSale;
+        if (slowMovingSort === 'value_desc') return b.costValue - a.costValue;
+        return a.name.localeCompare(b.name);
+      });
+  }, [products, stockTransactions, slowMovingThreshold, slowMovingSort]);
+
+  const slowMovingSummary = useMemo(() => ({
+    count: slowMovingData.length,
+    totalValue: slowMovingData.reduce((s, p) => s + p.costValue, 0),
+    neverSold: slowMovingData.filter(p => p.daysSinceLastSale >= 999).length,
+    totalStock: slowMovingData.reduce((s, p) => s + (p.stock_quantity || 0), 0),
+  }), [slowMovingData]);
+
+  const exportSlowMoving = async () => {
+    setExportingReport(true);
+    try {
+      const XLSX = await getXLSX();
+      const wb = XLSX.utils.book_new();
+      const today = new Date().toISOString().split('T')[0];
+      const headerRows = [
+        [tenant?.name || 'Hoàng Nam Audio'],
+        [`BÁO CÁO HÀNG CHẬM BÁN (> ${slowMovingThreshold} ngày)`],
+        [`Ngày xuất: ${today}`],
+        [''],
+      ];
+      const dataRows = slowMovingData.map((p, idx) => ({
+        'STT': idx + 1,
+        'Mã SP': p.sku || '',
+        'Tên SP': p.name,
+        'Tồn kho': p.stock_quantity || 0,
+        'Giá vốn': p.avg_cost || p.import_price || 0,
+        'Giá trị tồn': p.costValue,
+        'Ngày bán cuối': p.lastSoldDate ? new Date(p.lastSoldDate).toLocaleDateString('vi-VN') : 'Chưa bán',
+        'Số ngày chưa bán': p.daysSinceLastSale >= 999 ? 'Chưa bán' : p.daysSinceLastSale,
+        'TB bán/ngày (90d)': p.avgDailySales,
+        'Dự báo hết (ngày)': p.daysOfStock !== null ? p.daysOfStock : 'Không có dữ liệu',
+      }));
+      const ws = XLSX.utils.aoa_to_sheet(headerRows);
+      XLSX.utils.sheet_add_json(ws, dataRows, { origin: -1 });
+      ws['!cols'] = [{ wch: 5 }, { wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Hàng Chậm Bán');
+      XLSX.writeFile(wb, `hang-cham-ban_${today}.xlsx`);
+    } catch (err) {
+      alert('Lỗi xuất báo cáo: ' + err.message);
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   // Entire view guard (placed after all hooks to comply with rules-of-hooks)
   if (!hasPermission('warehouse', 2)) {
     return (
@@ -357,6 +543,7 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
           { id: 'xnt', label: 'Xuất Nhập Tồn' },
           { id: 'value', label: 'Giá Trị Kho' },
           { id: 'lowstock', label: 'Cảnh Báo Tồn Kho' },
+          { id: 'slowmoving', label: 'Hàng Chậm Bán' },
           { id: 'history', label: 'Lịch Sử Kho' },
         ].map(tab => (
           <button key={tab.id}
@@ -370,6 +557,9 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
             {tab.label}
             {tab.id === 'lowstock' && lowStockSummary.total > 0 && (
               <span className="ml-1.5 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">{lowStockSummary.total}</span>
+            )}
+            {tab.id === 'slowmoving' && slowMovingSummary.count > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 bg-orange-500 text-white text-xs rounded-full">{slowMovingSummary.count}</span>
             )}
           </button>
         ))}
@@ -482,16 +672,36 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
             ))}
           </select>
 
-          {/* Load report button */}
-          {reportType === 'xnt' && (
-            <button
-              onClick={loadXntReport}
-              disabled={loadingXnt}
-              className="ml-auto bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
-            >
-              {loadingXnt ? 'Đang tải...' : 'Tải báo cáo'}
-            </button>
-          )}
+          {/* Load report & export buttons */}
+          <div className="ml-auto flex gap-2">
+            {reportType === 'xnt' && (
+              <>
+                <button onClick={loadXntReport} disabled={loadingXnt} className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors">
+                  {loadingXnt ? 'Đang tải...' : 'Tải báo cáo'}
+                </button>
+                {xntData.length > 0 && (
+                  <button onClick={() => exportReportToExcel('xnt')} disabled={exportingReport} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
+                    {exportingReport ? '⏳' : '📥'} Excel
+                  </button>
+                )}
+              </>
+            )}
+            {reportType === 'value' && (
+              <button onClick={() => exportReportToExcel('value')} disabled={exportingReport} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
+                {exportingReport ? '⏳' : '📥'} Xuất Excel
+              </button>
+            )}
+            {reportType === 'lowstock' && lowStockProducts.length > 0 && (
+              <button onClick={() => exportReportToExcel('lowstock')} disabled={exportingReport} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
+                {exportingReport ? '⏳' : '📥'} Xuất Excel
+              </button>
+            )}
+            {reportType === 'history' && (
+              <button onClick={loadHistory} disabled={loadingHistory} className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors">
+                {loadingHistory ? 'Đang tải...' : 'Tải lại'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -792,6 +1002,143 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
                         <td className={`px-3 py-2 text-right font-bold ${p.currentStock === 0 ? 'text-red-600' : 'text-orange-600'}`}>{formatNumber(p.currentStock)}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{formatNumber(p.minStock)}</td>
                         <td className="px-3 py-2 text-right font-semibold text-blue-700">{formatNumber(p.needMore)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Slow-Moving Inventory Report */}
+      {reportType === 'slowmoving' && (
+        <div className="space-y-4">
+          {/* Threshold selector */}
+          <div className="bg-white rounded-xl shadow-sm border p-4 flex flex-wrap items-center gap-4">
+            <span className="text-sm font-medium text-gray-700">Ngưỡng chậm bán:</span>
+            <div className="flex gap-2">
+              {[30, 60, 90, 180].map(d => (
+                <button key={d} onClick={() => setSlowMovingThreshold(d)}
+                  className={`px-3 py-1 rounded-lg text-sm font-medium ${slowMovingThreshold === d ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {d} ngày
+                </button>
+              ))}
+            </div>
+            <div className="h-6 w-px bg-gray-300" />
+            <span className="text-sm text-gray-500">Sắp xếp:</span>
+            <select value={slowMovingSort} onChange={e => setSlowMovingSort(e.target.value)} className="border rounded-lg px-3 py-1 text-sm">
+              <option value="days_desc">Lâu nhất trước</option>
+              <option value="days_asc">Gần nhất trước</option>
+              <option value="value_desc">Giá trị cao nhất</option>
+              <option value="name">Tên A-Z</option>
+            </select>
+            {slowMovingData.length > 0 && (
+              <button onClick={exportSlowMoving} disabled={exportingReport} className="ml-auto bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
+                {exportingReport ? '⏳' : '📥'} Xuất Excel
+              </button>
+            )}
+          </div>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white rounded-xl shadow-sm border border-l-4 border-l-orange-500 p-4">
+              <p className="text-sm text-gray-500 mb-1">SP chậm bán</p>
+              <p className="text-2xl font-bold text-orange-700">{slowMovingSummary.count}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-l-4 border-l-red-500 p-4">
+              <p className="text-sm text-gray-500 mb-1">Chưa bán lần nào</p>
+              <p className="text-2xl font-bold text-red-700">{slowMovingSummary.neverSold}</p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-l-4 border-l-amber-500 p-4">
+              <p className="text-sm text-gray-500 mb-1">Tổng tồn</p>
+              <p className="text-2xl font-bold text-amber-700">{formatNumber(slowMovingSummary.totalStock)} <span className="text-sm font-normal text-gray-500">SP</span></p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-l-4 border-l-purple-500 p-4">
+              <p className="text-sm text-gray-500 mb-1">Vốn đọng</p>
+              <p className="text-lg font-bold text-purple-700">{permLevel >= 3 ? formatCurrency(slowMovingSummary.totalValue) : '---'}</p>
+            </div>
+          </div>
+
+          {/* Slow-moving chart: top 10 by value */}
+          {slowMovingData.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border p-4">
+              <h3 className="font-semibold text-gray-800 mb-4">Top 10 SP chậm bán (theo vốn đọng)</h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={[...slowMovingData].sort((a, b) => b.costValue - a.costValue).slice(0, 10).map(p => ({
+                      name: p.name?.length > 20 ? p.name.slice(0, 20) + '...' : p.name,
+                      'Vốn đọng': p.costValue,
+                      'Số ngày': p.daysSinceLastSale >= 999 ? 365 : p.daysSinceLastSale,
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 5, right: 20, left: 5, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(val) => {
+                      if (val >= 1e6) return `${(val / 1e6).toFixed(0)}tr`;
+                      if (val >= 1e3) return `${(val / 1e3).toFixed(0)}k`;
+                      return val;
+                    }} />
+                    <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(value, name) => [name === 'Vốn đọng' ? formatCurrency(value) : `${value} ngày`, name]} />
+                    <Bar dataKey="Vốn đọng" fill="#ea580c" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Product table */}
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div className="p-4 border-b bg-gray-50">
+              <h3 className="font-semibold text-gray-800">Chi tiết hàng chậm bán</h3>
+              <p className="text-sm text-gray-500 mt-0.5">{slowMovingData.length} sản phẩm không bán hơn {slowMovingThreshold} ngày</p>
+            </div>
+            {slowMovingData.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Không có sản phẩm chậm bán với ngưỡng {slowMovingThreshold} ngày</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium text-gray-600">STT</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Mã SP</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Tên SP</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Tồn kho</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Vốn đọng</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-center">Ngày bán cuối</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Số ngày</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">TB bán/ngày</th>
+                      <th className="px-3 py-2 font-medium text-gray-600 text-right">Dự báo hết</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slowMovingData.map((p, idx) => (
+                      <tr key={p.id} className={`${p.daysSinceLastSale >= 999 ? 'bg-red-50' : p.daysSinceLastSale >= 90 ? 'bg-orange-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                        <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-600">{p.sku || '-'}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800 max-w-[200px] truncate">{p.name}</td>
+                        <td className="px-3 py-2 text-right font-medium">{formatNumber(p.stock_quantity || 0)}</td>
+                        <td className="px-3 py-2 text-right text-orange-700 font-medium text-xs">{permLevel >= 3 ? formatCurrency(p.costValue) : '---'}</td>
+                        <td className="px-3 py-2 text-center text-xs">
+                          {p.lastSoldDate ? new Date(p.lastSoldDate).toLocaleDateString('vi-VN') : <span className="text-red-500 font-medium">Chưa bán</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <span className={`font-bold ${p.daysSinceLastSale >= 999 ? 'text-red-600' : p.daysSinceLastSale >= 90 ? 'text-orange-600' : 'text-yellow-600'}`}>
+                            {p.daysSinceLastSale >= 999 ? '∞' : p.daysSinceLastSale}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs text-gray-500">{p.avgDailySales > 0 ? p.avgDailySales : '-'}</td>
+                        <td className="px-3 py-2 text-right text-xs">
+                          {p.daysOfStock !== null ? (
+                            <span className={p.daysOfStock > 365 ? 'text-red-600 font-medium' : 'text-gray-600'}>{formatNumber(p.daysOfStock)} ngày</span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
