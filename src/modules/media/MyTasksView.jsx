@@ -2,7 +2,11 @@ import React from 'react';
 import { getStatusColor, getTeamColor } from '../../utils/formatUtils';
 
 const MyTasksView = ({ tasks, currentUser, setSelectedTask, setShowModal }) => {
-  const myTasks = tasks.filter(t => t.assignee === currentUser.name);
+  const myTasks = tasks.filter(t =>
+    t.assignee === currentUser.name ||
+    (t.editors || []).includes(currentUser.name) ||
+    (t.cameramen || []).includes(currentUser.name)
+  );
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6">

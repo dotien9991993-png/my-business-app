@@ -594,7 +594,13 @@ export function DataProvider({ children }) {
       const userTeams = currentUser.teams || [currentUser.team].filter(Boolean);
       return tasks.filter(t => userTeams.includes(t.team));
     }
-    return tasks.filter(t => t.assignee === currentUser.name);
+    // Level 1 (Member): xem task được giao, task mình là editor/cameraman, và task hoàn thành
+    return tasks.filter(t =>
+      t.assignee === currentUser.name ||
+      (t.editors || []).includes(currentUser.name) ||
+      (t.cameramen || []).includes(currentUser.name) ||
+      t.status === 'Hoàn Thành'
+    );
   }, [currentUser, tasks, getPermissionLevel]);
 
   const reportData = useMemo(() => {
