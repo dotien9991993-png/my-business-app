@@ -8,7 +8,7 @@ import { useNotifications } from './NotificationContext';
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  const { tenant, currentUser, allUsers, isLoggedIn, loadUsers, loadPermissions } = useApp();
+  const { tenant, currentUser, allUsers, isLoggedIn, loadUsers, loadPermissions, getPermissionLevel } = useApp();
   const { createNotification } = useNotifications();
 
   // ---- Loading ----
@@ -588,12 +588,14 @@ export function DataProvider({ children }) {
   const visibleTasks = useMemo(() => {
     if (!currentUser) return tasks;
     if (isAdmin(currentUser) || currentUser.role === 'Manager') return tasks;
+    // Granular permission: media level >= 2 can view all tasks
+    if (getPermissionLevel('media') >= 2) return tasks;
     if (currentUser.role === 'Team Lead') {
       const userTeams = currentUser.teams || [currentUser.team].filter(Boolean);
       return tasks.filter(t => userTeams.includes(t.team));
     }
     return tasks.filter(t => t.assignee === currentUser.name);
-  }, [currentUser, tasks]);
+  }, [currentUser, tasks, getPermissionLevel]);
 
   const reportData = useMemo(() => {
     const tasksToUse = visibleTasks;
