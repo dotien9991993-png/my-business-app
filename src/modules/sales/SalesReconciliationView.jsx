@@ -200,7 +200,11 @@ export default function SalesReconciliationView({
       showToast('Đơn hàng này đã được xử lý hoàn hàng rồi!', 'error');
       return;
     }
-    // Prevent double stock restore (already returned/cancelled via changeOrderStatus)
+    // Prevent double stock restore
+    if (scannedOrder.stock_restored) {
+      showToast('Đơn hàng này đã hoàn kho rồi, không thể hoàn lại', 'error');
+      return;
+    }
     if (['cancelled', 'returned'].includes(scannedOrder.order_status || scannedOrder.status)) {
       showToast('Đơn hàng đã được xử lý hoàn/hủy trước đó', 'error');
       return;
@@ -246,7 +250,7 @@ export default function SalesReconciliationView({
       }
 
       await supabase.from('orders').update({
-        status: 'returned', order_status: 'returned', shipping_status: 'returned_to_sender', updated_at: getNowISOVN()
+        status: 'returned', order_status: 'returned', shipping_status: 'returned_to_sender', stock_restored: true, updated_at: getNowISOVN()
       }).eq('id', scannedOrder.id);
 
       await supabase.from('order_reconciliation').insert([{

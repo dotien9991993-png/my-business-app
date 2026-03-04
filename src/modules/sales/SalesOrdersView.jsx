@@ -734,17 +734,22 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         total_weight: 0,
         shipping_service: null
       };
-      const itemsPayload = cartItems.map(item => ({
-        product_id: item.product_id,
-        product_name: item.variant_name ? `${item.product_name} - ${item.variant_name}` : item.product_name,
-        product_sku: item.product_sku, quantity: parseInt(item.quantity),
-        unit_price: parseFloat(item.unit_price), discount: parseFloat(item.discount || 0),
-        total_price: (parseFloat(item.unit_price) - parseFloat(item.discount || 0)) * parseInt(item.quantity),
-        warranty_months: item.warranty_months || null,
-        variant_id: item.variant_id || null,
-        variant_name: item.variant_name || null,
-        is_combo: item.is_combo || false
-      }));
+      const itemsPayload = cartItems.map(item => {
+        const prod = (products || []).find(p => p.id === item.product_id);
+        const costPrice = parseFloat(prod?.avg_cost || prod?.import_price || 0);
+        return {
+          product_id: item.product_id,
+          product_name: item.variant_name ? `${item.product_name} - ${item.variant_name}` : item.product_name,
+          product_sku: item.product_sku, quantity: parseInt(item.quantity),
+          unit_price: parseFloat(item.unit_price), discount: parseFloat(item.discount || 0),
+          total_price: (parseFloat(item.unit_price) - parseFloat(item.discount || 0)) * parseInt(item.quantity),
+          warranty_months: item.warranty_months || null,
+          variant_id: item.variant_id || null,
+          variant_name: item.variant_name || null,
+          is_combo: item.is_combo || false,
+          cost_price: costPrice
+        };
+      });
 
       // Use atomic RPC if warehouse selected (order + items + stock in 1 transaction)
       if (selectedWarehouseId) {
@@ -759,7 +764,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         const { data: insertedOrder, error: orderErr } = await supabase.from('orders').insert([{
           ...orderPayload, status: 'confirmed', order_status: 'confirmed', shipping_status: 'pending',
           payment_status: 'unpaid', paid_amount: 0, payment_splits: [],
-          warehouse_id: null
+          warehouse_id: null, stock_deducted: true
         }]).select().single();
         if (orderErr) throw orderErr;
         order = insertedOrder;
@@ -986,11 +991,11 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       }
 
       // Cancelled → restore stock to order's warehouse + restore serials
-      // Haravan import không trừ kho nên không cần cộng lại
       if (newStatus === 'cancelled') {
         const isImported = order.order_source === 'haravan_import' || order.source === 'haravan_import';
-        const stockDeducted = !isImported && ['confirmed', 'packing', 'shipping', 'delivered'].includes(order.status);
-        if (stockDeducted) {
+        const hasDeducted = order.stock_deducted || (!isImported && ['confirmed', 'packing', 'shipping', 'delivered'].includes(order.status));
+        const alreadyRestored = order.stock_restored === true;
+        if (hasDeducted && !alreadyRestored) {
           const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
           for (const item of (items || [])) {
             const { data: comboChildren } = await supabase.from('product_combo_items').select('*').eq('combo_product_id', item.product_id);
@@ -1042,14 +1047,15 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
             }).eq('id', pts.id).then(() => {}).catch(() => {});
           }
         }
+        if (hasDeducted && !alreadyRestored) updates.stock_restored = true;
       }
 
       // Returned → restore stock to order's warehouse + create refund receipt + restore serials
       if (newStatus === 'returned') {
-        // Skip stock restore if already handled by reconciliation (prevent double-restore)
+        // Skip stock restore if already handled by reconciliation or already restored
         const { data: existingReturn } = await supabase.from('order_reconciliation')
           .select('id').eq('order_id', orderId).eq('type', 'return_confirm').limit(1);
-        const stockAlreadyRestored = existingReturn && existingReturn.length > 0;
+        const stockAlreadyRestored = order.stock_restored === true || (existingReturn && existingReturn.length > 0);
 
         if (!stockAlreadyRestored) {
           const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
@@ -1103,6 +1109,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         if (order.coupon_id) {
           await supabase.rpc('decrement_coupon_usage', { p_coupon_id: order.coupon_id });
         }
+        if (!stockAlreadyRestored) updates.stock_restored = true;
         // Restore loyalty points if order used points
         if (order.points_used > 0 && order.customer_id && loyaltyEnabled) {
           await supabase.from('point_transactions').insert([{
