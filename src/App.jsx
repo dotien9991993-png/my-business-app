@@ -40,6 +40,7 @@ const SettingsModule = lazyWithRetry(() => import('./modules/settings'));
 const WarrantyModule = lazyWithRetry(() => import('./modules/warranty'));
 const HrmModule = lazyWithRetry(() => import('./modules/hrm'));
 const PublicWarrantyCheck = lazyWithRetry(() => import('./components/shared/PublicWarrantyCheck'));
+const PrivacyPolicy = lazyWithRetry(() => import('./components/shared/PrivacyPolicy'));
 const ChatModule = lazyWithRetry(() => import('./modules/chat'));
 const ChatPopupManager = lazyWithRetry(() => import('./components/chat/ChatPopupManager'));
 import { isAdmin } from './utils/permissionUtils';
@@ -204,6 +205,11 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  // Public privacy policy (no login required, required for App Store)
+  if (window.location.hash.startsWith('#privacy')) {
+    return <Suspense fallback={<ModuleLoading />}><PrivacyPolicy /></Suspense>;
   }
 
   // Public warranty check (no login required)

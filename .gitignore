@@ -14,3 +14,5 @@ android/app/build
 
 # Backup files
 backups/
+.vercel
+.env*.local
