@@ -45,7 +45,16 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   }, [tenant?.id, orders]);
 
   const getCommittedQty = (productId) => committedQtyMap[productId] || 0;
-  const getAvailableStock = (product) => Math.max(0, getEffectiveStock(product) - getCommittedQty(product.id));
+
+  const getUnavailableQty = (productId) => {
+    if (filterWarehouse) {
+      const ws = (warehouseStock || []).find(s => s.warehouse_id === filterWarehouse && s.product_id === productId);
+      return ws?.unavailable_quantity || 0;
+    }
+    return (warehouseStock || []).filter(s => s.product_id === productId).reduce((sum, s) => sum + (s.unavailable_quantity || 0), 0);
+  };
+
+  const getAvailableStock = (product) => Math.max(0, getEffectiveStock(product) - getCommittedQty(product.id) - getUnavailableQty(product.id));
 
   // Get stock quantity for a product at a specific warehouse
   const getWarehouseQty = (productId, warehouseId) => {
@@ -111,6 +120,16 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   const [adjustType, setAdjustType] = useState('add');
   const [adjustQuantity, setAdjustQuantity] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
+
+  // Unavailable stock states
+  const [showUnavailableModal, setShowUnavailableModal] = useState(false);
+  const [unavailableProduct, setUnavailableProduct] = useState(null);
+  const [unavailableAction, setUnavailableAction] = useState('lock');
+  const [unavailableReason, setUnavailableReason] = useState('demo');
+  const [unavailableQty, setUnavailableQty] = useState('');
+  const [unavailableNote, setUnavailableNote] = useState('');
+  const [unavailableWarehouseId, setUnavailableWarehouseId] = useState('');
+  const [savingUnavailable, setSavingUnavailable] = useState(false);
 
   const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
   const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(num || 0);
@@ -407,6 +426,50 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
       alert('Điều chỉnh tồn kho thành công!');
       setShowAdjustModal(false); setAdjustQuantity(''); setAdjustReason(''); loadWarehouseData();
     } catch (error) { alert('Lỗi: ' + error.message); }
+  };
+
+  const openUnavailableModal = (product, e) => {
+    if (e) e.stopPropagation();
+    setUnavailableProduct(product);
+    setUnavailableAction('lock');
+    setUnavailableReason('demo');
+    setUnavailableQty('');
+    setUnavailableNote('');
+    setUnavailableWarehouseId(filterWarehouse || (warehouses.length === 1 ? warehouses[0].id : ''));
+    setShowUnavailableModal(true);
+  };
+
+  const handleUnavailable = async () => {
+    if (!hasPermission('warehouse', 2)) { alert('Không có quyền'); return; }
+    if (!unavailableWarehouseId) { alert('Vui lòng chọn kho!'); return; }
+    const qty = parseInt(unavailableQty);
+    if (!qty || qty <= 0) { alert('Số lượng không hợp lệ!'); return; }
+    const ws = (warehouseStock || []).find(s => s.warehouse_id === unavailableWarehouseId && s.product_id === unavailableProduct.id);
+    if (unavailableAction === 'lock') {
+      const available = (ws?.quantity || 0) - (ws?.unavailable_quantity || 0);
+      if (qty > available) { alert(`Chỉ có ${available} SP khả dụng tại kho này!`); return; }
+    } else {
+      const currentUnavail = ws?.unavailable_quantity || 0;
+      if (qty > currentUnavail) { alert(`Chỉ có ${currentUnavail} SP đang khóa tại kho này!`); return; }
+    }
+    setSavingUnavailable(true);
+    try {
+      const delta = unavailableAction === 'lock' ? qty : -qty;
+      const { error } = await supabase.from('warehouse_stock')
+        .update({ unavailable_quantity: (ws?.unavailable_quantity || 0) + delta })
+        .eq('warehouse_id', unavailableWarehouseId).eq('product_id', unavailableProduct.id);
+      if (error) throw error;
+      await supabase.from('stock_unavailable_log').insert([{
+        tenant_id: tenant.id, product_id: unavailableProduct.id, warehouse_id: unavailableWarehouseId,
+        reason: unavailableReason, quantity: qty, action: unavailableAction,
+        note: unavailableNote || null, created_by: currentUser.id
+      }]);
+      const reasonLabels = { demo: 'Demo', repair: 'Sửa chữa', hold: 'Giữ hàng', damaged: 'Hỏng' };
+      logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'warehouse', action: 'update', entityType: 'stock_unavailable', entityId: unavailableProduct.id, entityName: unavailableProduct.name, description: `${unavailableAction === 'lock' ? 'Khóa' : 'Mở khóa'} ${qty} ${unavailableProduct.name} - ${reasonLabels[unavailableReason]}` });
+      alert(`${unavailableAction === 'lock' ? 'Khóa' : 'Mở khóa'} hàng thành công!`);
+      setShowUnavailableModal(false);
+      loadWarehouseData();
+    } catch (error) { alert('Lỗi: ' + error.message); } finally { setSavingUnavailable(false); }
   };
 
   const handleDeleteProduct = async (id) => {
@@ -908,7 +971,8 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                     Tồn kho {sortBy === 'stock_quantity' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden lg:table-cell" title="Đang chờ giao (đơn hàng chưa hoàn thành)">Cam kết</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden lg:table-cell" title="Tồn kho - Cam kết">Có thể bán</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden lg:table-cell" title="Hàng demo/sửa chữa/giữ/hỏng">Không KD</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden lg:table-cell" title="Tồn kho - Cam kết - Không KD">Có thể bán</th>
                   <th onClick={() => toggleSort('import_price')} className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase hidden md:table-cell cursor-pointer hover:bg-gray-100">
                     Giá nhập {sortBy === 'import_price' && (sortOrder === 'asc' ? '↑' : '↓')}
                   </th>
@@ -923,7 +987,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredProducts.length === 0 ? (
-                  <tr><td colSpan="12" className="px-4 py-12 text-center">
+                  <tr><td colSpan="13" className="px-4 py-12 text-center">
                     <div className="text-gray-400 text-5xl mb-3">📦</div>
                     <div className="text-gray-500">{products.length === 0 ? 'Chưa có sản phẩm nào' : 'Không tìm thấy'}</div>
                     {products.length === 0 && hasPermission('warehouse', 2) && <button onClick={() => { resetForm(); setShowCreateModal(true); }} className="mt-3 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">➕ Thêm sản phẩm đầu tiên</button>}
@@ -959,6 +1023,13 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                         )}
                       </td>
                       <td className="px-4 py-3 text-right hidden lg:table-cell">
+                        {getUnavailableQty(product.id) > 0 ? (
+                          <button onClick={(e) => openUnavailableModal(product, e)} className="text-orange-600 font-medium hover:underline" title="Click để khóa/mở hàng">{formatNumber(getUnavailableQty(product.id))}</button>
+                        ) : (
+                          <span className="text-gray-300">0</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right hidden lg:table-cell">
                         <span className={`font-bold ${getAvailableStock(product) === 0 ? 'text-red-600' : 'text-green-700'}`}>
                           {formatNumber(getAvailableStock(product))}
                         </span>
@@ -986,6 +1057,9 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
                         <div className="flex justify-center gap-1">
                           {hasPermission('warehouse', 2) && (
                             <button onClick={(e) => openAdjust(product, e)} className="p-1.5 hover:bg-blue-100 rounded-lg text-blue-600" title="Điều chỉnh SL">🔄</button>
+                          )}
+                          {hasPermission('warehouse', 2) && !product.is_combo && (
+                            <button onClick={(e) => openUnavailableModal(product, e)} className="p-1.5 hover:bg-orange-100 rounded-lg text-orange-600" title="Khóa/mở hàng">🔒</button>
                           )}
                           {hasPermission('warehouse', 2) && (
                             <button onClick={(e) => { e.stopPropagation(); openDetail(product); }} className="p-1.5 hover:bg-amber-100 rounded-lg text-amber-600" title="Chi tiết">✏️</button>
@@ -1872,6 +1946,64 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
             <div className="p-6 border-t bg-gray-50 flex gap-3 justify-end">
               <button onClick={() => setShowAdjustModal(false)} className="px-6 py-2 border rounded-lg hover:bg-gray-100">Hủy</button>
               <button onClick={handleAdjustStock} className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium">✅ Xác nhận</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unavailable Stock Modal */}
+      {showUnavailableModal && unavailableProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-bold">🔒 Khóa / Mở Khóa Hàng</h2>
+              <p className="text-gray-500 text-sm mt-1">{unavailableProduct.name}</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kho</label>
+                <select value={unavailableWarehouseId} onChange={(e) => setUnavailableWarehouseId(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="">-- Chọn kho --</option>
+                  {(warehouses || []).filter(w => w.is_active).map(w => {
+                    const ws = (warehouseStock || []).find(s => s.warehouse_id === w.id && s.product_id === unavailableProduct.id);
+                    return <option key={w.id} value={w.id}>{w.name} (Tồn: {ws?.quantity || 0}, Khóa: {ws?.unavailable_quantity || 0})</option>;
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Hành động</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setUnavailableAction('lock')} className={`py-2 rounded-lg font-medium text-sm ${unavailableAction === 'lock' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>🔒 Khóa hàng</button>
+                  <button onClick={() => setUnavailableAction('release')} className={`py-2 rounded-lg font-medium text-sm ${unavailableAction === 'release' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>🔓 Mở khóa</button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lý do</label>
+                <select value={unavailableReason} onChange={(e) => setUnavailableReason(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="demo">Demo / Trưng bày</option>
+                  <option value="repair">Sửa chữa</option>
+                  <option value="hold">Giữ hàng</option>
+                  <option value="damaged">Hỏng</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Số lượng</label>
+                <input type="number" value={unavailableQty} onChange={(e) => setUnavailableQty(e.target.value)} min="1" className="w-full px-4 py-3 border rounded-lg text-xl font-bold text-center" placeholder="0" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
+                <input type="text" value={unavailableNote} onChange={(e) => setUnavailableNote(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="Ghi chú (không bắt buộc)" />
+              </div>
+            </div>
+            <div className="p-6 border-t bg-gray-50 flex gap-3 justify-end">
+              <button onClick={() => setShowUnavailableModal(false)} className="px-6 py-2 border rounded-lg hover:bg-gray-100">Hủy</button>
+              <button onClick={handleUnavailable} disabled={savingUnavailable} className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium disabled:opacity-50">
+                {savingUnavailable ? 'Đang xử lý...' : unavailableAction === 'lock' ? '🔒 Khóa' : '🔓 Mở khóa'}
+              </button>
             </div>
           </div>
         </div>

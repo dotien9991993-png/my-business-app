@@ -16,7 +16,8 @@ export default function WarehouseSuppliersView({
   warehouses,
   hasPermission,
   canEdit,
-  supplierPayments
+  supplierPayments,
+  supplierReturns
 }) {
   // --- State ---
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -88,10 +89,23 @@ export default function WarehouseSuppliersView({
     return stats;
   }, [supplierPayments]);
 
+  // Return stats per supplier
+  const supplierReturnStats = useMemo(() => {
+    const stats = {};
+    (supplierReturns || []).forEach(r => {
+      if (r.status === 'confirmed' || r.status === 'completed') {
+        if (!stats[r.supplier_id]) stats[r.supplier_id] = 0;
+        stats[r.supplier_id] += Number(r.total_amount || 0);
+      }
+    });
+    return stats;
+  }, [supplierReturns]);
+
   const getSupplierDebt = (supplierId) => {
     const importTotal = supplierImportStats[supplierId]?.totalAmount || 0;
     const paidTotal = supplierPaymentStats[supplierId] || 0;
-    return importTotal - paidTotal;
+    const returnTotal = supplierReturnStats[supplierId] || 0;
+    return importTotal - paidTotal - returnTotal;
   };
 
   const getSupplierPaid = (supplierId) => supplierPaymentStats[supplierId] || 0;
@@ -115,9 +129,12 @@ export default function WarehouseSuppliersView({
   const totalPaid = useMemo(() => {
     return Object.values(supplierPaymentStats).reduce((sum, v) => sum + v, 0);
   }, [supplierPaymentStats]);
+  const totalReturns = useMemo(() => {
+    return Object.values(supplierReturnStats).reduce((sum, v) => sum + v, 0);
+  }, [supplierReturnStats]);
   const totalDebt = useMemo(() => {
-    return totalImportValue - totalPaid;
-  }, [totalImportValue, totalPaid]);
+    return totalImportValue - totalPaid - totalReturns;
+  }, [totalImportValue, totalPaid, totalReturns]);
 
   // Products of selected supplier
   const supplierProducts = useMemo(() => {

@@ -34,6 +34,8 @@ export const moduleTabs = {
     { id: 'stocktake', name: '📝 Kiểm kê', desc: 'Kiểm kê tồn kho' },
     { id: 'report', name: '📊 Báo cáo', desc: 'Báo cáo xuất nhập tồn' },
     { id: 'po', name: '📋 Đơn Mua Hàng', desc: 'Quản lý đơn đặt hàng NCC' },
+    { id: 'returns', name: '↩️ Trả Hàng NCC', desc: 'Quản lý trả hàng cho nhà cung cấp' },
+    { id: 'receipts_return', name: '📋 Biên Bản Hoàn Hàng', desc: 'Kiểm tra hàng trả NCC' },
     { id: 'suppliers', name: '🏢 Nhà cung cấp', desc: 'Quản lý nhà cung cấp' },
     { id: 'warehouses', name: '🏭 Quản lý kho', desc: 'CRUD kho' }
   ],

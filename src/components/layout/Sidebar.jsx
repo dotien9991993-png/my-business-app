@@ -224,6 +224,8 @@ const Sidebar = ({
             { id: 'transfer', l: '🔄 Chuyển Kho', tabKey: 'transfer' },
             { id: 'stocktake', l: '📝 Kiểm Kê', tabKey: 'stocktake' },
             { id: 'po', l: '📋 Đơn Mua', tabKey: 'po' },
+            { id: 'returns', l: '↩️ Trả NCC', tabKey: 'returns' },
+            { id: 'receipts_return', l: '📋 Biên Bản', tabKey: 'receipts_return' },
             { id: 'history', l: '📋 Lịch Sử', tabKey: 'products' },
             { id: 'report', l: '📊 Báo Cáo', tabKey: 'report' },
             { id: 'suppliers', l: '🏢 NCC', tabKey: 'suppliers' },

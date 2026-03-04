@@ -7,7 +7,7 @@ const formatNumber = (num) => new Intl.NumberFormat('vi-VN').format(num || 0);
 
 const getXLSX = () => import('xlsx');
 
-export default function WarehouseReportView({ products, stockTransactions, warehouses, warehouseStock, tenant, hasPermission, getPermissionLevel, suppliers, supplierPayments }) {
+export default function WarehouseReportView({ products, stockTransactions, warehouses, warehouseStock, tenant, hasPermission, getPermissionLevel, suppliers, supplierPayments, supplierReturns }) {
   const permLevel = getPermissionLevel('warehouse');
 
   const now = new Date();
@@ -1235,21 +1235,30 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
               if (!paidBySupplier[p.supplier_id]) paidBySupplier[p.supplier_id] = 0;
               paidBySupplier[p.supplier_id] += Number(p.amount || 0);
             });
-            const allSupplierIds = [...new Set([...Object.keys(importBySupplier), ...Object.keys(paidBySupplier)])];
+            const returnBySupplier = {};
+            (supplierReturns || []).forEach(r => {
+              if (r.status === 'confirmed' || r.status === 'completed') {
+                if (!returnBySupplier[r.supplier_id]) returnBySupplier[r.supplier_id] = 0;
+                returnBySupplier[r.supplier_id] += Number(r.total_amount || 0);
+              }
+            });
+            const allSupplierIds = [...new Set([...Object.keys(importBySupplier), ...Object.keys(paidBySupplier), ...Object.keys(returnBySupplier)])];
             const debtData = allSupplierIds.map(sid => {
               const supplier = (suppliers || []).find(s => s.id === sid);
               const totalImport = importBySupplier[sid] || 0;
               const totalPaid = paidBySupplier[sid] || 0;
-              return { id: sid, name: supplier?.name || 'N/A', phone: supplier?.phone || '', totalImport, totalPaid, debt: totalImport - totalPaid };
+              const totalReturn = returnBySupplier[sid] || 0;
+              return { id: sid, name: supplier?.name || 'N/A', phone: supplier?.phone || '', totalImport, totalPaid, totalReturn, debt: totalImport - totalPaid - totalReturn };
             }).filter(d => d.totalImport > 0).sort((a, b) => b.debt - a.debt);
             const totalImportAll = debtData.reduce((s, d) => s + d.totalImport, 0);
             const totalPaidAll = debtData.reduce((s, d) => s + d.totalPaid, 0);
-            const totalDebtAll = totalImportAll - totalPaidAll;
+            const totalReturnAll = debtData.reduce((s, d) => s + d.totalReturn, 0);
+            const totalDebtAll = totalImportAll - totalPaidAll - totalReturnAll;
 
             return (
               <>
                 {/* Summary cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-white rounded-xl p-4 border-l-4 border-blue-500">
                     <div className="text-lg font-bold text-blue-600">{formatCurrency(totalImportAll)}</div>
                     <div className="text-gray-600 text-sm">Tổng mua hàng</div>
@@ -1257,6 +1266,10 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
                   <div className="bg-white rounded-xl p-4 border-l-4 border-green-500">
                     <div className="text-lg font-bold text-green-600">{formatCurrency(totalPaidAll)}</div>
                     <div className="text-gray-600 text-sm">Đã thanh toán</div>
+                  </div>
+                  <div className="bg-white rounded-xl p-4 border-l-4 border-orange-500">
+                    <div className="text-lg font-bold text-orange-600">{formatCurrency(totalReturnAll)}</div>
+                    <div className="text-gray-600 text-sm">Đã trả hàng</div>
                   </div>
                   <div className="bg-white rounded-xl p-4 border-l-4 border-red-500">
                     <div className="text-lg font-bold text-red-600">{formatCurrency(totalDebtAll)}</div>
@@ -1271,7 +1284,7 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
                       const XLSX = await getXLSX();
                       const ws = XLSX.utils.json_to_sheet(debtData.map(d => ({
                         'Nhà cung cấp': d.name, 'SĐT': d.phone,
-                        'Tổng mua': d.totalImport, 'Đã thanh toán': d.totalPaid, 'Còn nợ': d.debt
+                        'Tổng mua': d.totalImport, 'Đã thanh toán': d.totalPaid, 'Đã trả hàng': d.totalReturn, 'Còn nợ': d.debt
                       })));
                       const wb = XLSX.utils.book_new();
                       XLSX.utils.book_append_sheet(wb, ws, 'Công nợ NCC');
@@ -1292,18 +1305,20 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
                           <th className="px-4 py-3 text-left font-medium text-gray-600 hidden md:table-cell">SĐT</th>
                           <th className="px-4 py-3 text-right font-medium text-gray-600">Tổng mua</th>
                           <th className="px-4 py-3 text-right font-medium text-gray-600">Đã thanh toán</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-600 hidden md:table-cell">Đã trả hàng</th>
                           <th className="px-4 py-3 text-right font-medium text-gray-600">Còn nợ</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {debtData.length === 0 ? (
-                          <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-500">Chưa có dữ liệu công nợ</td></tr>
+                          <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-500">Chưa có dữ liệu công nợ</td></tr>
                         ) : debtData.map(d => (
                           <tr key={d.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3 font-medium">{d.name}</td>
                             <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{d.phone || '-'}</td>
                             <td className="px-4 py-3 text-right">{formatCurrency(d.totalImport)}</td>
                             <td className="px-4 py-3 text-right text-green-600">{formatCurrency(d.totalPaid)}</td>
+                            <td className="px-4 py-3 text-right text-orange-600 hidden md:table-cell">{formatCurrency(d.totalReturn)}</td>
                             <td className="px-4 py-3 text-right">
                               <span className={`font-medium ${d.debt > 0 ? 'text-red-600' : 'text-green-600'}`}>
                                 {formatCurrency(d.debt)}
@@ -1318,6 +1333,7 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
                             <td className="px-4 py-3 font-bold" colSpan="2">Tổng cộng</td>
                             <td className="px-4 py-3 text-right font-bold">{formatCurrency(totalImportAll)}</td>
                             <td className="px-4 py-3 text-right font-bold text-green-600">{formatCurrency(totalPaidAll)}</td>
+                            <td className="px-4 py-3 text-right font-bold text-orange-600 hidden md:table-cell">{formatCurrency(totalReturnAll)}</td>
                             <td className="px-4 py-3 text-right font-bold text-red-600">{formatCurrency(totalDebtAll)}</td>
                           </tr>
                         </tfoot>

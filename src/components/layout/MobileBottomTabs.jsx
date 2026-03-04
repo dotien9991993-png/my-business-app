@@ -326,6 +326,8 @@ export default function MobileBottomTabs({
     const moreTabs = [
       { id: 'stocktake', icon: '📝', label: 'Kiểm Kê', tabKey: 'stocktake' },
       { id: 'po', icon: '📋', label: 'Đơn Mua', tabKey: 'po' },
+      { id: 'returns', icon: '↩️', label: 'Trả NCC', tabKey: 'returns' },
+      { id: 'receipts_return', icon: '📋', label: 'Biên Bản', tabKey: 'receipts_return' },
       { id: 'history', icon: '📋', label: 'Lịch Sử', tabKey: 'products' },
       { id: 'report', icon: '📊', label: 'Báo Cáo', tabKey: 'report' },
       { id: 'suppliers', icon: '🏢', label: 'NCC', tabKey: 'suppliers' },

@@ -12,6 +12,8 @@ import WarehouseTransferView from './WarehouseTransferView';
 // Lazy load views
 const WarehouseReportView = React.lazy(() => import('./WarehouseReportView'));
 const PurchaseOrderView = React.lazy(() => import('./PurchaseOrderView'));
+const SupplierReturnView = React.lazy(() => import('./SupplierReturnView'));
+const ReturnReceiptView = React.lazy(() => import('./ReturnReceiptView'));
 import WarehouseSuppliersView from './WarehouseSuppliersView';
 
 const NoAccess = () => (
@@ -25,8 +27,8 @@ const NoAccess = () => (
 );
 
 export default function WarehouseModule() {
-  const { activeTab, currentUser, tenant, canAccessTab, hasPermission, canEdit, getPermissionLevel } = useApp();
-  const { products, stockTransactions, loadWarehouseData, warehouses, warehouseStock, getSettingValue, comboItems, productVariants, suppliers, stocktakes, transfers, orders, purchaseOrders, purchaseOrderItems, supplierPayments } = useData();
+  const { activeTab, currentUser, tenant, canAccessTab, hasPermission, canEdit, getPermissionLevel, allUsers } = useApp();
+  const { products, stockTransactions, loadWarehouseData, warehouses, warehouseStock, getSettingValue, comboItems, productVariants, suppliers, stocktakes, transfers, orders, purchaseOrders, purchaseOrderItems, supplierPayments, supplierReturns, supplierReturnItems, returnReceipts, returnReceiptItems } = useData();
 
   const dynamicCategories = getSettingValue('product', 'categories', null);
   const dynamicUnits = getSettingValue('product', 'units', null);
@@ -46,9 +48,11 @@ export default function WarehouseModule() {
       {activeTab === 'transfer' && canAccessTab('warehouse', 'transfer') && <WarehouseTransferView transfers={transfers} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
       {activeTab === 'stocktake' && canAccessTab('warehouse', 'stocktake') && <WarehouseStocktakeView stocktakes={stocktakes} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} productVariants={productVariants} />}
       {activeTab === 'history' && canAccessTab('warehouse', 'products') && <WarehouseHistoryView stockTransactions={stockTransactions} warehouses={warehouses} />}
-      {activeTab === 'report' && canAccessTab('warehouse', 'report') && <WarehouseReportView products={products} stockTransactions={stockTransactions} warehouses={warehouses} warehouseStock={warehouseStock} tenant={tenant} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} suppliers={suppliers} supplierPayments={supplierPayments} />}
+      {activeTab === 'report' && canAccessTab('warehouse', 'report') && <WarehouseReportView products={products} stockTransactions={stockTransactions} warehouses={warehouses} warehouseStock={warehouseStock} tenant={tenant} hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} suppliers={suppliers} supplierPayments={supplierPayments} supplierReturns={supplierReturns} />}
       {activeTab === 'po' && canAccessTab('warehouse', 'po') && <PurchaseOrderView purchaseOrders={purchaseOrders} purchaseOrderItems={purchaseOrderItems} suppliers={suppliers} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
-      {activeTab === 'suppliers' && canAccessTab('warehouse', 'suppliers') && <WarehouseSuppliersView suppliers={suppliers} products={products} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} warehouses={warehouses} hasPermission={hasPermission} canEdit={canEdit} supplierPayments={supplierPayments} />}
+      {activeTab === 'returns' && canAccessTab('warehouse', 'returns') && <SupplierReturnView supplierReturns={supplierReturns} supplierReturnItems={supplierReturnItems} suppliers={suppliers} products={products} purchaseOrders={purchaseOrders} purchaseOrderItems={purchaseOrderItems} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
+      {activeTab === 'receipts_return' && canAccessTab('warehouse', 'receipts_return') && <ReturnReceiptView returnReceipts={returnReceipts} returnReceiptItems={returnReceiptItems} supplierReturns={supplierReturns} supplierReturnItems={supplierReturnItems} suppliers={suppliers} products={products} warehouses={warehouses} warehouseStock={warehouseStock} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} allUsers={allUsers} />}
+      {activeTab === 'suppliers' && canAccessTab('warehouse', 'suppliers') && <WarehouseSuppliersView suppliers={suppliers} products={products} stockTransactions={stockTransactions} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} warehouses={warehouses} hasPermission={hasPermission} canEdit={canEdit} supplierPayments={supplierPayments} supplierReturns={supplierReturns} />}
       {activeTab === 'warehouses' && canAccessTab('warehouse', 'warehouses') && <WarehousesView warehouses={warehouses} warehouseStock={warehouseStock} products={products} loadWarehouseData={loadWarehouseData} tenant={tenant} currentUser={currentUser} hasPermission={hasPermission} canEdit={canEdit} />}
       {!canAccessTab('warehouse', getTabPermission(activeTab)) && <NoAccess />}
     </Suspense>
