@@ -488,10 +488,11 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
   const [exporting, setExporting] = useState(false);
 
   const handleExportExcel = async () => {
+    if (filteredProducts.length === 0) { alert('Không có sản phẩm nào để xuất!'); return; }
     setExporting(true);
     try {
       const XLSX = await import('xlsx');
-      const exportProducts = filteredProducts.length > 0 ? filteredProducts : products;
+      const exportProducts = filteredProducts;
 
       // Sheet 1: Sản phẩm
       const spRows = exportProducts.map((p, idx) => {
@@ -738,13 +739,18 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
 
     let created = 0, skipped = 0;
     const BATCH_SIZE = 100;
+    // Pre-generate unique SKU/barcode to avoid duplicates in tight loop
+    const baseTs = Date.now();
+    let seqCounter = 0;
+    const uniqueSku = () => 'SP' + String(baseTs + (++seqCounter)).slice(-6);
+    const uniqueBarcode = () => 'HNA' + String(baseTs + seqCounter).slice(-8);
 
     try {
       for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
         const batch = validRows.slice(i, i + BATCH_SIZE).map(row => ({
           tenant_id: tenant.id,
-          sku: row.sku || generateSku(),
-          barcode: generateBarcode(),
+          sku: row.sku || uniqueSku(),
+          barcode: uniqueBarcode(),
           name: row.name,
           category: row.category,
           unit: row.unit,
@@ -867,7 +873,7 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
             <button onClick={() => setViewMode('grid')} className={`px-3 py-1.5 rounded-lg text-sm ${viewMode === 'grid' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>📦 Lưới</button>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleExportExcel} disabled={exporting || products.length === 0} className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 disabled:opacity-50" title="Xuất danh sách sản phẩm ra Excel">
+            <button onClick={handleExportExcel} disabled={exporting || filteredProducts.length === 0} className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 disabled:opacity-50" title="Xuất danh sách sản phẩm ra Excel">
               {exporting ? <span className="animate-spin inline-block">⏳</span> : <span>📥</span>} Xuất Excel
             </button>
             {hasPermission('warehouse', 2) && (
