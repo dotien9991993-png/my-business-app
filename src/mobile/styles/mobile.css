@@ -1,0 +1,381 @@
+/* ===== MOBILE LITE APP — Scoped CSS ===== */
+/* All classes prefixed with .mobile- to avoid desktop conflicts */
+
+/* === App Shell === */
+.mobile-app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #111827;
+  position: relative;
+}
+
+/* === Header === */
+.mobile-header {
+  height: 48px;
+  padding-top: env(safe-area-inset-top);
+  flex-shrink: 0;
+  background: #15803d;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.mobile-header-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.mobile-header-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* === Content === */
+.mobile-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* === Bottom Nav === */
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(60px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 60px;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 4px 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s;
+}
+
+.mobile-nav-item.active {
+  color: #15803d;
+}
+
+.mobile-nav-icon {
+  font-size: 22px;
+  line-height: 1;
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.mobile-nav-badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  background: #dc2626;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.mobile-nav-label {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.mobile-nav-item.active .mobile-nav-label {
+  font-weight: 700;
+}
+
+/* === Pages === */
+.mobile-page {
+  padding: 16px;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  min-height: 100%;
+}
+
+/* === Loading === */
+.mobile-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  background: #f5f5f5;
+  gap: 12px;
+}
+
+.mobile-loading p {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.mobile-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #15803d;
+  border-radius: 50%;
+  animation: mobile-spin 0.8s linear infinite;
+}
+
+@keyframes mobile-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* === Error === */
+.mobile-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  text-align: center;
+  padding: 32px;
+}
+
+.mobile-error span {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.mobile-error h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.mobile-error p {
+  color: #6b7280;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* === Login === */
+.mobile-login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 32px 24px;
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+}
+
+.mobile-login-logo {
+  text-align: center;
+  margin-bottom: 40px;
+  color: white;
+}
+
+.mobile-login-logo img {
+  height: 80px;
+  width: auto;
+  margin-bottom: 16px;
+}
+
+.mobile-login-logo h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.mobile-login-logo p {
+  font-size: 14px;
+  opacity: 0.8;
+  margin: 0;
+}
+
+.mobile-login-form {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mobile-login-form input {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #111827;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mobile-login-form input::placeholder {
+  color: #9ca3af;
+}
+
+.mobile-login-form button {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  background: white;
+  color: #15803d;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.mobile-login-form button:disabled {
+  opacity: 0.6;
+}
+
+.mobile-login-error {
+  background: rgba(220, 38, 38, 0.15);
+  color: #fecaca;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* === Placeholder === */
+.mobile-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.mobile-placeholder-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.mobile-placeholder h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: #111827;
+}
+
+.mobile-placeholder p {
+  font-size: 14px;
+  color: #9ca3af;
+  margin: 0;
+}
+
+/* === Profile === */
+.mobile-profile-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.mobile-profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #15803d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.mobile-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mobile-profile-avatar span {
+  color: white;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.mobile-profile-name {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.mobile-profile-role {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* === Menu List === */
+.mobile-menu-list {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 15px;
+  color: #111827;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-menu-item:last-child {
+  border-bottom: none;
+}
+
+.mobile-menu-item.danger {
+  color: #dc2626;
+}
+
+.mobile-menu-item span {
+  font-size: 20px;
+  width: 28px;
+  text-align: center;
+}
