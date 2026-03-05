@@ -7,6 +7,7 @@ import MessageContextMenu from './MessageContextMenu';
 import MentionPopup from './MentionPopup';
 import ReactionPicker from './ReactionPicker';
 import { isRoomMuted, toggleRoomMute } from '../../utils/notificationSound';
+import GroupMembersModal from './GroupMembersModal';
 
 const PAGE_SIZE = 50;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -65,6 +66,7 @@ export default function ChatWindow({
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
   const [muted, setMuted] = useState(() => isRoomMuted(room.id));
 
   // Attachment states
@@ -968,6 +970,11 @@ export default function ChatWindow({
             </div>
           )}
         </div>
+        {isGroup && (
+          <button onClick={() => setShowMembersModal(true)} className="text-white/80 hover:text-white p-1" title="Quản lý thành viên">
+            <span className="text-base">👥</span>
+          </button>
+        )}
         <button
           onClick={() => { setSearchMode(!searchMode); setSearchQuery(''); setSearchResults([]); }}
           className="text-white/80 hover:text-white p-1"
@@ -1346,6 +1353,19 @@ export default function ChatWindow({
           position={{ x: reactionPicker.x, y: reactionPicker.y }}
           onSelect={(emoji) => toggleReaction(reactionPicker.messageId, emoji)}
           onClose={() => setReactionPicker(null)}
+        />
+      )}
+
+      {/* Group members modal */}
+      {showMembersModal && (
+        <GroupMembersModal
+          room={room}
+          members={(room.members || []).filter(m => m.is_active !== false)}
+          allUsers={allUsers}
+          currentUser={currentUser}
+          onClose={() => setShowMembersModal(false)}
+          onMembersChanged={() => { onRoomUpdated?.(); setShowMembersModal(false); }}
+          onLeaveRoom={handleLeaveRoom}
         />
       )}
     </div>

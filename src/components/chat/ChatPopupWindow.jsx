@@ -5,6 +5,7 @@ import { getChatImageUrl, getFullImageUrl, isCloudinaryUrl } from '../../utils/c
 import AttachmentPicker from './AttachmentPicker';
 import AttachmentCard from './AttachmentCard';
 import { useApp } from '../../contexts/AppContext';
+import GroupMembersModal from './GroupMembersModal';
 
 const PAGE_SIZE = 30;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -73,6 +74,26 @@ export default function ChatPopupWindow({
   const [previewUrl, setPreviewUrl] = useState(null);
   const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [localMembers, setLocalMembers] = useState(null);
+
+  // Reload room members for local state
+  const reloadMembers = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('chat_room_members')
+        .select('*')
+        .eq('room_id', room.id);
+      setLocalMembers(data || []);
+    } catch (_e) {}
+  }, [room.id]);
+
+  // Use localMembers if available, otherwise fall back to room.members
+  const currentMembers = localMembers || room.members || [];
+  const activeMembersAll = useMemo(() =>
+    currentMembers.filter(m => m.is_active !== false),
+    [currentMembers]
+  );
 
   // @mention
   const [showMention, setShowMention] = useState(false);
@@ -94,8 +115,8 @@ export default function ChatPopupWindow({
   const roomName = isGroup ? (room.name || 'Nhóm chat') : (otherUser?.name || otherMember?.user_name || 'Người dùng');
   const roomAvatar = isGroup ? null : (otherUser?.avatar_url || otherMember?.user_avatar);
   const activeMembers = useMemo(() =>
-    (room.members || []).filter(m => m.is_active !== false && m.user_id !== currentUser?.id),
-    [room.members, currentUser?.id]
+    activeMembersAll.filter(m => m.user_id !== currentUser?.id),
+    [activeMembersAll, currentUser?.id]
   );
 
   // Load messages
@@ -434,6 +455,28 @@ export default function ChatPopupWindow({
     return map;
   }, [messages]);
 
+  // Leave room handler
+  const handleLeaveRoom = async () => {
+    if (!confirm('Bạn có chắc muốn rời khỏi nhóm này?')) return;
+    try {
+      await supabase
+        .from('chat_room_members')
+        .update({ is_active: false })
+        .eq('room_id', room.id)
+        .eq('user_id', currentUser.id);
+      await supabase.from('chat_messages').insert([{
+        room_id: room.id,
+        sender_id: currentUser.id,
+        sender_name: currentUser.name,
+        content: `${currentUser.name} đã rời nhóm`,
+        message_type: 'system'
+      }]);
+      onClose();
+    } catch (err) {
+      console.error('Error leaving room:', err);
+    }
+  };
+
   // Minimized view
   if (isMinimized) {
     return (
@@ -484,9 +527,14 @@ export default function ChatPopupWindow({
         <div className="flex-1 min-w-0">
           <div className="text-[15px] font-bold truncate">{roomName}</div>
           {isGroup && (
-            <div className="text-[11px] text-green-200">{activeMembers.length + 1} thành viên</div>
+            <div className="text-[11px] text-green-200">{activeMembersAll.length} thành viên</div>
           )}
         </div>
+        {isGroup && (
+          <button onClick={() => setShowMembersModal(true)} className="w-8 h-8 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 rounded-full" title="Quản lý thành viên">
+            <span className="text-sm">👥</span>
+          </button>
+        )}
         <button onClick={onMinimize} className="w-8 h-8 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 rounded-full" title="Thu nhỏ">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
         </button>
@@ -754,6 +802,19 @@ export default function ChatPopupWindow({
           <button onClick={() => setPreviewUrl(null)} className="absolute top-4 right-4 text-white text-3xl hover:text-gray-300">&times;</button>
           <img src={previewUrl} alt="" className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} />
         </div>
+      )}
+
+      {/* Group members modal */}
+      {showMembersModal && (
+        <GroupMembersModal
+          room={room}
+          members={activeMembersAll}
+          allUsers={allUsers}
+          currentUser={currentUser}
+          onClose={() => setShowMembersModal(false)}
+          onMembersChanged={async () => { await reloadMembers(); setShowMembersModal(false); }}
+          onLeaveRoom={handleLeaveRoom}
+        />
       )}
     </div>
   );
