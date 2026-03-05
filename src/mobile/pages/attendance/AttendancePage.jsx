@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useMobileAttendance } from '../../hooks/useMobileAttendance';
 import CheckInButton from './CheckInButton';
 import AttendanceCalendar from './AttendanceCalendar';
+import AttendanceHistory from './AttendanceHistory';
 
 export default function AttendancePage({ user, tenantId }) {
   const {
@@ -11,7 +12,7 @@ export default function AttendancePage({ user, tenantId }) {
   } = useMobileAttendance(user?.id, user?.name, tenantId);
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [tab, setTab] = useState('today'); // 'today' | 'calendar'
+  const [tab, setTab] = useState('today'); // 'today' | 'calendar' | 'history'
 
   // Live clock
   useEffect(() => {
@@ -52,9 +53,15 @@ export default function AttendancePage({ user, tenantId }) {
         >
           Lịch tháng
         </button>
+        <button
+          className={`matt-tab ${tab === 'history' ? 'active' : ''}`}
+          onClick={() => setTab('history')}
+        >
+          Lịch sử
+        </button>
       </div>
 
-      {tab === 'today' ? (
+      {tab === 'today' && (
         <>
           {/* Clock */}
           <div className="matt-clock">
@@ -70,6 +77,7 @@ export default function AttendancePage({ user, tenantId }) {
             totalHoursToday={totalHoursToday}
             onCheckIn={checkIn}
             onCheckOut={checkOut}
+            loading={loading}
           />
 
           {/* Today's shifts */}
@@ -90,8 +98,19 @@ export default function AttendancePage({ user, tenantId }) {
             </div>
           )}
         </>
-      ) : (
+      )}
+
+      {tab === 'calendar' && (
         <AttendanceCalendar
+          monthRecords={monthRecords}
+          monthSummary={monthSummary}
+          viewMonth={viewMonth}
+          onChangeMonth={changeMonth}
+        />
+      )}
+
+      {tab === 'history' && (
+        <AttendanceHistory
           monthRecords={monthRecords}
           monthSummary={monthSummary}
           viewMonth={viewMonth}

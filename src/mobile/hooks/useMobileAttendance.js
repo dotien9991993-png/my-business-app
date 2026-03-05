@@ -82,10 +82,25 @@ export function useMobileAttendance(userId, userName, tenantId) {
     return todayRecords.reduce((sum, r) => sum + parseFloat(r.work_hours || 0), 0);
   }, [todayRecords]);
 
-  // Check-in
+  // Check-in — query DB trước để tránh trùng khi data chưa load
   const checkIn = useCallback(async () => {
     if (!userId || !tenantId) throw new Error('Chưa đăng nhập');
-    if (currentShift) throw new Error('Bạn đang có ca chưa check-out!');
+
+    // Server-side check: có ca mở chưa check-out không?
+    const { data: openShifts } = await supabase
+      .from('attendances')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .eq('date', getTodayStr())
+      .eq('status', 'checked_in')
+      .limit(1);
+
+    if (openShifts && openShifts.length > 0) {
+      // Reload local state cho đúng
+      await loadToday();
+      throw new Error('Bạn đang có ca chưa check-out!');
+    }
 
     const checkInTime = getVNTimeStr();
     const { data, error } = await supabase
@@ -105,14 +120,29 @@ export function useMobileAttendance(userId, userName, tenantId) {
     if (error) throw error;
     setTodayRecords(prev => [...prev, data]);
     return data;
-  }, [userId, userName, tenantId, currentShift]);
+  }, [userId, userName, tenantId, loadToday]);
 
-  // Check-out
+  // Check-out — verify ca mở từ DB trước
   const checkOut = useCallback(async () => {
-    if (!currentShift) throw new Error('Bạn chưa check-in!');
+    // Tìm ca mở từ DB, không dựa vào local state
+    const { data: openShifts } = await supabase
+      .from('attendances')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .eq('date', getTodayStr())
+      .eq('status', 'checked_in')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const shift = openShifts?.[0] || currentShift;
+    if (!shift) {
+      await loadToday();
+      throw new Error('Bạn chưa check-in!');
+    }
 
     const checkOutTime = getVNTimeStr();
-    const [inH, inM] = currentShift.check_in.split(':').map(Number);
+    const [inH, inM] = shift.check_in.split(':').map(Number);
     const [outH, outM] = checkOutTime.split(':').map(Number);
     const workHours = ((outH * 60 + outM) - (inH * 60 + inM)) / 60;
 
@@ -120,17 +150,21 @@ export function useMobileAttendance(userId, userName, tenantId) {
       .from('attendances')
       .update({
         check_out: checkOutTime,
-        work_hours: parseFloat(workHours.toFixed(2)),
+        work_hours: parseFloat(Math.max(0, workHours).toFixed(2)),
         status: 'checked_out'
       })
-      .eq('id', currentShift.id)
+      .eq('id', shift.id)
+      .eq('status', 'checked_in') // guard: chỉ update nếu vẫn đang checked_in
       .select()
       .single();
 
-    if (error) throw error;
-    setTodayRecords(prev => prev.map(r => r.id === currentShift.id ? data : r));
+    if (error) {
+      await loadToday();
+      throw new Error('Ca này đã được check-out rồi!');
+    }
+    setTodayRecords(prev => prev.map(r => r.id === shift.id ? data : r));
     return data;
-  }, [currentShift]);
+  }, [userId, tenantId, currentShift, loadToday]);
 
   // Month summary
   const monthSummary = useMemo(() => {

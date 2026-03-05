@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 
-export default function CheckInButton({ currentShift, todayRecords, totalHoursToday, onCheckIn, onCheckOut }) {
+export default function CheckInButton({ currentShift, todayRecords, totalHoursToday, onCheckIn, onCheckOut, loading }) {
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState(null);
 
-  const canCheckIn = !currentShift;
-  const canCheckOut = !!currentShift;
+  const canCheckIn = !currentShift && !loading;
+  const canCheckOut = !!currentShift && !loading;
 
   const handleAction = async (action) => {
     setProcessing(true);

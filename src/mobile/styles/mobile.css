@@ -1628,6 +1628,130 @@
   border: 2px solid #15803d;
 }
 
+/* History tab */
+.matt-history {
+  padding: 0 12px 12px;
+}
+
+/* Stats grid — 4 cards */
+.matt-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.matt-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.matt-stat-icon {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.matt-stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #15803d;
+  line-height: 1.2;
+}
+
+.matt-stat-label {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+/* History list */
+.matt-history-list {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.matt-history-empty {
+  text-align: center;
+  color: #9ca3af;
+  padding: 32px 16px;
+  font-size: 14px;
+}
+
+.matt-history-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  gap: 8px;
+}
+
+.matt-history-row:last-child {
+  border-bottom: none;
+}
+
+.matt-history-date {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  min-width: 80px;
+}
+
+.matt-history-times {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.matt-history-in {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.matt-history-sep {
+  color: #d1d5db;
+  font-size: 11px;
+}
+
+.matt-history-out {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.matt-history-hours {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  min-width: 36px;
+  text-align: right;
+}
+
+.matt-history-status {
+  min-width: 20px;
+  text-align: center;
+}
+
+.matt-hstatus {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.matt-hstatus.done {
+  color: #15803d;
+}
+
+.matt-hstatus.working {
+  color: #3b82f6;
+}
+
 /* ===== ORDERS MODULE ===== */
 
 .mord-page {
