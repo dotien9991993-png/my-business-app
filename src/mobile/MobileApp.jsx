@@ -69,10 +69,10 @@ export default function MobileApp() {
           <form onSubmit={handleLogin} className="mobile-login-form">
             <input
               type="text"
-              placeholder="Tên đăng nhập"
+              placeholder="Email"
               value={loginUsername}
               onChange={e => setLoginUsername(e.target.value)}
-              autoComplete="username"
+              autoComplete="email"
               required
             />
             <input
