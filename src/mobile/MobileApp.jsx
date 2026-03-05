@@ -10,14 +10,6 @@ import MediaPage from './pages/media/MediaPage';
 import ProfilePage from './pages/profile/ProfilePage';
 import './styles/mobile.css';
 
-const TAB_TITLES = {
-  chat: 'Chat',
-  attendance: 'Chấm công',
-  orders: 'Đơn hàng',
-  media: 'Video',
-  profile: 'Tôi',
-};
-
 export default function MobileApp() {
   const { currentUser, tenant, tenantId, loading, login, logout } = useMobileAuth();
   const [activeTab, setActiveTab] = useState('chat');
@@ -113,7 +105,7 @@ export default function MobileApp() {
 
   return (
     <div className="mobile-app">
-      {!hideNav && <MobileHeader title={TAB_TITLES[activeTab]} />}
+      {!hideNav && <MobileHeader tenant={tenant} />}
       <main className="mobile-content">
         {renderPage()}
       </main>

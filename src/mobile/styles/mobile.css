@@ -15,28 +15,41 @@
 
 /* === Header === */
 .mobile-header {
-  height: 48px;
-  padding-top: env(safe-area-inset-top);
   flex-shrink: 0;
   background: #15803d;
-  color: white;
+  padding-top: env(safe-area-inset-top);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.mobile-header-content {
+  height: 48px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-left: 16px;
-  padding-right: 16px;
+  padding: 0 16px;
+  gap: 10px;
+  color: white;
+}
+
+.mobile-header-logo {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.mobile-header-logo-fallback {
+  font-size: 22px;
 }
 
 .mobile-header-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   margin: 0;
-}
-
-.mobile-header-action {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* === Content === */

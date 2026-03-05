@@ -1,10 +1,16 @@
 import React from 'react';
 
-export default function MobileHeader({ title, rightAction }) {
+export default function MobileHeader({ tenant }) {
   return (
     <header className="mobile-header">
-      <h1 className="mobile-header-title">{title}</h1>
-      {rightAction && <div className="mobile-header-action">{rightAction}</div>}
+      <div className="mobile-header-content">
+        {tenant?.logo_url ? (
+          <img src={tenant.logo_url} alt="" className="mobile-header-logo" />
+        ) : (
+          <span className="mobile-header-logo-fallback">🎵</span>
+        )}
+        <span className="mobile-header-title">{tenant?.name || 'Hoàng Nam Audio'}</span>
+      </div>
     </header>
   );
 }
