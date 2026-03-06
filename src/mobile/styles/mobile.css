@@ -3496,3 +3496,532 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ===== MODULE: JOBS / KỸ THUẬT (mjob-) ===== */
+
+.mjob-page {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* View tabs (My / All) */
+.mjob-view-tabs {
+  display: flex;
+  padding: 8px 12px 0;
+  gap: 8px;
+}
+
+.mjob-view-tab {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.mjob-view-tab.active {
+  background: #15803d;
+  color: white;
+}
+
+/* Status tabs */
+.mjob-status-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mjob-status-tabs::-webkit-scrollbar { display: none; }
+
+.mjob-status-tab {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mjob-status-tab.active {
+  background: #15803d;
+  color: white;
+  border-color: #15803d;
+}
+
+/* Date filter */
+.mjob-date-filter {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mjob-date-filter::-webkit-scrollbar { display: none; }
+
+.mjob-date-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.mjob-date-btn.active {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+
+/* Count */
+.mjob-count {
+  padding: 0 12px 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* Job list */
+.mjob-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mjob-empty {
+  text-align: center;
+  color: #9ca3af;
+  padding: 40px 16px;
+  font-size: 14px;
+}
+
+/* Job card */
+.mjob-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.mjob-card:active { box-shadow: 0 0 0 2px #86efac; }
+
+.mjob-card-today {
+  border-color: #fbbf24;
+  border-width: 2px;
+}
+
+.mjob-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.mjob-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+  line-height: 1.3;
+}
+
+.mjob-card-customer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.mjob-card-name { color: #374151; }
+
+.mjob-card-phone {
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.mjob-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mjob-card-date {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.mjob-today-text {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.mjob-card-right {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.mjob-card-payment {
+  color: #15803d;
+  font-weight: 600;
+}
+
+/* Badges */
+.mjob-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mjob-badge-amber { background: #fef3c7; color: #b45309; }
+.mjob-badge-blue { background: #dbeafe; color: #1d4ed8; }
+.mjob-badge-green { background: #dcfce7; color: #15803d; }
+.mjob-badge-gray { background: #f3f4f6; color: #6b7280; }
+
+/* ===== Job Detail ===== */
+
+.mjob-detail-page {
+  padding: 0 0 80px;
+  overflow-y: auto;
+}
+
+.mjob-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.mjob-detail-back {
+  background: none;
+  border: none;
+  color: #15803d;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.mjob-detail-status {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.mjob-detail-title {
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.mjob-detail-title h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  flex: 1;
+  line-height: 1.3;
+}
+
+.mjob-type-badge {
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eff6ff;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+
+/* Section */
+.mjob-section {
+  margin: 0 12px 8px;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+.mjob-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: default;
+  margin: 0;
+}
+
+.mjob-section-toggle { cursor: pointer; }
+.mjob-section-toggle:active { background: #f9fafb; }
+
+.mjob-section-body {
+  padding: 0 12px 12px;
+}
+
+.mjob-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #f9fafb;
+}
+
+.mjob-info-row:last-child { border-bottom: none; }
+
+.mjob-info-val {
+  color: #111827;
+  font-weight: 500;
+  text-align: right;
+  max-width: 65%;
+  word-break: break-word;
+}
+
+.mjob-link {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.mjob-address-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.mjob-address-text {
+  font-size: 13px;
+  color: #374151;
+  text-align: right;
+}
+
+.mjob-map-btn {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Technician tags */
+.mjob-tech-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+
+.mjob-tech-tag {
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.mjob-tech-me {
+  background: #dcfce7;
+  color: #15803d;
+  font-weight: 600;
+}
+
+/* Equipment */
+.mjob-equipment {
+  padding: 0 12px 12px;
+}
+
+.mjob-equipment-item {
+  font-size: 13px;
+  color: #4b5563;
+  padding: 3px 0;
+}
+
+/* Finance */
+.mjob-text-green { color: #15803d !important; }
+.mjob-text-red { color: #dc2626 !important; }
+
+.mjob-profit-row {
+  font-weight: 600;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid #e5e7eb !important;
+}
+
+.mjob-expense-list {
+  margin-top: 8px;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 8px;
+}
+
+.mjob-expense-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.mjob-expense-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.mjob-expense-cat { color: #374151; }
+.mjob-expense-by { font-size: 11px; color: #9ca3af; }
+.mjob-expense-amount { color: #dc2626; font-weight: 500; }
+
+.mjob-add-expense-btn {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: white;
+  color: #15803d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+
+.mjob-expense-form {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.mjob-expense-select, .mjob-expense-input {
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+
+.mjob-expense-select:focus, .mjob-expense-input:focus {
+  border-color: #15803d;
+}
+
+.mjob-expense-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mjob-expense-cancel {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mjob-expense-submit {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  background: #15803d;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mjob-expense-submit:disabled { opacity: 0.5; }
+
+/* Meta */
+.mjob-meta {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* Floating action buttons */
+.mjob-floating-actions {
+  position: fixed;
+  bottom: 70px;
+  left: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mjob-action-btn {
+  flex: 1;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.mjob-action-btn:disabled { opacity: 0.5; }
+
+.mjob-action-primary {
+  background: #15803d;
+  color: white;
+}
+
+.mjob-action-primary:active { background: #166534; }
+
+.mjob-action-cancel {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.mjob-action-cancel:active { background: #e5e7eb; }
