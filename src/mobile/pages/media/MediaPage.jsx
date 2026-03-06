@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useMobileMedia } from '../../hooks/useMobileMedia';
 import TaskCard from './TaskCard';
 import TaskDetail from './TaskDetail';
@@ -25,6 +25,12 @@ export default function MediaPage({ user, tenantId }) {
   } = useMobileMedia(user?.id, user?.name, tenantId);
 
   const [selectedTask, setSelectedTask] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 1800);
+  }, []);
 
   const handleOpenDetail = (task) => {
     setSelectedTask(task);
@@ -37,21 +43,47 @@ export default function MediaPage({ user, tenantId }) {
 
   const handleStatusUpdate = async (taskId, newStatus) => {
     await updateTaskStatus(taskId, newStatus);
-    // Update local task
     setSelectedTask(prev => prev ? { ...prev, status: newStatus } : null);
     refresh();
   };
 
+  const handleToggleStep = useCallback(async (taskId, stepKey) => {
+    let newStatus;
+    if (stepKey === 'filmed') newStatus = 'Đã Quay';
+    else if (stepKey === 'edited') newStatus = 'Đang Edit';
+    else if (stepKey === 'completed') newStatus = 'Hoàn Thành';
+    if (!newStatus) return;
+
+    try {
+      await updateTaskStatus(taskId, newStatus);
+      showToast('Đã cập nhật tiến trình!');
+      refresh();
+    } catch (err) {
+      console.error('Error toggling step:', err);
+    }
+  }, [updateTaskStatus, refresh, showToast]);
+
+  const handleCopyLink = useCallback((url) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      showToast('Đã copy link! 📋');
+    }
+  }, [showToast]);
+
   // Show detail view
   if (selectedTask) {
     return (
-      <TaskDetail
-        task={selectedTask}
-        onBack={handleCloseDetail}
-        onUpdateStatus={handleStatusUpdate}
-        onAddComment={addComment}
-        userName={user?.name}
-      />
+      <>
+        <TaskDetail
+          task={selectedTask}
+          onBack={handleCloseDetail}
+          onUpdateStatus={handleStatusUpdate}
+          onAddComment={addComment}
+          userName={user?.name}
+          onCopyLink={() => showToast('Đã copy link! 📋')}
+        />
+        {toast && <div className="mmed-toast">{toast}</div>}
+      </>
     );
   }
 
@@ -103,16 +135,19 @@ export default function MediaPage({ user, tenantId }) {
 
       {/* Count */}
       <div className="mmed-count">
-        {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+        {tasks.length} video
       </div>
 
       {/* Task list */}
       <div className="mmed-list">
         {loading ? (
-          <div className="mmed-empty">Đang tải...</div>
+          <div className="mmed-empty">
+            <div className="mmed-spinner" />
+            <p>Đang tải...</p>
+          </div>
         ) : tasks.length === 0 ? (
           <div className="mmed-empty">
-            {filters.tab === 'my' ? 'Bạn chưa có task nào' : 'Không có task nào'}
+            <p>{filters.tab === 'my' ? 'Bạn chưa có task nào' : 'Không có task nào'}</p>
           </div>
         ) : (
           tasks.map(task => (
@@ -120,10 +155,15 @@ export default function MediaPage({ user, tenantId }) {
               key={task.id}
               task={task}
               onClick={() => handleOpenDetail(task)}
+              onToggleStep={handleToggleStep}
+              onCopyLink={handleCopyLink}
             />
           ))
         )}
       </div>
+
+      {/* Toast */}
+      {toast && <div className="mmed-toast">{toast}</div>}
     </div>
   );
 }

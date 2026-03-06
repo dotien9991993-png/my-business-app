@@ -1,20 +1,29 @@
 import React from 'react';
+import { formatMoney } from '../../utils/formatters';
 
-const STATUS_CONFIG = {
-  'Nháp': { label: 'Nháp', cls: 'mmed-badge-gray' },
-  'Chờ Duyệt': { label: 'Chờ Duyệt', cls: 'mmed-badge-amber' },
-  'Đã Duyệt': { label: 'Đã Duyệt', cls: 'mmed-badge-green' },
-  'Đang Làm': { label: 'Đang Làm', cls: 'mmed-badge-blue' },
-  'Hoàn Thành': { label: 'Hoàn Thành', cls: 'mmed-badge-purple' },
+const STATUS_BADGE = {
+  'Nháp': { label: 'Nháp', cls: 'mmed-badge-draft' },
+  'Chờ Duyệt': { label: 'Chờ Duyệt', cls: 'mmed-badge-review' },
+  'Đã Duyệt': { label: 'Đã Duyệt', cls: 'mmed-badge-content' },
+  'Đang Làm': { label: 'Đang Làm', cls: 'mmed-badge-content' },
+  'Hoàn Thành': { label: 'Hoàn Thành', cls: 'mmed-badge-done' },
+  'Cần Sửa': { label: 'Cần Sửa', cls: 'mmed-badge-review' },
 };
 
-const CATEGORY_LABELS = {
-  video_dan: '🎬 Video dàn',
-  video_hangngay: '📅 Hàng ngày',
-  video_huongdan: '📚 Hướng dẫn',
-  video_quangcao: '📢 Quảng cáo',
-  video_review: '⭐ Review',
+const CATEGORY_BADGE = {
+  video_dan: { label: '🎬 Video dàn', cls: '' },
+  video_hangngay: { label: '📅 Hàng ngày', cls: '' },
+  video_huongdan: { label: '📚 Hướng dẫn', cls: 'mmed-badge-guide' },
+  video_quangcao: { label: '📢 Quảng cáo', cls: '' },
+  video_review: { label: '⭐ Review', cls: '' },
 };
+
+const PRODUCTION_STEPS = [
+  { key: 'created', label: 'Tạo', icon: '📝', field: 'created_at' },
+  { key: 'filmed', label: 'Quay', icon: '🎥', field: 'filmed_at' },
+  { key: 'edited', label: 'Dựng', icon: '✂️', field: 'edited_at' },
+  { key: 'completed', label: 'Hoàn thành', icon: '✅', field: 'completed_at' },
+];
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
@@ -29,64 +38,145 @@ const isOverdue = (dueDate, status) => {
   if (!dueDate || status === 'Hoàn Thành') return false;
   const now = new Date();
   const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-  const due = new Date(dueDate);
-  return due < vnNow;
+  return new Date(dueDate) < vnNow;
 };
 
-export default function TaskCard({ task, onClick }) {
-  const status = STATUS_CONFIG[task.status] || STATUS_CONFIG['Nháp'];
-  const overdue = isOverdue(task.due_date, task.status);
-  const category = CATEGORY_LABELS[task.category] || '';
-  const crew = [...new Set([...(task.cameramen || []), ...(task.editors || [])])];
-  const commentCount = (task.comments || []).length;
-  const linkCount = (task.post_links || []).length;
+const formatNum = (n) => {
+  if (!n) return '0';
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return n.toLocaleString('vi-VN');
+};
 
-  // Progress indicators
-  const hasFilmed = !!task.filmed_at;
-  const hasEdited = !!task.edited_at;
-  const isCompleted = task.status === 'Hoàn Thành';
+export default function TaskCard({ task, onClick, onToggleStep, onCopyLink }) {
+  const statusBadge = STATUS_BADGE[task.status] || STATUS_BADGE['Nháp'];
+  const overdue = isOverdue(task.due_date, task.status);
+  const categoryBadge = CATEGORY_BADGE[task.category];
+  const postLinks = task.post_links || [];
+
+  // Aggregate stats from post_links
+  const totalStats = postLinks.reduce((acc, link) => {
+    if (link.stats) {
+      acc.views += link.stats.views || 0;
+      acc.likes += link.stats.likes || 0;
+      acc.comments += link.stats.comments || 0;
+    }
+    return acc;
+  }, { views: 0, likes: 0, comments: 0 });
+
+  const hasStats = totalStats.views > 0 || totalStats.likes > 0 || totalStats.comments > 0;
+  const firstLink = postLinks.find(l => l.url);
+
+  // Production step states
+  const steps = PRODUCTION_STEPS.map(step => ({
+    ...step,
+    done: step.key === 'created' ? true : !!task[step.field],
+  }));
+
+  // Determine which step is active (first not-done step)
+  const activeIdx = steps.findIndex(s => !s.done);
+
+  const handleStepTap = (e, idx) => {
+    e.stopPropagation();
+    if (idx === 0) return; // Can't toggle "Tạo"
+    const step = steps[idx];
+    if (step.done) return; // Already done
+    if (idx > 0 && !steps[idx - 1].done) return; // Previous not done
+    onToggleStep?.(task.id, step.key);
+  };
+
+  const handleCopy = (e) => {
+    e.stopPropagation();
+    if (firstLink?.url) {
+      onCopyLink?.(firstLink.url);
+    }
+  };
+
+  const handleViewVideo = (e) => {
+    e.stopPropagation();
+    if (firstLink?.url) {
+      window.open(firstLink.url, '_blank');
+    }
+  };
 
   return (
-    <button className="mmed-card" onClick={onClick}>
-      <div className="mmed-card-top">
-        <span className="mmed-card-title">{task.title}</span>
-        <span className={`mmed-badge ${status.cls}`}>{status.label}</span>
+    <div className="mmed-card" onClick={onClick}>
+      {/* Title */}
+      <div className="mmed-card-title">{task.title}</div>
+
+      {/* Stats row */}
+      {hasStats && (
+        <div className="mmed-stats-row">
+          <span className="mmed-stat-item">👁 {formatNum(totalStats.views)}</span>
+          <span className="mmed-stat-item">❤️ {formatNum(totalStats.likes)}</span>
+          <span className="mmed-stat-item">💬 {formatNum(totalStats.comments)}</span>
+        </div>
+      )}
+
+      {/* Revenue */}
+      {task.media_salary > 0 && (
+        <div className="mmed-revenue">💰 {formatMoney(task.media_salary)}</div>
+      )}
+
+      {/* Badges */}
+      <div className="mmed-badges">
+        <span className={`mmed-badge ${statusBadge.cls}`}>{statusBadge.label}</span>
+        {categoryBadge && (
+          <span className={`mmed-badge ${categoryBadge.cls || 'mmed-badge-performance'}`}>{categoryBadge.label}</span>
+        )}
+        {overdue && <span className="mmed-badge mmed-badge-review">⚠️ Quá hạn</span>}
       </div>
 
-      {category && <span className="mmed-card-category">{category}</span>}
-
-      <div className="mmed-card-meta">
-        <span className="mmed-card-assignee">👤 {task.assignee || '—'}</span>
+      {/* Info: assignee + date */}
+      <div className="mmed-card-info">
+        <span>👤 {task.assignee || '—'}</span>
         {task.due_date && (
-          <span className={`mmed-card-deadline ${overdue ? 'mmed-overdue' : ''}`}>
-            {overdue ? '⚠️' : '📅'} {formatDate(task.due_date)}
-          </span>
+          <>
+            <span className="mmed-card-info-dot">·</span>
+            <span>📅 {formatDate(task.due_date)}</span>
+          </>
         )}
       </div>
 
-      {/* Progress dots */}
-      <div className="mmed-card-progress">
-        <span className={`mmed-progress-dot ${hasFilmed ? 'done' : ''}`} title="Quay">🎥</span>
-        <span className="mmed-progress-line" />
-        <span className={`mmed-progress-dot ${hasEdited ? 'done' : ''}`} title="Edit">✂️</span>
-        <span className="mmed-progress-line" />
-        <span className={`mmed-progress-dot ${isCompleted ? 'done' : ''}`} title="Xong">✅</span>
+      {/* Production progress steps */}
+      <div className="mmed-progress">
+        <div className="mmed-progress-title">Tiến trình</div>
+        <div className="mmed-progress-steps">
+          {steps.map((step, i) => (
+            <button
+              key={step.key}
+              className={`mmed-step ${step.done ? 'mmed-step-done' : i === activeIdx ? 'mmed-step-active' : 'mmed-step-pending'}`}
+              onClick={(e) => handleStepTap(e, i)}
+              disabled={step.key === 'created'}
+            >
+              {step.icon} {step.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="mmed-card-bottom">
-        <div className="mmed-card-left">
-          {task.platform && (
-            <span className="mmed-card-platforms">
-              {task.platform.split(',').map(p => p.trim()).slice(0, 3).join(' · ')}
+      {/* Platform chips */}
+      {task.platform && (
+        <div className="mmed-products">
+          {task.platform.split(',').map((p, i) => (
+            <span key={i} className="mmed-product-chip">
+              {p.trim() === 'Facebook' ? '📘' : p.trim() === 'TikTok' ? '🎵' : p.trim() === 'YouTube' ? '📺' : p.trim() === 'Instagram' ? '📸' : '📱'} {p.trim()}
             </span>
-          )}
+          ))}
         </div>
-        <div className="mmed-card-right">
-          {crew.length > 0 && <span className="mmed-card-crew">🎬 {crew.length}</span>}
-          {commentCount > 0 && <span className="mmed-card-comments">💬 {commentCount}</span>}
-          {linkCount > 0 && <span className="mmed-card-links">🔗 {linkCount}</span>}
+      )}
+
+      {/* Action buttons */}
+      {firstLink && (
+        <div className="mmed-actions">
+          <button className="mmed-action-btn mmed-btn-copy" onClick={handleCopy}>
+            📋 Copy link
+          </button>
+          <button className="mmed-action-btn mmed-btn-view" onClick={handleViewVideo}>
+            ▶️ Xem video
+          </button>
         </div>
-      </div>
-    </button>
+      )}
+    </div>
   );
 }

@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { formatMoney } from '../../utils/formatters';
 
 const STATUS_CONFIG = {
-  'Nháp': { label: 'Nháp', icon: '📝' },
-  'Chờ Duyệt': { label: 'Chờ Duyệt', icon: '⏳' },
-  'Đã Duyệt': { label: 'Đã Duyệt', icon: '👍' },
-  'Đang Làm': { label: 'Đang Làm', icon: '🔨' },
-  'Hoàn Thành': { label: 'Hoàn Thành', icon: '✅' },
+  'Nháp': { label: 'Nháp', icon: '📝', gradient: 'linear-gradient(135deg, #9ca3af, #6b7280)' },
+  'Chờ Duyệt': { label: 'Chờ Duyệt', icon: '⏳', gradient: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+  'Đã Duyệt': { label: 'Đã Duyệt', icon: '👍', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
+  'Đang Làm': { label: 'Đang Làm', icon: '🔨', gradient: 'linear-gradient(135deg, #3b82f6, #2563eb)' },
+  'Hoàn Thành': { label: 'Hoàn Thành', icon: '✅', gradient: 'linear-gradient(135deg, #16a34a, #15803d)' },
+  'Cần Sửa': { label: 'Cần Sửa', icon: '🔄', gradient: 'linear-gradient(135deg, #f97316, #ea580c)' },
 };
 
 const STATUS_FLOW = ['Nháp', 'Chờ Duyệt', 'Đã Duyệt', 'Đang Làm', 'Hoàn Thành'];
@@ -17,6 +18,11 @@ const CATEGORY_LABELS = {
   video_huongdan: '📚 Video hướng dẫn',
   video_quangcao: '📢 Video quảng cáo',
   video_review: '⭐ Video review',
+};
+
+const PLATFORM_ICONS = {
+  'Facebook': '📘', 'TikTok': '🎵', 'YouTube': '📺',
+  'Instagram': '📸', 'Blog': '📝', 'Ads': '📢', 'Email': '📧',
 };
 
 const formatDateTime = (dateStr) => {
@@ -38,15 +44,22 @@ const isOverdue = (dueDate, status) => {
   return new Date(dueDate) < vnNow;
 };
 
-export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment, userName }) {
+const formatNum = (n) => {
+  if (!n) return '0';
+  return n.toLocaleString('vi-VN');
+};
+
+export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment, userName, onCopyLink }) {
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [expandSection, setExpandSection] = useState({ timeline: true, links: false, comments: true });
+  const [expandSection, setExpandSection] = useState({ timeline: true, links: true, comments: true });
   const [statusUpdating, setStatusUpdating] = useState(false);
 
   const status = STATUS_CONFIG[task.status] || STATUS_CONFIG['Nháp'];
   const overdue = isOverdue(task.due_date, task.status);
-  const crew = [...new Set([...(task.cameramen || []), ...(task.editors || [])])];
+  const cameramen = task.cameramen || [];
+  const editors = task.editors || [];
+  const actors = task.actors || [];
   const comments = task.comments || [];
   const postLinks = task.post_links || [];
 
@@ -54,12 +67,12 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
     setExpandSection(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Determine next status action
   const getNextStatusAction = () => {
     const currentIdx = STATUS_FLOW.indexOf(task.status);
     if (currentIdx < 0 || currentIdx >= STATUS_FLOW.length - 1) return null;
     const nextStatus = STATUS_FLOW[currentIdx + 1];
-    return { status: nextStatus, label: `→ ${STATUS_CONFIG[nextStatus]?.label || nextStatus}` };
+    const next = STATUS_CONFIG[nextStatus];
+    return { status: nextStatus, label: next?.label || nextStatus, icon: next?.icon || '' };
   };
 
   const handleStatusUpdate = async (newStatus) => {
@@ -86,168 +99,207 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
     }
   };
 
+  const handleCopy = (url) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      onCopyLink?.(url);
+    }
+  };
+
   const nextAction = getNextStatusAction();
 
   // Timeline steps
   const timelineSteps = [
     { label: 'Tạo', icon: '📝', done: true, time: task.created_at },
-    { label: 'Quay xong', icon: '🎥', done: !!task.filmed_at, time: task.filmed_at },
-    { label: 'Edit xong', icon: '✂️', done: !!task.edited_at, time: task.edited_at },
-    { label: 'Hoàn thành', icon: '✅', done: task.status === 'Hoàn Thành', time: task.completed_at },
+    { label: 'Quay xong', icon: '🎥', done: !!task.filmed_at, time: task.filmed_at, action: 'Đã Quay' },
+    { label: 'Dựng xong', icon: '✂️', done: !!task.edited_at, time: task.edited_at, action: 'Đang Edit' },
+    { label: 'Hoàn thành', icon: '✅', done: task.status === 'Hoàn Thành', time: task.completed_at, action: 'Hoàn Thành' },
   ];
 
-  // Quick status buttons for production timeline
-  const handleTimelineAction = (step) => {
-    if (step === 1 && !task.filmed_at) handleStatusUpdate('Đã Quay');
-    if (step === 2 && !task.edited_at && task.filmed_at) handleStatusUpdate('Đang Edit');
-    if (step === 3 && task.filmed_at) handleStatusUpdate('Hoàn Thành');
+  const handleTimelineAction = async (step) => {
+    if (step === 1 && !task.filmed_at) await handleStatusUpdate('Đã Quay');
+    if (step === 2 && !task.edited_at && task.filmed_at) await handleStatusUpdate('Đang Edit');
+    if (step === 3 && task.filmed_at) await handleStatusUpdate('Hoàn Thành');
   };
+
+  // Aggregate stats
+  const totalStats = postLinks.reduce((acc, link) => {
+    if (link.stats) {
+      acc.views += link.stats.views || 0;
+      acc.likes += link.stats.likes || 0;
+      acc.comments += link.stats.comments || 0;
+      acc.shares += link.stats.shares || 0;
+    }
+    return acc;
+  }, { views: 0, likes: 0, comments: 0, shares: 0 });
+
+  const hasStats = totalStats.views > 0 || totalStats.likes > 0;
 
   return (
     <div className="mobile-page mmed-detail-page">
-      {/* Header */}
-      <div className="mmed-detail-header">
-        <button className="mmed-detail-back" onClick={onBack}>← Quay lại</button>
-        <span className="mmed-detail-status">{status.icon} {status.label}</span>
-      </div>
-
-      {/* Title */}
-      <div className="mmed-detail-title">
-        <h2>{task.title}</h2>
-        {overdue && <span className="mmed-overdue-badge">⚠️ Quá hạn</span>}
-      </div>
-
-      {/* Info grid */}
-      <div className="mmed-section">
-        <div className="mmed-info-grid">
-          <div className="mmed-info-item">
-            <span className="mmed-info-label">Người phụ trách</span>
-            <span className="mmed-info-val">👤 {task.assignee || '—'}</span>
-          </div>
-          <div className="mmed-info-item">
-            <span className="mmed-info-label">Team</span>
-            <span className="mmed-info-val">🏢 {task.team || '—'}</span>
-          </div>
-          {task.due_date && (
-            <div className="mmed-info-item">
-              <span className="mmed-info-label">Deadline</span>
-              <span className={`mmed-info-val ${overdue ? 'mmed-text-red' : ''}`}>
-                📅 {formatDate(task.due_date)}
-              </span>
-            </div>
-          )}
-          {task.category && (
-            <div className="mmed-info-item">
-              <span className="mmed-info-label">Loại</span>
-              <span className="mmed-info-val">{CATEGORY_LABELS[task.category] || task.category}</span>
-            </div>
-          )}
-          {task.platform && (
-            <div className="mmed-info-item">
-              <span className="mmed-info-label">Nền tảng</span>
-              <span className="mmed-info-val">📱 {task.platform}</span>
-            </div>
-          )}
-          {task.media_salary && (
-            <div className="mmed-info-item">
-              <span className="mmed-info-label">Thù lao</span>
-              <span className="mmed-info-val">💰 {formatMoney(task.media_salary)}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Description */}
-      {task.description && (
-        <div className="mmed-section">
-          <h3 className="mmed-section-title">📋 Mô tả</h3>
-          <div className="mmed-description">{task.description}</div>
-        </div>
-      )}
-
-      {/* Crew */}
-      {(crew.length > 0 || (task.actors || []).length > 0) && (
-        <div className="mmed-section">
-          <h3 className="mmed-section-title">👥 Ekip</h3>
-          <div className="mmed-section-body">
-            {crew.length > 0 && (
-              <div className="mmed-crew-row">
-                <span className="mmed-crew-label">🎬 Quay/Dựng:</span>
-                <div className="mmed-crew-tags">
-                  {crew.map((c, i) => <span key={i} className="mmed-crew-tag">{c}</span>)}
-                </div>
-              </div>
-            )}
-            {(task.actors || []).length > 0 && (
-              <div className="mmed-crew-row">
-                <span className="mmed-crew-label">🎭 Diễn viên:</span>
-                <div className="mmed-crew-tags">
-                  {task.actors.map((a, i) => <span key={i} className="mmed-crew-tag">{a}</span>)}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Production timeline - expandable */}
-      <div className="mmed-section">
-        <button className="mmed-section-title mmed-section-toggle" onClick={() => toggleSection('timeline')}>
-          📊 Tiến trình sản xuất
-          <span>{expandSection.timeline ? '▼' : '▶'}</span>
+      {/* Gradient Header */}
+      <div className="mmed-d2-header" style={{ background: status.gradient }}>
+        <button className="mmed-d2-back" onClick={onBack}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          Quay lại
         </button>
-        {expandSection.timeline && (
-          <div className="mmed-timeline">
-            {timelineSteps.map((step, i) => (
-              <div key={i} className={`mmed-timeline-step ${step.done ? 'done' : ''}`}>
-                <div className="mmed-timeline-dot">
-                  <span>{step.icon}</span>
-                </div>
-                {i < timelineSteps.length - 1 && <div className="mmed-timeline-line" />}
-                <div className="mmed-timeline-info">
-                  <span className="mmed-timeline-label">{step.label}</span>
-                  {step.time && <span className="mmed-timeline-time">{formatDateTime(step.time)}</span>}
-                  {!step.done && i > 0 && (
-                    <button
-                      className="mmed-timeline-btn"
-                      onClick={() => handleTimelineAction(i)}
-                      disabled={statusUpdating}
-                    >
-                      Đánh dấu hoàn thành
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+        <div className="mmed-d2-header-info">
+          <h2 className="mmed-d2-title">{task.title}</h2>
+          <div className="mmed-d2-header-badges">
+            <span className="mmed-d2-header-badge">{status.icon} {status.label}</span>
+            {task.category && <span className="mmed-d2-header-badge">{CATEGORY_LABELS[task.category] || task.category}</span>}
+            {overdue && <span className="mmed-d2-header-badge mmed-d2-badge-overdue">⚠️ Quá hạn</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="mmed-d2-body">
+        {/* Stats summary */}
+        {hasStats && (
+          <div className="mmed-d2-stats">
+            <div className="mmed-d2-stat">
+              <span className="mmed-d2-stat-num">{formatNum(totalStats.views)}</span>
+              <span className="mmed-d2-stat-label">Lượt xem</span>
+            </div>
+            <div className="mmed-d2-stat">
+              <span className="mmed-d2-stat-num">{formatNum(totalStats.likes)}</span>
+              <span className="mmed-d2-stat-label">Thích</span>
+            </div>
+            <div className="mmed-d2-stat">
+              <span className="mmed-d2-stat-num">{formatNum(totalStats.comments)}</span>
+              <span className="mmed-d2-stat-label">Bình luận</span>
+            </div>
+            <div className="mmed-d2-stat">
+              <span className="mmed-d2-stat-num">{formatNum(totalStats.shares)}</span>
+              <span className="mmed-d2-stat-label">Chia sẻ</span>
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Post links - expandable */}
-      {postLinks.length > 0 && (
-        <div className="mmed-section">
-          <button className="mmed-section-title mmed-section-toggle" onClick={() => toggleSection('links')}>
-            🔗 Links đã đăng ({postLinks.length})
-            <span>{expandSection.links ? '▼' : '▶'}</span>
+        {/* Info section */}
+        <div className="mmed-d2-section">
+          <h3 className="mmed-d2-section-title">📋 Thông tin</h3>
+          <div className="mmed-d2-info-card">
+            <div className="mmed-d2-info-row">
+              <span className="mmed-d2-info-label">Người phụ trách</span>
+              <span className="mmed-d2-info-val">👤 {task.assignee || '—'}</span>
+            </div>
+            <div className="mmed-d2-info-row">
+              <span className="mmed-d2-info-label">Team</span>
+              <span className="mmed-d2-info-val">🏢 {task.team || '—'}</span>
+            </div>
+            {task.due_date && (
+              <div className="mmed-d2-info-row">
+                <span className="mmed-d2-info-label">Deadline</span>
+                <span className={`mmed-d2-info-val ${overdue ? 'mmed-text-red' : ''}`}>
+                  📅 {formatDate(task.due_date)}
+                </span>
+              </div>
+            )}
+            {task.platform && (
+              <div className="mmed-d2-info-row">
+                <span className="mmed-d2-info-label">Nền tảng</span>
+                <span className="mmed-d2-info-val">📱 {task.platform}</span>
+              </div>
+            )}
+            {task.media_salary > 0 && (
+              <div className="mmed-d2-info-row">
+                <span className="mmed-d2-info-label">Thù lao</span>
+                <span className="mmed-d2-info-val mmed-text-green">💰 {formatMoney(task.media_salary)}</span>
+              </div>
+            )}
+            {task.priority && task.priority !== 'Trung bình' && (
+              <div className="mmed-d2-info-row">
+                <span className="mmed-d2-info-label">Ưu tiên</span>
+                <span className={`mmed-d2-info-val ${task.priority === 'Cao' ? 'mmed-text-red' : ''}`}>
+                  {task.priority === 'Cao' ? '🔴' : '🟢'} {task.priority}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Description */}
+        {task.description && (
+          <div className="mmed-d2-section">
+            <h3 className="mmed-d2-section-title">📝 Ghi chú / Mô tả</h3>
+            <div className="mmed-d2-desc">{task.description}</div>
+          </div>
+        )}
+
+        {/* Team (Ekip) - full details */}
+        {(cameramen.length > 0 || editors.length > 0 || actors.length > 0) && (
+          <div className="mmed-d2-section">
+            <h3 className="mmed-d2-section-title">👥 Ekip</h3>
+            <div className="mmed-d2-info-card">
+              {cameramen.length > 0 && (
+                <div className="mmed-d2-crew-row">
+                  <span className="mmed-d2-crew-label">🎬 Quay phim</span>
+                  <div className="mmed-d2-crew-tags">
+                    {cameramen.map((c, i) => (
+                      <span key={i} className={`mmed-d2-crew-tag ${c === userName ? 'mmed-d2-crew-me' : ''}`}>
+                        {c} {c === userName ? '(Bạn)' : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {editors.length > 0 && (
+                <div className="mmed-d2-crew-row">
+                  <span className="mmed-d2-crew-label">✂️ Dựng phim</span>
+                  <div className="mmed-d2-crew-tags">
+                    {editors.map((e, i) => (
+                      <span key={i} className={`mmed-d2-crew-tag ${e === userName ? 'mmed-d2-crew-me' : ''}`}>
+                        {e} {e === userName ? '(Bạn)' : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {actors.length > 0 && (
+                <div className="mmed-d2-crew-row">
+                  <span className="mmed-d2-crew-label">🎭 Diễn viên</span>
+                  <div className="mmed-d2-crew-tags">
+                    {actors.map((a, i) => (
+                      <span key={i} className="mmed-d2-crew-tag">{a}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Production timeline */}
+        <div className="mmed-d2-section">
+          <button className="mmed-d2-section-title mmed-d2-section-toggle" onClick={() => toggleSection('timeline')}>
+            📊 Tiến trình sản xuất
+            <span>{expandSection.timeline ? '▼' : '▶'}</span>
           </button>
-          {expandSection.links && (
-            <div className="mmed-section-body">
-              {postLinks.map((link, i) => (
-                <div key={i} className="mmed-link-row">
-                  <div className="mmed-link-info">
-                    <span className="mmed-link-type">{link.type || 'Link'}</span>
-                    <a className="mmed-link-url" href={link.url} target="_blank" rel="noopener noreferrer">
-                      {link.url?.length > 50 ? link.url.slice(0, 50) + '...' : link.url}
-                    </a>
-                    {link.addedBy && (
-                      <span className="mmed-link-meta">{link.addedBy} · {link.addedAt}</span>
+          {expandSection.timeline && (
+            <div className="mmed-d2-timeline">
+              {timelineSteps.map((step, i) => (
+                <div key={i} className={`mmed-d2-tl-step ${step.done ? 'done' : ''}`}>
+                  <div className="mmed-d2-tl-left">
+                    <div className={`mmed-d2-tl-dot ${step.done ? 'done' : ''}`}>
+                      {step.icon}
+                    </div>
+                    {i < timelineSteps.length - 1 && (
+                      <div className={`mmed-d2-tl-line ${step.done ? 'done' : ''}`} />
                     )}
-                    {link.stats && (
-                      <div className="mmed-link-stats">
-                        <span>👁 {(link.stats.views || 0).toLocaleString('vi-VN')}</span>
-                        <span>❤️ {(link.stats.likes || 0).toLocaleString('vi-VN')}</span>
-                        <span>💬 {(link.stats.comments || 0).toLocaleString('vi-VN')}</span>
-                      </div>
+                  </div>
+                  <div className="mmed-d2-tl-info">
+                    <span className="mmed-d2-tl-label">{step.label}</span>
+                    {step.time && <span className="mmed-d2-tl-time">{formatDateTime(step.time)}</span>}
+                    {!step.done && i > 0 && (
+                      <button
+                        className="mmed-d2-tl-btn"
+                        onClick={() => handleTimelineAction(i)}
+                        disabled={statusUpdating || (i > 1 && !timelineSteps[i - 1].done)}
+                      >
+                        {statusUpdating ? '...' : 'Đánh dấu hoàn thành'}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -255,70 +307,106 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
             </div>
           )}
         </div>
-      )}
 
-      {/* Comments - expandable */}
-      <div className="mmed-section">
-        <button className="mmed-section-title mmed-section-toggle" onClick={() => toggleSection('comments')}>
-          💬 Nhận xét ({comments.length})
-          <span>{expandSection.comments ? '▼' : '▶'}</span>
-        </button>
-        {expandSection.comments && (
-          <div className="mmed-section-body">
-            {comments.length === 0 ? (
-              <div className="mmed-empty-text">Chưa có nhận xét</div>
-            ) : (
-              <div className="mmed-comments-list">
-                {comments.map((c, i) => (
-                  <div key={i} className={`mmed-comment ${c.user === userName ? 'mmed-comment-mine' : ''}`}>
-                    <div className="mmed-comment-header">
-                      <span className="mmed-comment-user">
-                        {c.user === userName ? '👤' : '👨‍💼'} {c.user}
-                        {c.user === userName && ' (Bạn)'}
+        {/* Post links */}
+        {postLinks.length > 0 && (
+          <div className="mmed-d2-section">
+            <button className="mmed-d2-section-title mmed-d2-section-toggle" onClick={() => toggleSection('links')}>
+              🔗 Links đã đăng ({postLinks.length})
+              <span>{expandSection.links ? '▼' : '▶'}</span>
+            </button>
+            {expandSection.links && (
+              <div className="mmed-d2-links">
+                {postLinks.map((link, i) => (
+                  <div key={i} className="mmed-d2-link-card">
+                    <div className="mmed-d2-link-top">
+                      <span className="mmed-d2-link-type">
+                        {PLATFORM_ICONS[link.type] || '🔗'} {link.type || 'Link'}
                       </span>
-                      <span className="mmed-comment-time">{c.time}</span>
+                      <button className="mmed-d2-link-copy" onClick={() => handleCopy(link.url)}>
+                        📋 Copy
+                      </button>
                     </div>
-                    <div className="mmed-comment-text">{c.text}</div>
+                    <a className="mmed-d2-link-url" href={link.url} target="_blank" rel="noopener noreferrer">
+                      {link.url?.length > 60 ? link.url.slice(0, 60) + '...' : link.url}
+                    </a>
+                    {link.stats && (
+                      <div className="mmed-d2-link-stats">
+                        <span>👁 {formatNum(link.stats.views || 0)}</span>
+                        <span>❤️ {formatNum(link.stats.likes || 0)}</span>
+                        <span>💬 {formatNum(link.stats.comments || 0)}</span>
+                        <span>🔄 {formatNum(link.stats.shares || 0)}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
-            {/* Add comment */}
-            <div className="mmed-comment-form">
-              <textarea
-                className="mmed-comment-input"
-                placeholder="Viết nhận xét..."
-                value={commentText}
-                onChange={e => setCommentText(e.target.value)}
-                rows={2}
-              />
-              <button
-                className="mmed-comment-send"
-                onClick={handleAddComment}
-                disabled={!commentText.trim() || submitting}
-              >
-                {submitting ? '...' : '💬 Gửi'}
-              </button>
-            </div>
           </div>
         )}
+
+        {/* Comments */}
+        <div className="mmed-d2-section">
+          <button className="mmed-d2-section-title mmed-d2-section-toggle" onClick={() => toggleSection('comments')}>
+            💬 Nhận xét ({comments.length})
+            <span>{expandSection.comments ? '▼' : '▶'}</span>
+          </button>
+          {expandSection.comments && (
+            <div className="mmed-d2-comments">
+              {comments.length === 0 ? (
+                <div className="mmed-d2-empty">Chưa có nhận xét</div>
+              ) : (
+                comments.map((c, i) => (
+                  <div key={i} className={`mmed-d2-comment ${c.user === userName ? 'mine' : ''}`}>
+                    <div className="mmed-d2-comment-header">
+                      <span className="mmed-d2-comment-user">
+                        {c.user === userName ? '👤' : '👨‍💼'} {c.user}
+                        {c.user === userName && ' (Bạn)'}
+                      </span>
+                      <span className="mmed-d2-comment-time">{c.time}</span>
+                    </div>
+                    <div className="mmed-d2-comment-text">{c.text}</div>
+                  </div>
+                ))
+              )}
+              {/* Add comment */}
+              <div className="mmed-d2-comment-form">
+                <textarea
+                  className="mmed-d2-comment-input"
+                  placeholder="Viết nhận xét..."
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  rows={2}
+                />
+                <button
+                  className="mmed-d2-comment-send"
+                  onClick={handleAddComment}
+                  disabled={!commentText.trim() || submitting}
+                >
+                  {submitting ? '...' : '💬 Gửi'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Meta */}
+        <div className="mmed-d2-meta">
+          <span>Tạo bởi: {task.created_by || '—'}</span>
+          <span>{formatDateTime(task.created_at)}</span>
+        </div>
       </div>
 
-      {/* Meta */}
-      <div className="mmed-meta">
-        <span>Tạo bởi: {task.created_by || '—'}</span>
-        <span>{formatDateTime(task.created_at)}</span>
-      </div>
-
-      {/* Floating status update button */}
+      {/* Sticky bottom actions */}
       {nextAction && (
-        <div className="mmed-floating-action">
+        <div className="mmed-d2-sticky">
           <button
-            className="mmed-status-btn"
+            className="mmed-d2-status-btn"
             onClick={() => handleStatusUpdate(nextAction.status)}
             disabled={statusUpdating}
+            style={{ background: STATUS_CONFIG[nextAction.status]?.gradient || '#15803d' }}
           >
-            {statusUpdating ? 'Đang cập nhật...' : `Chuyển ${nextAction.label}`}
+            {statusUpdating ? 'Đang cập nhật...' : `${nextAction.icon} Chuyển → ${nextAction.label}`}
           </button>
         </div>
       )}
