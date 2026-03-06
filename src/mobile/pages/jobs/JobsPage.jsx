@@ -1,131 +1,68 @@
 import React, { useState } from 'react';
-import { useMobileJobs } from '../../hooks/useMobileJobs';
-import JobCard from './JobCard';
+import TodayJobs from './TodayJobs';
+import JobCalendar from './JobCalendar';
+import JobList from './JobList';
+import JobWages from './JobWages';
+import JobSummary from './JobSummary';
 import JobDetail from './JobDetail';
 
-const STATUS_TABS = [
-  { id: 'all', label: 'Tất cả' },
-  { id: 'Chờ XN', label: 'Chờ XN' },
-  { id: 'Đang làm', label: 'Đang làm' },
-  { id: 'Hoàn thành', label: 'Hoàn thành' },
-];
-
-const DATE_FILTERS = [
-  { id: 'all', label: 'Tất cả' },
+const SUB_TABS = [
   { id: 'today', label: 'Hôm nay' },
-  { id: 'week', label: '7 ngày' },
-  { id: 'month', label: 'Tháng này' },
+  { id: 'calendar', label: 'Lịch' },
+  { id: 'jobs', label: 'Việc' },
+  { id: 'wages', label: 'Công' },
+  { id: 'summary', label: 'Tổng' },
 ];
 
 export default function JobsPage({ user, tenantId }) {
-  const {
-    jobs, loading, filters, permLevel,
-    updateFilter, updateJobStatus, addExpense, refresh,
-  } = useMobileJobs(user?.id, user?.name, tenantId);
-
+  const [activeTab, setActiveTab] = useState('today');
   const [selectedJob, setSelectedJob] = useState(null);
 
-  const handleOpenDetail = (job) => {
-    setSelectedJob(job);
-  };
+  const handleOpenDetail = (job) => setSelectedJob(job);
+  const handleCloseDetail = () => setSelectedJob(null);
 
-  const handleCloseDetail = () => {
-    setSelectedJob(null);
-    refresh();
-  };
-
-  const handleStatusUpdate = async (jobId, newStatus) => {
-    await updateJobStatus(jobId, newStatus);
-    setSelectedJob(prev => prev ? { ...prev, status: newStatus } : null);
-    refresh();
-  };
-
-  const handleAddExpense = async (jobId, expense, currentExpenses) => {
-    const updated = await addExpense(jobId, expense, currentExpenses);
-    setSelectedJob(prev => prev ? { ...prev, expenses: updated } : null);
-    return updated;
-  };
-
-  // Detail view
   if (selectedJob) {
     return (
       <JobDetail
         job={selectedJob}
         onBack={handleCloseDetail}
-        onUpdateStatus={handleStatusUpdate}
-        onAddExpense={handleAddExpense}
-        userName={user?.name}
+        user={user}
+        tenantId={tenantId}
       />
     );
   }
 
   return (
     <div className="mobile-page mjob-page">
-      {/* Tab: My / All */}
-      {permLevel >= 2 && (
-        <div className="mjob-view-tabs">
-          <button
-            className={`mjob-view-tab ${filters.tab === 'my' ? 'active' : ''}`}
-            onClick={() => updateFilter('tab', 'my')}
-          >
-            Của tôi
-          </button>
-          <button
-            className={`mjob-view-tab ${filters.tab === 'all' ? 'active' : ''}`}
-            onClick={() => updateFilter('tab', 'all')}
-          >
-            Tất cả
-          </button>
-        </div>
-      )}
-
-      {/* Status tabs */}
-      <div className="mjob-status-tabs">
-        {STATUS_TABS.map(tab => (
+      {/* Sub-tab navigation */}
+      <div className="mjob-sub-tabs">
+        {SUB_TABS.map(tab => (
           <button
             key={tab.id}
-            className={`mjob-status-tab ${filters.status === tab.id ? 'active' : ''}`}
-            onClick={() => updateFilter('status', tab.id)}
+            className={`mjob-sub-tab ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Date filter */}
-      <div className="mjob-date-filter">
-        {DATE_FILTERS.map(f => (
-          <button
-            key={f.id}
-            className={`mjob-date-btn ${filters.dateRange === f.id ? 'active' : ''}`}
-            onClick={() => updateFilter('dateRange', f.id)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Count */}
-      <div className="mjob-count">
-        {jobs.length} công việc
-      </div>
-
-      {/* Job list */}
-      <div className="mjob-list">
-        {loading ? (
-          <div className="mjob-empty">Đang tải...</div>
-        ) : jobs.length === 0 ? (
-          <div className="mjob-empty">
-            {filters.tab === 'my' ? 'Bạn chưa có công việc nào' : 'Không có công việc nào'}
-          </div>
-        ) : (
-          jobs.map(job => (
-            <JobCard
-              key={job.id}
-              job={job}
-              onClick={() => handleOpenDetail(job)}
-            />
-          ))
+      {/* Tab content */}
+      <div className="mjob-tab-content">
+        {activeTab === 'today' && (
+          <TodayJobs user={user} tenantId={tenantId} onOpenJob={handleOpenDetail} />
+        )}
+        {activeTab === 'calendar' && (
+          <JobCalendar user={user} tenantId={tenantId} onOpenJob={handleOpenDetail} />
+        )}
+        {activeTab === 'jobs' && (
+          <JobList user={user} tenantId={tenantId} onOpenJob={handleOpenDetail} />
+        )}
+        {activeTab === 'wages' && (
+          <JobWages user={user} tenantId={tenantId} />
+        )}
+        {activeTab === 'summary' && (
+          <JobSummary user={user} tenantId={tenantId} />
         )}
       </div>
     </div>

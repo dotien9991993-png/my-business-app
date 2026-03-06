@@ -3506,6 +3506,40 @@
   gap: 0;
 }
 
+/* Sub-tab navigation (Hôm nay, Lịch, Việc, Công, Tổng) */
+.mjob-sub-tabs {
+  display: flex;
+  gap: 0;
+  padding: 6px 8px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.mjob-sub-tab {
+  flex: 1;
+  padding: 8px 4px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.mjob-sub-tab.active {
+  background: white;
+  color: #15803d;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.mjob-tab-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
 /* View tabs (My / All) */
 .mjob-view-tabs {
   display: flex;
@@ -3559,32 +3593,41 @@
   border-color: #15803d;
 }
 
-/* Date filter */
-.mjob-date-filter {
+/* Month navigation */
+.mjob-month-nav {
   display: flex;
-  gap: 6px;
-  padding: 0 12px 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
 }
 
-.mjob-date-filter::-webkit-scrollbar { display: none; }
-
-.mjob-date-btn {
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  background: white;
-  font-size: 12px;
-  color: #6b7280;
+.mjob-month-nav button {
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
   cursor: pointer;
 }
 
-.mjob-date-btn.active {
-  background: #dcfce7;
-  color: #15803d;
-  border-color: #86efac;
+/* Tech filter dropdown */
+.mjob-tech-filter {
+  padding: 0 12px 6px;
+}
+
+.mjob-tech-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+  background: white;
+  appearance: auto;
 }
 
 /* Count */
@@ -3604,6 +3647,11 @@
   gap: 8px;
 }
 
+.mjob-list-view {
+  display: flex;
+  flex-direction: column;
+}
+
 .mjob-empty {
   text-align: center;
   color: #9ca3af;
@@ -3611,7 +3659,7 @@
   font-size: 14px;
 }
 
-/* Job card */
+/* ===== Job Card ===== */
 .mjob-card {
   display: flex;
   flex-direction: column;
@@ -3639,11 +3687,17 @@
   gap: 8px;
 }
 
+.mjob-card-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .mjob-card-title {
   font-size: 14px;
   font-weight: 600;
   color: #111827;
-  flex: 1;
   line-height: 1.3;
 }
 
@@ -3662,10 +3716,36 @@
   font-size: 12px;
 }
 
+.mjob-card-address {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.mjob-card-address-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mjob-card-map {
+  flex-shrink: 0;
+  text-decoration: none;
+  font-size: 16px;
+}
+
 .mjob-card-bottom {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.mjob-card-left {
+  flex: 1;
+  min-width: 0;
 }
 
 .mjob-card-date {
@@ -3678,16 +3758,35 @@
   font-weight: 600;
 }
 
+.mjob-card-tech {
+  font-size: 11px;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
 .mjob-card-right {
   display: flex;
   gap: 8px;
   font-size: 11px;
   color: #9ca3af;
+  flex-shrink: 0;
 }
 
 .mjob-card-payment {
   color: #15803d;
   font-weight: 600;
+  font-size: 13px;
+}
+
+.mjob-card-creator {
+  font-size: 11px;
+  color: #9ca3af;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 4px;
+  margin-top: 2px;
 }
 
 /* Badges */
@@ -3704,6 +3803,650 @@
 .mjob-badge-blue { background: #dbeafe; color: #1d4ed8; }
 .mjob-badge-green { background: #dcfce7; color: #15803d; }
 .mjob-badge-gray { background: #f3f4f6; color: #6b7280; }
+
+.mjob-type-badge {
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: #f0f9ff;
+  color: #0369a1;
+  white-space: nowrap;
+}
+
+/* ===== Today's Jobs ===== */
+.mjob-today {
+  padding: 8px 12px 12px;
+}
+
+.mjob-today-stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mjob-today-stat {
+  flex: 1;
+  background: white;
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align: center;
+  border: 1px solid #e5e7eb;
+}
+
+.mjob-today-stat.mjob-stat-active {
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+
+.mjob-today-stat.mjob-stat-done {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.mjob-stat-num {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.mjob-stat-label {
+  display: block;
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+/* Category groups */
+.mjob-cat-group {
+  margin-bottom: 12px;
+}
+
+.mjob-cat-header {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.mjob-cat-overdue { background: #fef2f2; color: #b91c1c; }
+.mjob-cat-urgent { background: #fff7ed; color: #c2410c; }
+.mjob-cat-soon { background: #fefce8; color: #a16207; }
+.mjob-cat-upcoming { background: #f0fdf4; color: #15803d; }
+.mjob-cat-completed { background: #f3f4f6; color: #6b7280; }
+
+/* Today job card */
+.mjob-today-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+}
+
+.mjob-today-card.mjob-today-overdue {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.mjob-today-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mjob-today-time {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.mjob-countdown {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.mjob-countdown.mjob-countdown-over {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.mjob-today-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.mjob-today-title:active { color: #15803d; }
+
+.mjob-today-customer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #374151;
+  margin-bottom: 2px;
+}
+
+.mjob-today-phone {
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.mjob-today-address {
+  font-size: 12px;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+
+.mjob-today-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 4px;
+}
+
+.mjob-today-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: #6b7280;
+  flex: 1;
+  min-width: 0;
+}
+
+.mjob-today-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mjob-map-link {
+  font-size: 12px;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.mjob-detail-link {
+  font-size: 12px;
+  color: #15803d;
+  font-weight: 600;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ===== Calendar ===== */
+.mjob-calendar {
+  padding: 8px 12px 12px;
+}
+
+.mjob-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.mjob-cal-nav-btn {
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mjob-cal-month {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  text-transform: capitalize;
+}
+
+/* Calendar stats */
+.mjob-cal-stats {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mjob-cal-stat {
+  flex: 1;
+  background: white;
+  border-radius: 8px;
+  padding: 8px 6px;
+  text-align: center;
+  border: 1px solid #e5e7eb;
+}
+
+.mjob-cal-stat-pending { border-color: #fbbf24; }
+.mjob-cal-stat-done { border-color: #86efac; }
+.mjob-cal-stat-revenue { border-color: #60a5fa; }
+
+.mjob-cal-stat-num {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.mjob-cal-stat-label {
+  display: block;
+  font-size: 10px;
+  color: #6b7280;
+}
+
+/* Calendar grid */
+.mjob-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.mjob-cal-weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  padding: 4px;
+}
+
+.mjob-cal-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px;
+  position: relative;
+}
+
+.mjob-cal-empty {
+  cursor: default;
+}
+
+.mjob-cal-day-num {
+  font-size: 13px;
+  color: #374151;
+}
+
+.mjob-cal-dot {
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  background: #15803d;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  position: absolute;
+  bottom: 2px;
+}
+
+.mjob-cal-today {
+  background: #fff7ed;
+}
+
+.mjob-cal-today .mjob-cal-day-num {
+  color: #b45309;
+  font-weight: 700;
+}
+
+.mjob-cal-selected {
+  background: #dbeafe;
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+.mjob-cal-has-jobs {
+  background: #f0fdf4;
+}
+
+.mjob-cal-selected.mjob-cal-has-jobs {
+  background: #dbeafe;
+}
+
+/* Calendar selected date jobs */
+.mjob-cal-jobs {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mjob-cal-jobs-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mjob-cal-jobs-count {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+/* ===== Wages ===== */
+.mjob-wages {
+  padding: 8px 12px 12px;
+}
+
+.mjob-wages-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mjob-wages-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+
+.mjob-wages-total {
+  grid-column: 1 / -1;
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.mjob-wages-card-label {
+  display: block;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.mjob-wages-card-num {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 2px;
+}
+
+.mjob-wages-note {
+  font-size: 12px;
+  color: #6b7280;
+  background: #f9fafb;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+/* Per-technician list */
+.mjob-wages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mjob-wages-tech {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.mjob-wages-tech-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mjob-wages-tech-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mjob-wages-tech-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.mjob-wages-tech-count {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.mjob-wages-tech-total {
+  font-size: 15px;
+  font-weight: 700;
+  color: #15803d;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mjob-wages-expand {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.mjob-wages-tech-detail {
+  padding: 0 12px 12px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.mjob-wages-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #374151;
+}
+
+.mjob-wages-row-total {
+  border-top: 1px solid #e5e7eb;
+  font-weight: 700;
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.mjob-indent {
+  padding-left: 12px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.mjob-wages-jobs {
+  margin-top: 8px;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 8px;
+}
+
+.mjob-wages-jobs-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.mjob-wages-job-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* ===== Summary / P&L ===== */
+.mjob-summary {
+  padding: 8px 12px 12px;
+}
+
+.mjob-pnl {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.mjob-pnl-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.mjob-pnl-label {
+  font-size: 13px;
+  color: #374151;
+}
+
+.mjob-pnl-val {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mjob-pnl-divider {
+  border-top: 2px solid #e5e7eb;
+  margin: 4px 0;
+}
+
+.mjob-pnl-total {
+  padding-top: 8px;
+}
+
+.mjob-pnl-total .mjob-pnl-label {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.mjob-pnl-total .mjob-pnl-val {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+/* Summary stats */
+.mjob-summary-stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mjob-summary-stat {
+  flex: 1;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+}
+
+.mjob-summary-stat span:first-child {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.mjob-summary-stat span:last-child {
+  display: block;
+  font-size: 10px;
+  color: #6b7280;
+}
+
+/* Per-job summary */
+.mjob-summary-jobs {
+  margin-top: 4px;
+}
+
+.mjob-summary-job {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.mjob-summary-job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mjob-summary-job-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mjob-summary-job-date {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.mjob-summary-job-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mjob-summary-job-profit {
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mjob-summary-job-detail {
+  padding: 0 12px 12px;
+  border-top: 1px solid #f3f4f6;
+}
+
+/* Common text colors */
+.mjob-text-green { color: #15803d; }
+.mjob-text-red { color: #dc2626; }
 
 /* ===== Job Detail ===== */
 
@@ -3911,7 +4654,36 @@
 
 .mjob-expense-cat { color: #374151; }
 .mjob-expense-by { font-size: 11px; color: #9ca3af; }
+.mjob-expense-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .mjob-expense-amount { color: #dc2626; font-weight: 500; }
+
+.mjob-expense-del {
+  border: none;
+  background: #fee2e2;
+  color: #dc2626;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mjob-notes {
+  font-size: 13px;
+  color: #374151;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  padding: 4px 0;
+}
 
 .mjob-add-expense-btn {
   margin-top: 8px;

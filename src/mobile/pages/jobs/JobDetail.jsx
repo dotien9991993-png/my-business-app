@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { supabase } from '../../../supabaseClient';
 import { formatMoney } from '../../utils/formatters';
 
 const STATUS_CONFIG = {
@@ -13,7 +14,7 @@ const STATUS_FLOW = {
   'Đang làm': ['Hoàn thành', 'Hủy'],
 };
 
-const EXPENSE_CATEGORIES = ['Tiền xe', 'Chi phí ăn uống', 'Chi phí khác'];
+const EXPENSE_CATEGORIES = ['Tiền xe', 'Vật tư', 'Chi phí ăn uống', 'Chi phí khác'];
 
 const formatDateTime = (dateStr) => {
   if (!dateStr) return '';
@@ -30,18 +31,16 @@ const formatDate = (dateStr) => {
   });
 };
 
-// Check if address is a Google Maps link or GPS coordinates
 const getMapUrl = (address) => {
   if (!address) return null;
   if (address.includes('google.com/maps') || address.includes('goo.gl/maps')) return address;
-  // GPS coords pattern: "21.0285,105.8542"
   const gpsMatch = address.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
   if (gpsMatch) return `https://www.google.com/maps?q=${gpsMatch[1]},${gpsMatch[2]}`;
-  // Regular address → search
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 };
 
-export default function JobDetail({ job, onBack, onUpdateStatus, onAddExpense, userName }) {
+export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
+  const [job, setJob] = useState(initialJob);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [expandExpenses, setExpandExpenses] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -58,10 +57,25 @@ export default function JobDetail({ job, onBack, onUpdateStatus, onAddExpense, u
   const profit = (job.customer_payment || 0) - expenseTotal;
   const mapUrl = getMapUrl(job.address);
 
+  // Refresh job from DB
+  const refreshJob = useCallback(async () => {
+    const { data } = await supabase
+      .from('technical_jobs')
+      .select('*')
+      .eq('id', job.id)
+      .single();
+    if (data) setJob(data);
+  }, [job.id]);
+
   const handleStatusUpdate = async (newStatus) => {
     setStatusUpdating(true);
     try {
-      await onUpdateStatus(job.id, newStatus);
+      const { error } = await supabase
+        .from('technical_jobs')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', job.id);
+      if (error) throw error;
+      setJob(prev => ({ ...prev, status: newStatus }));
     } catch (err) {
       console.error('Error updating status:', err);
     } finally {
@@ -73,11 +87,21 @@ export default function JobDetail({ job, onBack, onUpdateStatus, onAddExpense, u
     if (!expenseAmount || parseFloat(expenseAmount) <= 0) return;
     setExpenseSubmitting(true);
     try {
-      await onAddExpense(job.id, {
+      const newExpense = {
+        id: Date.now(),
         category: expenseCategory,
         description: expenseCategory === 'Chi phí khác' ? expenseDesc : expenseCategory,
         amount: parseFloat(expenseAmount),
-      }, expenses);
+        addedBy: user?.name,
+        addedAt: new Date().toISOString(),
+      };
+      const updated = [...expenses, newExpense];
+      const { error } = await supabase
+        .from('technical_jobs')
+        .update({ expenses: updated })
+        .eq('id', job.id);
+      if (error) throw error;
+      setJob(prev => ({ ...prev, expenses: updated }));
       setExpenseAmount('');
       setExpenseDesc('');
       setShowAddExpense(false);
@@ -85,6 +109,20 @@ export default function JobDetail({ job, onBack, onUpdateStatus, onAddExpense, u
       console.error('Error adding expense:', err);
     } finally {
       setExpenseSubmitting(false);
+    }
+  };
+
+  const handleDeleteExpense = async (index) => {
+    const updated = expenses.filter((_, i) => i !== index);
+    try {
+      const { error } = await supabase
+        .from('technical_jobs')
+        .update({ expenses: updated })
+        .eq('id', job.id);
+      if (error) throw error;
+      setJob(prev => ({ ...prev, expenses: updated }));
+    } catch (err) {
+      console.error('Error deleting expense:', err);
     }
   };
 
@@ -157,8 +195,8 @@ export default function JobDetail({ job, onBack, onUpdateStatus, onAddExpense, u
           <h3 className="mjob-section-title">👷 Kỹ thuật viên</h3>
           <div className="mjob-tech-tags">
             {job.technicians.map((t, i) => (
-              <span key={i} className={`mjob-tech-tag ${t === userName ? 'mjob-tech-me' : ''}`}>
-                {t} {t === userName ? '(Bạn)' : ''}
+              <span key={i} className={`mjob-tech-tag ${t === user?.name ? 'mjob-tech-me' : ''}`}>
+                {t} {t === user?.name ? '(Bạn)' : ''}
               </span>
             ))}
           </div>
@@ -174,6 +212,16 @@ export default function JobDetail({ job, onBack, onUpdateStatus, onAddExpense, u
               .map((item, i) => (
                 <div key={i} className="mjob-equipment-item">• {item}</div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {/* Notes */}
+      {job.notes && (
+        <div className="mjob-section">
+          <h3 className="mjob-section-title">📝 Ghi chú</h3>
+          <div className="mjob-section-body">
+            <div className="mjob-notes">{job.notes}</div>
           </div>
         </div>
       )}
@@ -210,7 +258,12 @@ export default function JobDetail({ job, onBack, onUpdateStatus, onAddExpense, u
                       <span className="mjob-expense-cat">{e.category || e.description}</span>
                       <span className="mjob-expense-by">{e.addedBy}</span>
                     </div>
-                    <span className="mjob-expense-amount">{formatMoney(e.amount)}</span>
+                    <div className="mjob-expense-right">
+                      <span className="mjob-expense-amount">{formatMoney(e.amount)}</span>
+                      {!isLocked && (
+                        <button className="mjob-expense-del" onClick={() => handleDeleteExpense(i)}>×</button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
