@@ -3297,3 +3297,202 @@
 .mprof-pw-submit:disabled {
   opacity: 0.5;
 }
+
+/* ===== MODULE: MORE / KHÁC (mmore-) ===== */
+
+.mmore-page {
+  padding: 0;
+}
+
+/* User header */
+.mmore-user-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 16px;
+  background: linear-gradient(135deg, #15803d, #166534);
+  color: white;
+}
+
+.mmore-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: white;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.mmore-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mmore-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mmore-user-name {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.mmore-user-role {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.mmore-user-team {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Menu */
+.mmore-menu {
+  padding: 12px;
+}
+
+.mmore-menu-bottom {
+  padding-top: 0;
+}
+
+.mmore-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 14px 12px;
+  background: white;
+  border: none;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  text-align: left;
+  font-size: 15px;
+  color: #374151;
+}
+
+.mmore-menu-item:first-child { border-radius: 12px 12px 0 0; }
+.mmore-menu-item:last-child { border-radius: 0 0 12px 12px; border-bottom: none; }
+.mmore-menu-item:only-child { border-radius: 12px; }
+
+.mmore-menu-item:active { background: #f9fafb; }
+
+.mmore-menu-icon {
+  font-size: 18px;
+  margin-right: 12px;
+  width: 24px;
+  text-align: center;
+}
+
+.mmore-menu-label {
+  flex: 1;
+}
+
+.mmore-menu-arrow {
+  color: #d1d5db;
+  font-size: 12px;
+}
+
+.mmore-menu-danger .mmore-menu-label {
+  color: #dc2626;
+}
+
+/* Sub-page header (reused by Attendance/Profile when opened from More) */
+.mmore-sub-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.mmore-back-btn {
+  background: none;
+  border: none;
+  color: #15803d;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.mmore-sub-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Logout confirm dialog */
+.mmore-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.mmore-dialog {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 300px;
+  text-align: center;
+}
+
+.mmore-dialog-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 8px;
+}
+
+.mmore-dialog-text {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0 0 20px;
+}
+
+.mmore-dialog-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.mmore-dialog-cancel {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: white;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+
+.mmore-dialog-confirm {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: #dc2626;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
