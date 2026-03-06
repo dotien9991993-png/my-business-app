@@ -4,7 +4,7 @@ import CheckInButton from './CheckInButton';
 import AttendanceCalendar from './AttendanceCalendar';
 import AttendanceHistory from './AttendanceHistory';
 
-export default function AttendancePage({ user, tenantId }) {
+export default function AttendancePage({ user, tenantId, onBack }) {
   const {
     todayRecords, currentShift, totalHoursToday,
     monthRecords, monthSummary, viewMonth,
@@ -39,6 +39,13 @@ export default function AttendancePage({ user, tenantId }) {
 
   return (
     <div className="mobile-page matt-page">
+      {/* Back button when opened from MorePage */}
+      {onBack && (
+        <div className="mmore-sub-header">
+          <button className="mmore-back-btn" onClick={onBack}>← Quay lại</button>
+          <span className="mmore-sub-title">Chấm công</span>
+        </div>
+      )}
       {/* Tab switcher */}
       <div className="matt-tabs">
         <button

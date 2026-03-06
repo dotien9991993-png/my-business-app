@@ -4,9 +4,11 @@ import MobileHeader from './components/MobileHeader';
 import MobileBottomNav from './components/MobileBottomNav';
 import MobileLoading from './components/MobileLoading';
 import ChatPage from './pages/chat/ChatPage';
-import AttendancePage from './pages/attendance/AttendancePage';
 import OrdersPage from './pages/orders/OrdersPage';
 import MediaPage from './pages/media/MediaPage';
+import JobsPage from './pages/jobs/JobsPage';
+import MorePage from './pages/more/MorePage';
+import AttendancePage from './pages/attendance/AttendancePage';
 import ProfilePage from './pages/profile/ProfilePage';
 import './styles/mobile.css';
 
@@ -14,6 +16,8 @@ export default function MobileApp() {
   const { currentUser, tenant, tenantId, loading, login, logout } = useMobileAuth();
   const [activeTab, setActiveTab] = useState('chat');
   const [hideNav, setHideNav] = useState(false);
+  // Sub-page navigation from MorePage
+  const [subPage, setSubPage] = useState(null); // 'attendance' | 'salary' | 'profile' | null
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
@@ -85,19 +89,48 @@ export default function MobileApp() {
     );
   }
 
+  // Handle tab change — reset subPage when switching tabs
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSubPage(null);
+  };
+
+  // Navigate to sub-page from MorePage
+  const handleMoreNavigate = (page) => {
+    setSubPage(page);
+  };
+
+  const handleSubPageBack = () => {
+    setSubPage(null);
+  };
+
   // Main app
   const renderPage = () => {
+    // Sub-pages from MorePage
+    if (activeTab === 'more' && subPage) {
+      switch (subPage) {
+        case 'attendance':
+          return <AttendancePage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} />;
+        case 'salary':
+          return <ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="salary" onBack={handleSubPageBack} />;
+        case 'profile':
+          return <ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="info" onBack={handleSubPageBack} />;
+        default:
+          break;
+      }
+    }
+
     switch (activeTab) {
       case 'chat':
         return <ChatPage user={currentUser} tenantId={tenantId} onHideNav={setHideNav} />;
-      case 'attendance':
-        return <AttendancePage user={currentUser} tenantId={tenantId} />;
       case 'orders':
         return <OrdersPage user={currentUser} tenantId={tenantId} />;
       case 'media':
         return <MediaPage user={currentUser} tenantId={tenantId} />;
-      case 'profile':
-        return <ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} />;
+      case 'jobs':
+        return <JobsPage user={currentUser} tenantId={tenantId} />;
+      case 'more':
+        return <MorePage user={currentUser} tenantId={tenantId} onNavigate={handleMoreNavigate} onLogout={logout} />;
       default:
         return null;
     }
@@ -112,7 +145,7 @@ export default function MobileApp() {
       {!hideNav && (
         <MobileBottomNav
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={handleTabChange}
         />
       )}
     </div>

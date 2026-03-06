@@ -8,10 +8,10 @@ const SALARY_STATUS = {
   paid: { label: 'Đã trả', cls: 'mprof-sal-paid' },
 };
 
-export default function ProfilePage({ user, tenantId, onLogout }) {
+export default function ProfilePage({ user, tenantId, onLogout, initialView, onBack }) {
   const { fetchSalaries, changePassword, loading } = useMobileProfile(user?.id, tenantId);
 
-  const [view, setView] = useState('menu'); // menu | info | salary | password | salaryDetail
+  const [view, setView] = useState(initialView || 'menu'); // menu | info | salary | password | salaryDetail
   const [salaries, setSalaries] = useState([]);
   const [salaryYear, setSalaryYear] = useState(new Date().getFullYear());
   const [selectedSalary, setSelectedSalary] = useState(null);
@@ -40,6 +40,8 @@ export default function ProfilePage({ user, tenantId, onLogout }) {
     if (view === 'salaryDetail') {
       setView('salary');
       setSelectedSalary(null);
+    } else if (initialView && onBack) {
+      onBack();
     } else {
       setView('menu');
     }
