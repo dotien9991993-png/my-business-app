@@ -10,6 +10,18 @@ const getMapUrl = (address) => {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 };
 
+const STATUS_BORDER = {
+  'Chờ XN': '#f97316',
+  'Đang làm': '#3b82f6',
+  'Hoàn thành': '#16a34a',
+};
+
+const STATUS_BADGE = {
+  'Chờ XN': 'mjob-badge-pending',
+  'Đang làm': 'mjob-badge-active',
+  'Hoàn thành': 'mjob-badge-done',
+};
+
 const CATEGORY_CONFIG = {
   overdue: { title: 'Quá giờ', icon: '🔴', cls: 'mjob-cat-overdue' },
   urgent: { title: 'Sắp tới (< 30 phút)', icon: '🟠', cls: 'mjob-cat-urgent' },
@@ -25,31 +37,24 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Update current time every minute
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // Load today's jobs
   useEffect(() => {
     if (!tenantId) return;
     const load = async () => {
       setLoading(true);
       const todayStr = getTodayVN();
       const { data, error } = await supabase
-        .from('technical_jobs')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .eq('scheduled_date', todayStr)
+        .from('technical_jobs').select('*')
+        .eq('tenant_id', tenantId).eq('scheduled_date', todayStr)
         .order('scheduled_time', { ascending: true });
-
       if (!error && data) setJobs(data);
       setLoading(false);
     };
     load();
-
-    // Realtime
     const channel = supabase.channel(`mobile-today-jobs-${tenantId}`)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'technical_jobs',
@@ -59,7 +64,6 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
     return () => supabase.removeChannel(channel);
   }, [tenantId]);
 
-  // Categorize jobs by urgency
   const categorized = useMemo(() => {
     const vnNow = new Date(currentTime.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const currentTotalMinutes = vnNow.getHours() * 60 + vnNow.getMinutes();
@@ -75,10 +79,7 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
       if (job.status === 'Hoàn thành') {
         category = 'completed';
       } else if (job.status === 'Hủy') {
-        return null; // skip cancelled
-      } else if (diffMinutes < -60) {
-        category = 'overdue';
-        countdown = Math.abs(diffMinutes);
+        return null;
       } else if (diffMinutes < 0) {
         category = 'overdue';
         countdown = Math.abs(diffMinutes);
@@ -97,7 +98,6 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
     }).filter(Boolean);
   }, [jobs, currentTime]);
 
-  // Group by category
   const groups = useMemo(() => {
     const map = {};
     CATEGORY_ORDER.forEach(cat => { map[cat] = []; });
@@ -106,11 +106,6 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
     });
     return map;
   }, [categorized]);
-
-  const formatCountdown = (minutes) => {
-    if (minutes >= 60) return `${Math.floor(minutes / 60)}h${minutes % 60 > 0 ? String(minutes % 60).padStart(2, '0') + 'p' : ''}`;
-    return `${minutes}p`;
-  };
 
   const completedCount = groups.completed.length;
   const totalActive = categorized.length - completedCount;
@@ -135,7 +130,6 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
         </div>
       </div>
 
-      {/* Job groups */}
       {categorized.length === 0 ? (
         <div className="mjob-empty">Hôm nay không có việc nào</div>
       ) : (
@@ -149,11 +143,7 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
                 {config.icon} {config.title} ({jobsInCat.length})
               </div>
               {jobsInCat.map(job => (
-                <TodayJobCard
-                  key={job.id}
-                  job={job}
-                  onOpen={() => onOpenJob(job)}
-                />
+                <TodayJobCard key={job.id} job={job} onOpen={() => onOpenJob(job)} />
               ))}
             </div>
           );
@@ -165,66 +155,72 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
 
 function TodayJobCard({ job, onOpen }) {
   const mapUrl = getMapUrl(job.address);
-  const techCount = (job.technicians || []).length;
+  const borderColor = STATUS_BORDER[job.status] || '#e5e7eb';
+  const badgeCls = STATUS_BADGE[job.status] || 'mjob-badge-pending';
 
   return (
-    <div className={`mjob-today-card ${job.category === 'overdue' ? 'mjob-today-overdue' : ''}`}>
-      {/* Time + Status */}
-      <div className="mjob-today-card-header">
-        <span className="mjob-today-time">
-          🕐 {(job.scheduled_time || '').slice(0, 5)}
-        </span>
+    <div
+      className={`mjob-today-card2 ${job.category === 'overdue' ? 'mjob-today-overdue' : ''}`}
+      style={{ borderLeftColor: borderColor }}
+    >
+      {/* Time + countdown + badge */}
+      <div className="mjob-tc2-row1">
+        <span className="mjob-tc2-time">🕐 {(job.scheduled_time || '').slice(0, 5)}</span>
         {job.countdown != null && job.category !== 'completed' && (
-          <span className={`mjob-countdown ${job.category === 'overdue' ? 'mjob-countdown-over' : ''}`}>
-            {job.category === 'overdue' ? `Quá ${formatCountdownStatic(job.countdown)}` : `Còn ${formatCountdownStatic(job.countdown)}`}
+          <span className={`mjob-tc2-countdown ${job.category === 'overdue' ? 'mjob-tc2-cd-over' : ''}`}>
+            {job.category === 'overdue' ? `Quá ${fmtCD(job.countdown)}` : `Còn ${fmtCD(job.countdown)}`}
           </span>
         )}
-        <span className={`mjob-badge mjob-badge-${job.status === 'Hoàn thành' ? 'green' : job.status === 'Đang làm' ? 'blue' : 'amber'}`}>
-          {job.status}
-        </span>
+        <span className={`mjob-badge2 ${badgeCls}`}>{job.status}</span>
       </div>
 
       {/* Title */}
-      <div className="mjob-today-title" onClick={onOpen}>{job.title}</div>
+      <div className="mjob-tc2-title" onClick={onOpen}>{job.title}</div>
 
       {/* Customer */}
-      <div className="mjob-today-customer">
-        <span>👤 {job.customer_name}</span>
+      <div className="mjob-tc2-customer">
+        <span className="mjob-tc2-name">👤 {job.customer_name}</span>
         {job.customer_phone && (
-          <a href={`tel:${job.customer_phone}`} onClick={e => e.stopPropagation()} className="mjob-today-phone">
+          <a href={`tel:${job.customer_phone}`} onClick={e => e.stopPropagation()} className="mjob-tc2-phone">
             📞 {job.customer_phone}
           </a>
         )}
       </div>
 
       {/* Address */}
-      {job.address && (
-        <div className="mjob-today-address">📍 {job.address}</div>
+      {job.address && <div className="mjob-tc2-address">📍 {job.address}</div>}
+
+      {/* Techs */}
+      {(job.technicians || []).length > 0 && (
+        <div className="mjob-tc2-techs">🔧 {(job.technicians || []).join(', ')}</div>
       )}
 
-      {/* Bottom: techs + payment + map */}
-      <div className="mjob-today-bottom">
-        <div className="mjob-today-info">
-          {techCount > 0 && <span>🔧 {(job.technicians || []).join(', ')}</span>}
-          {job.customer_payment > 0 && (
-            <span className="mjob-text-green">💰 {formatMoney(job.customer_payment)}</span>
-          )}
+      {/* Payment */}
+      {job.customer_payment > 0 && (
+        <div className="mjob-c2-payment">
+          <span className="mjob-c2-payment-icon">💰</span>
+          <div className="mjob-c2-payment-info">
+            <span className="mjob-c2-payment-label">Thu khách</span>
+            <span className="mjob-c2-payment-amount">{formatMoney(job.customer_payment)}</span>
+          </div>
         </div>
-        <div className="mjob-today-actions">
-          {mapUrl && (
-            <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mjob-map-link"
-               onClick={e => e.stopPropagation()}>
-              🗺️ Chỉ đường
-            </a>
-          )}
-          <button className="mjob-detail-link" onClick={onOpen}>Chi tiết →</button>
-        </div>
+      )}
+
+      {/* Actions */}
+      <div className="mjob-tc2-actions">
+        {mapUrl && (
+          <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="mjob-tc2-maps"
+             onClick={e => e.stopPropagation()}>
+            🗺️ Chỉ đường
+          </a>
+        )}
+        <button className="mjob-tc2-detail" onClick={onOpen}>Chi tiết →</button>
       </div>
     </div>
   );
 }
 
-function formatCountdownStatic(minutes) {
+function fmtCD(minutes) {
   if (minutes >= 60) return `${Math.floor(minutes / 60)}h${minutes % 60 > 0 ? String(minutes % 60).padStart(2, '0') + 'p' : ''}`;
   return `${minutes}p`;
 }

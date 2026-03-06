@@ -1,11 +1,25 @@
 import React from 'react';
 import { formatMoney } from '../../utils/formatters';
 
-const STATUS_CONFIG = {
-  'Chờ XN': { label: 'Chờ XN', cls: 'mjob-badge-amber' },
-  'Đang làm': { label: 'Đang làm', cls: 'mjob-badge-blue' },
-  'Hoàn thành': { label: 'Hoàn thành', cls: 'mjob-badge-green' },
-  'Hủy': { label: 'Hủy', cls: 'mjob-badge-gray' },
+const STATUS_BORDER = {
+  'Chờ XN': '#f97316',
+  'Đang làm': '#3b82f6',
+  'Hoàn thành': '#16a34a',
+  'Hủy': '#dc2626',
+};
+
+const STATUS_BADGE = {
+  'Chờ XN': 'mjob-badge-pending',
+  'Đang làm': 'mjob-badge-active',
+  'Hoàn thành': 'mjob-badge-done',
+  'Hủy': 'mjob-badge-cancel',
+};
+
+const TYPE_BADGE = {
+  'Lắp đặt': 'mjob-tbadge-install',
+  'Bảo trì': 'mjob-tbadge-maintain',
+  'Sửa chữa': 'mjob-tbadge-repair',
+  'Nâng cấp': 'mjob-tbadge-upgrade',
 };
 
 const TYPE_ICONS = {
@@ -40,35 +54,43 @@ const getMapUrl = (address) => {
 };
 
 export default function JobCard({ job, onClick }) {
-  const status = STATUS_CONFIG[job.status] || STATUS_CONFIG['Chờ XN'];
+  const borderColor = STATUS_BORDER[job.status] || '#e5e7eb';
+  const badgeCls = STATUS_BADGE[job.status] || 'mjob-badge-pending';
+  const typeBadgeCls = TYPE_BADGE[job.type] || '';
   const typeIcon = TYPE_ICONS[job.type] || '🔧';
   const today = isToday(job.scheduled_date);
   const techList = job.technicians || [];
   const mapUrl = getMapUrl(job.address);
 
   return (
-    <div className={`mjob-card ${today ? 'mjob-card-today' : ''}`} onClick={onClick}>
-      {/* Header: date/time + badges */}
-      <div className="mjob-card-top">
-        <span className={`mjob-card-date ${today ? 'mjob-today-text' : ''}`}>
+    <div
+      className={`mjob-card2 ${today ? 'mjob-card2-today' : ''}`}
+      style={{ borderLeftColor: borderColor }}
+      onClick={onClick}
+    >
+      {/* Row 1: Date/time + badges */}
+      <div className="mjob-c2-row1">
+        <span className={`mjob-c2-datetime ${today ? 'mjob-c2-today-text' : ''}`}>
           📅 {formatDate(job.scheduled_date)}
           {job.scheduled_time && ` • ${job.scheduled_time.slice(0, 5)}`}
         </span>
-        <div className="mjob-card-badges">
-          {job.type && <span className="mjob-type-badge">{typeIcon} {job.type}</span>}
-          <span className={`mjob-badge ${status.cls}`}>{status.label}</span>
+        <div className="mjob-c2-badges">
+          <span className={`mjob-badge2 ${badgeCls}`}>{job.status}</span>
+          {job.type && (
+            <span className={`mjob-badge2 ${typeBadgeCls}`}>{typeIcon} {job.type}</span>
+          )}
         </div>
       </div>
 
-      {/* Title */}
-      <div className="mjob-card-title">{job.title}</div>
+      {/* Row 2: Title */}
+      <div className="mjob-c2-title">{job.title}</div>
 
-      {/* Customer */}
-      <div className="mjob-card-customer">
-        <span className="mjob-card-name">👤 {job.customer_name}</span>
+      {/* Customer info */}
+      <div className="mjob-c2-customer">
+        <span className="mjob-c2-name">👤 {job.customer_name}</span>
         {job.customer_phone && (
           <a
-            className="mjob-card-phone"
+            className="mjob-c2-phone"
             href={`tel:${job.customer_phone}`}
             onClick={e => e.stopPropagation()}
           >
@@ -79,39 +101,38 @@ export default function JobCard({ job, onClick }) {
 
       {/* Address */}
       {job.address && (
-        <div className="mjob-card-address">
-          <span className="mjob-card-address-text">📍 {job.address}</span>
-          {mapUrl && (
-            <a
-              className="mjob-card-map"
-              href={mapUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-            >
-              🗺️
-            </a>
-          )}
+        <div className="mjob-c2-address">📍 {job.address}</div>
+      )}
+
+      {/* Technicians */}
+      {techList.length > 0 && (
+        <div className="mjob-c2-techs">
+          🔧 {techList.join(', ')}
         </div>
       )}
 
-      {/* Bottom: techs + payment */}
-      <div className="mjob-card-bottom">
-        <div className="mjob-card-left">
-          {techList.length > 0 && (
-            <span className="mjob-card-tech">🔧 {techList.join(', ')}</span>
-          )}
+      {/* Payment highlight */}
+      {job.customer_payment > 0 && (
+        <div className="mjob-c2-payment">
+          <span className="mjob-c2-payment-icon">💰</span>
+          <div className="mjob-c2-payment-info">
+            <span className="mjob-c2-payment-label">Thu khách</span>
+            <span className="mjob-c2-payment-amount">{formatMoney(job.customer_payment)}</span>
+          </div>
         </div>
-        <div className="mjob-card-right">
-          {job.customer_payment > 0 && (
-            <span className="mjob-card-payment">{formatMoney(job.customer_payment)}</span>
-          )}
-        </div>
-      </div>
+      )}
 
-      {/* Creator */}
-      {job.created_by && (
-        <div className="mjob-card-creator">📝 {job.created_by}</div>
+      {/* Google Maps button */}
+      {mapUrl && (
+        <a
+          className="mjob-c2-maps"
+          href={mapUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+        >
+          🗺️ Mở Google Maps dẫn đường
+        </a>
       )}
     </div>
   );

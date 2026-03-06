@@ -3,15 +3,15 @@ import { supabase } from '../../../supabaseClient';
 import { formatMoney } from '../../utils/formatters';
 
 const STATUS_CONFIG = {
-  'Chờ XN': { label: 'Chờ XN', icon: '⏳' },
-  'Đang làm': { label: 'Đang làm', icon: '🔨' },
-  'Hoàn thành': { label: 'Hoàn thành', icon: '✅' },
-  'Hủy': { label: 'Hủy', icon: '❌' },
+  'Chờ XN': { label: 'Chờ xác nhận', icon: '⏳', gradient: 'linear-gradient(135deg, #f97316, #ea580c)' },
+  'Đang làm': { label: 'Đang làm', icon: '🔨', gradient: 'linear-gradient(135deg, #3b82f6, #2563eb)' },
+  'Hoàn thành': { label: 'Hoàn thành', icon: '✅', gradient: 'linear-gradient(135deg, #16a34a, #15803d)' },
+  'Hủy': { label: 'Đã hủy', icon: '❌', gradient: 'linear-gradient(135deg, #dc2626, #b91c1c)' },
 };
 
 const STATUS_FLOW = {
-  'Chờ XN': ['Đang làm', 'Hủy'],
-  'Đang làm': ['Hoàn thành', 'Hủy'],
+  'Chờ XN': [{ status: 'Đang làm', label: 'Bắt đầu làm', icon: '🔨', cls: 'mjob-btn-blue' }],
+  'Đang làm': [{ status: 'Hoàn thành', label: 'Hoàn thành công việc', icon: '✅', cls: 'mjob-btn-green' }],
 };
 
 const EXPENSE_CATEGORIES = ['Tiền xe', 'Vật tư', 'Chi phí ăn uống', 'Chi phí khác'];
@@ -42,7 +42,7 @@ const getMapUrl = (address) => {
 export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
   const [job, setJob] = useState(initialJob);
   const [statusUpdating, setStatusUpdating] = useState(false);
-  const [expandExpenses, setExpandExpenses] = useState(false);
+  const [expandExpenses, setExpandExpenses] = useState(true);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [expenseCategory, setExpenseCategory] = useState('Tiền xe');
   const [expenseAmount, setExpenseAmount] = useState('');
@@ -50,20 +50,17 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
   const [expenseSubmitting, setExpenseSubmitting] = useState(false);
 
   const status = STATUS_CONFIG[job.status] || STATUS_CONFIG['Chờ XN'];
-  const nextStatuses = STATUS_FLOW[job.status] || [];
+  const nextActions = STATUS_FLOW[job.status] || [];
   const isLocked = job.status === 'Hoàn thành' || job.status === 'Hủy';
+  const canCancel = job.status === 'Chờ XN' || job.status === 'Đang làm';
   const expenses = job.expenses || [];
   const expenseTotal = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const profit = (job.customer_payment || 0) - expenseTotal;
   const mapUrl = getMapUrl(job.address);
 
-  // Refresh job from DB
   const refreshJob = useCallback(async () => {
     const { data } = await supabase
-      .from('technical_jobs')
-      .select('*')
-      .eq('id', job.id)
-      .single();
+      .from('technical_jobs').select('*').eq('id', job.id).single();
     if (data) setJob(data);
   }, [job.id]);
 
@@ -97,9 +94,7 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
       };
       const updated = [...expenses, newExpense];
       const { error } = await supabase
-        .from('technical_jobs')
-        .update({ expenses: updated })
-        .eq('id', job.id);
+        .from('technical_jobs').update({ expenses: updated }).eq('id', job.id);
       if (error) throw error;
       setJob(prev => ({ ...prev, expenses: updated }));
       setExpenseAmount('');
@@ -116,9 +111,7 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
     const updated = expenses.filter((_, i) => i !== index);
     try {
       const { error } = await supabase
-        .from('technical_jobs')
-        .update({ expenses: updated })
-        .eq('id', job.id);
+        .from('technical_jobs').update({ expenses: updated }).eq('id', job.id);
       if (error) throw error;
       setJob(prev => ({ ...prev, expenses: updated }));
     } catch (err) {
@@ -127,215 +120,228 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
   };
 
   return (
-    <div className="mobile-page mjob-detail-page">
-      {/* Header */}
-      <div className="mjob-detail-header">
-        <button className="mjob-detail-back" onClick={onBack}>← Quay lại</button>
-        <span className="mjob-detail-status">{status.icon} {status.label}</span>
-      </div>
-
-      {/* Title + Type */}
-      <div className="mjob-detail-title">
-        <h2>{job.title}</h2>
-        {job.type && <span className="mjob-type-badge">{job.type}</span>}
-      </div>
-
-      {/* Customer info */}
-      <div className="mjob-section">
-        <h3 className="mjob-section-title">👤 Khách hàng</h3>
-        <div className="mjob-section-body">
-          <div className="mjob-info-row">
-            <span>Tên</span>
-            <span className="mjob-info-val">{job.customer_name}</span>
+    <div className="mobile-page mjob-d2-page">
+      {/* Gradient Header */}
+      <div className="mjob-d2-header" style={{ background: status.gradient }}>
+        <button className="mjob-d2-back" onClick={onBack}>← Quay lại</button>
+        <div className="mjob-d2-header-info">
+          <h2 className="mjob-d2-job-title">{job.title}</h2>
+          <div className="mjob-d2-header-badges">
+            <span className="mjob-d2-header-badge">{status.icon} {status.label}</span>
+            {job.type && <span className="mjob-d2-header-badge">{job.type}</span>}
           </div>
-          {job.customer_phone && (
-            <div className="mjob-info-row">
-              <span>SĐT</span>
-              <a className="mjob-info-val mjob-link" href={`tel:${job.customer_phone}`}>
-                📞 {job.customer_phone}
+        </div>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="mjob-d2-body">
+        {/* Customer Section */}
+        <div className="mjob-d2-section">
+          <h3 className="mjob-d2-section-title">👤 Khách hàng</h3>
+          <div className="mjob-d2-section-card">
+            <div className="mjob-d2-customer-name">{job.customer_name}</div>
+
+            {job.customer_phone && (
+              <a className="mjob-d2-call-btn" href={`tel:${job.customer_phone}`}>
+                📞 Gọi {job.customer_phone}
               </a>
-            </div>
-          )}
-          {job.address && (
-            <div className="mjob-info-row">
-              <span>Địa chỉ</span>
-              <div className="mjob-address-group">
-                <span className="mjob-info-val mjob-address-text">{job.address}</span>
-                {mapUrl && (
-                  <a className="mjob-map-btn" href={mapUrl} target="_blank" rel="noopener noreferrer">
-                    📍 Mở bản đồ
-                  </a>
-                )}
+            )}
+
+            {job.address && (
+              <div className="mjob-d2-address">
+                <span className="mjob-d2-address-text">📍 {job.address}</span>
               </div>
-            </div>
-          )}
-        </div>
-      </div>
+            )}
 
-      {/* Schedule info */}
-      <div className="mjob-section">
-        <h3 className="mjob-section-title">📅 Lịch hẹn</h3>
-        <div className="mjob-section-body">
-          <div className="mjob-info-row">
-            <span>Ngày</span>
-            <span className="mjob-info-val">{formatDate(job.scheduled_date)}</span>
-          </div>
-          {job.scheduled_time && (
-            <div className="mjob-info-row">
-              <span>Giờ</span>
-              <span className="mjob-info-val">🕐 {job.scheduled_time.slice(0, 5)}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Technicians */}
-      {(job.technicians || []).length > 0 && (
-        <div className="mjob-section">
-          <h3 className="mjob-section-title">👷 Kỹ thuật viên</h3>
-          <div className="mjob-tech-tags">
-            {job.technicians.map((t, i) => (
-              <span key={i} className={`mjob-tech-tag ${t === user?.name ? 'mjob-tech-me' : ''}`}>
-                {t} {t === user?.name ? '(Bạn)' : ''}
-              </span>
-            ))}
+            {mapUrl && (
+              <a className="mjob-d2-maps-btn" href={mapUrl} target="_blank" rel="noopener noreferrer">
+                🗺️ Mở Google Maps dẫn đường
+              </a>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Equipment */}
-      {job.equipment && (
-        <div className="mjob-section">
-          <h3 className="mjob-section-title">📦 Thiết bị</h3>
-          <div className="mjob-equipment">
-            {(Array.isArray(job.equipment) ? job.equipment : job.equipment.split('\n').filter(Boolean))
-              .map((item, i) => (
-                <div key={i} className="mjob-equipment-item">• {item}</div>
+        {/* Schedule Section */}
+        <div className="mjob-d2-section">
+          <h3 className="mjob-d2-section-title">📅 Lịch hẹn</h3>
+          <div className="mjob-d2-schedule">
+            <div className="mjob-d2-schedule-date">
+              {formatDate(job.scheduled_date)}
+            </div>
+            {job.scheduled_time && (
+              <div className="mjob-d2-schedule-time">
+                🕐 {job.scheduled_time.slice(0, 5)}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Technicians */}
+        {(job.technicians || []).length > 0 && (
+          <div className="mjob-d2-section">
+            <h3 className="mjob-d2-section-title">👷 Kỹ thuật viên</h3>
+            <div className="mjob-d2-tech-tags">
+              {job.technicians.map((t, i) => (
+                <span key={i} className={`mjob-d2-tech-tag ${t === user?.name ? 'mjob-d2-tech-me' : ''}`}>
+                  {t} {t === user?.name ? '(Bạn)' : ''}
+                </span>
               ))}
-          </div>
-        </div>
-      )}
-
-      {/* Notes */}
-      {job.notes && (
-        <div className="mjob-section">
-          <h3 className="mjob-section-title">📝 Ghi chú</h3>
-          <div className="mjob-section-body">
-            <div className="mjob-notes">{job.notes}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Payment & Expenses */}
-      <div className="mjob-section">
-        <button className="mjob-section-title mjob-section-toggle" onClick={() => setExpandExpenses(!expandExpenses)}>
-          💰 Tài chính
-          <span>{expandExpenses ? '▼' : '▶'}</span>
-        </button>
-        {expandExpenses && (
-          <div className="mjob-section-body">
-            <div className="mjob-info-row">
-              <span>Thu khách</span>
-              <span className="mjob-info-val mjob-text-green">{formatMoney(job.customer_payment || 0)}</span>
             </div>
-            <div className="mjob-info-row">
-              <span>Chi phí</span>
-              <span className="mjob-info-val mjob-text-red">{formatMoney(expenseTotal)}</span>
-            </div>
-            <div className="mjob-info-row mjob-profit-row">
-              <span>Lợi nhuận</span>
-              <span className={`mjob-info-val ${profit >= 0 ? 'mjob-text-green' : 'mjob-text-red'}`}>
-                {formatMoney(profit)}
-              </span>
-            </div>
-
-            {/* Expense list */}
-            {expenses.length > 0 && (
-              <div className="mjob-expense-list">
-                {expenses.map((e, i) => (
-                  <div key={i} className="mjob-expense-row">
-                    <div className="mjob-expense-info">
-                      <span className="mjob-expense-cat">{e.category || e.description}</span>
-                      <span className="mjob-expense-by">{e.addedBy}</span>
-                    </div>
-                    <div className="mjob-expense-right">
-                      <span className="mjob-expense-amount">{formatMoney(e.amount)}</span>
-                      {!isLocked && (
-                        <button className="mjob-expense-del" onClick={() => handleDeleteExpense(i)}>×</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Add expense button */}
-            {!isLocked && !showAddExpense && (
-              <button className="mjob-add-expense-btn" onClick={() => setShowAddExpense(true)}>
-                + Thêm chi phí
-              </button>
-            )}
-
-            {/* Add expense form */}
-            {showAddExpense && (
-              <div className="mjob-expense-form">
-                <select
-                  value={expenseCategory}
-                  onChange={e => setExpenseCategory(e.target.value)}
-                  className="mjob-expense-select"
-                >
-                  {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                {expenseCategory === 'Chi phí khác' && (
-                  <input
-                    type="text"
-                    placeholder="Mô tả chi phí"
-                    value={expenseDesc}
-                    onChange={e => setExpenseDesc(e.target.value)}
-                    className="mjob-expense-input"
-                  />
-                )}
-                <input
-                  type="number"
-                  placeholder="Số tiền (VNĐ)"
-                  value={expenseAmount}
-                  onChange={e => setExpenseAmount(e.target.value)}
-                  className="mjob-expense-input"
-                  inputMode="numeric"
-                />
-                <div className="mjob-expense-form-actions">
-                  <button className="mjob-expense-cancel" onClick={() => setShowAddExpense(false)}>Huỷ</button>
-                  <button
-                    className="mjob-expense-submit"
-                    onClick={handleAddExpense}
-                    disabled={!expenseAmount || expenseSubmitting}
-                  >
-                    {expenseSubmitting ? '...' : 'Thêm'}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         )}
+
+        {/* Equipment — chips */}
+        {job.equipment && (
+          <div className="mjob-d2-section">
+            <h3 className="mjob-d2-section-title">📦 Thiết bị</h3>
+            <div className="mjob-d2-equip-list">
+              {(Array.isArray(job.equipment) ? job.equipment : job.equipment.split('\n').filter(Boolean))
+                .map((item, i) => (
+                  <span key={i} className="mjob-d2-equip-chip">{item}</span>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        {job.notes && (
+          <div className="mjob-d2-section">
+            <h3 className="mjob-d2-section-title">📝 Ghi chú</h3>
+            <div className="mjob-d2-section-card">
+              <div className="mjob-d2-notes">{job.notes}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Finance Section */}
+        <div className="mjob-d2-section">
+          <button className="mjob-d2-section-title mjob-d2-section-toggle" onClick={() => setExpandExpenses(!expandExpenses)}>
+            💰 Tài chính
+            <span>{expandExpenses ? '▼' : '▶'}</span>
+          </button>
+          {expandExpenses && (
+            <div className="mjob-d2-finance">
+              {/* Revenue card */}
+              <div className="mjob-d2-fin-revenue">
+                <span className="mjob-d2-fin-icon">💰</span>
+                <div>
+                  <div className="mjob-d2-fin-label">Thu khách</div>
+                  <div className="mjob-d2-fin-amount-green">{formatMoney(job.customer_payment || 0)}</div>
+                </div>
+              </div>
+
+              {/* Expenses card */}
+              {expenseTotal > 0 && (
+                <div className="mjob-d2-fin-expense">
+                  <span className="mjob-d2-fin-icon">📦</span>
+                  <div>
+                    <div className="mjob-d2-fin-label">Tổng chi phí</div>
+                    <div className="mjob-d2-fin-amount-red">{formatMoney(expenseTotal)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Profit card */}
+              <div className={`mjob-d2-fin-profit ${profit >= 0 ? 'mjob-d2-fin-profit-pos' : 'mjob-d2-fin-profit-neg'}`}>
+                <span className="mjob-d2-fin-icon">{profit >= 0 ? '📈' : '📉'}</span>
+                <div>
+                  <div className="mjob-d2-fin-label">Lợi nhuận</div>
+                  <div className="mjob-d2-fin-amount-profit">{formatMoney(profit)}</div>
+                </div>
+              </div>
+
+              {/* Expense list */}
+              {expenses.length > 0 && (
+                <div className="mjob-d2-expense-list">
+                  <div className="mjob-d2-expense-header">Chi tiết chi phí</div>
+                  {expenses.map((e, i) => (
+                    <div key={i} className="mjob-d2-expense-row">
+                      <div className="mjob-d2-expense-info">
+                        <span className="mjob-d2-expense-cat">{e.category || e.description}</span>
+                        <span className="mjob-d2-expense-by">{e.addedBy}</span>
+                      </div>
+                      <div className="mjob-d2-expense-right">
+                        <span className="mjob-d2-expense-amt">{formatMoney(e.amount)}</span>
+                        {!isLocked && (
+                          <button className="mjob-d2-expense-del" onClick={() => handleDeleteExpense(i)}>×</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add expense */}
+              {!isLocked && !showAddExpense && (
+                <button className="mjob-d2-add-expense" onClick={() => setShowAddExpense(true)}>
+                  + Thêm chi phí
+                </button>
+              )}
+
+              {showAddExpense && (
+                <div className="mjob-d2-expense-form">
+                  <select
+                    value={expenseCategory}
+                    onChange={e => setExpenseCategory(e.target.value)}
+                    className="mjob-d2-expense-select"
+                  >
+                    {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  {expenseCategory === 'Chi phí khác' && (
+                    <input
+                      type="text" placeholder="Mô tả chi phí"
+                      value={expenseDesc} onChange={e => setExpenseDesc(e.target.value)}
+                      className="mjob-d2-expense-input"
+                    />
+                  )}
+                  <input
+                    type="number" placeholder="Số tiền (VNĐ)"
+                    value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)}
+                    className="mjob-d2-expense-input" inputMode="numeric"
+                  />
+                  <div className="mjob-d2-expense-btns">
+                    <button className="mjob-d2-exp-cancel" onClick={() => setShowAddExpense(false)}>Huỷ</button>
+                    <button
+                      className="mjob-d2-exp-submit"
+                      onClick={handleAddExpense}
+                      disabled={!expenseAmount || expenseSubmitting}
+                    >
+                      {expenseSubmitting ? '...' : 'Thêm'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Meta */}
+        <div className="mjob-d2-meta">
+          <span>Tạo bởi: {job.created_by || '—'}</span>
+          <span>{formatDateTime(job.created_at)}</span>
+        </div>
       </div>
 
-      {/* Meta */}
-      <div className="mjob-meta">
-        <span>Tạo bởi: {job.created_by || '—'}</span>
-        <span>{formatDateTime(job.created_at)}</span>
-      </div>
-
-      {/* Status action buttons */}
-      {nextStatuses.length > 0 && (
-        <div className="mjob-floating-actions">
-          {nextStatuses.map(ns => (
+      {/* Sticky bottom actions */}
+      {(nextActions.length > 0 || canCancel) && (
+        <div className="mjob-d2-sticky-actions">
+          {canCancel && (
             <button
-              key={ns}
-              className={`mjob-action-btn ${ns === 'Hủy' ? 'mjob-action-cancel' : 'mjob-action-primary'}`}
-              onClick={() => handleStatusUpdate(ns)}
+              className="mjob-d2-act-btn mjob-btn-cancel"
+              onClick={() => handleStatusUpdate('Hủy')}
               disabled={statusUpdating}
             >
-              {statusUpdating ? '...' : `${STATUS_CONFIG[ns]?.icon} ${ns}`}
+              {statusUpdating ? '...' : '❌ Hủy'}
+            </button>
+          )}
+          {nextActions.map(act => (
+            <button
+              key={act.status}
+              className={`mjob-d2-act-btn mjob-d2-act-primary ${act.cls}`}
+              onClick={() => handleStatusUpdate(act.status)}
+              disabled={statusUpdating}
+            >
+              {statusUpdating ? '...' : `${act.icon} ${act.label}`}
             </button>
           ))}
         </div>
