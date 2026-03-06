@@ -8,18 +8,26 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
   const [uploading, setUploading] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
-  const inputRef = useRef(null);
+  const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const composingRef = useRef(false);
 
   const activeMembers = (members || []).filter(m => m.is_active !== false && m.user_id !== user?.id);
 
+  // Auto-grow textarea
+  const adjustHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }, []);
+
   // Handle text change with @mention detection
   const handleTextChange = useCallback((e) => {
     const val = e.target.value;
     setText(val);
+    adjustHeight();
 
-    // Check for @mention
     const cursor = e.target.selectionStart;
     const textBefore = val.substring(0, cursor);
     const mentionMatch = textBefore.match(/@([^\s@]*)$/);
@@ -29,11 +37,11 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     } else {
       setShowMentions(false);
     }
-  }, []);
+  }, [adjustHeight]);
 
   // Insert mention
   const handleSelectMention = useCallback((member) => {
-    const cursor = inputRef.current?.selectionStart || text.length;
+    const cursor = textareaRef.current?.selectionStart || text.length;
     const textBefore = text.substring(0, cursor);
     const textAfter = text.substring(cursor);
     const mentionMatch = textBefore.match(/@([^\s@]*)$/);
@@ -42,14 +50,13 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
       setText(newText);
     }
     setShowMentions(false);
-    inputRef.current?.focus();
+    textareaRef.current?.focus();
   }, [text]);
 
   // Send
   const handleSend = useCallback(async () => {
     if ((!text.trim() && !uploading) || sending) return;
 
-    // Extract mentions
     const mentionedIds = [];
     const mentionRegex = /@([^\s@]+(?:\s[^\s@]+)*)/g;
     let match;
@@ -70,6 +77,8 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
       await onSend(text.trim(), 'text', null, replyTo, mentionedIds, user);
       setText('');
       onCancelReply?.();
+      // Reset textarea height
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
     } catch (err) {
       console.error('Send error:', err);
     } finally {
@@ -136,13 +145,16 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
       {/* Reply bar */}
       {replyTo && (
         <div className="mchat-reply-bar">
+          <div className="mchat-reply-bar-border" />
           <div className="mchat-reply-bar-content">
             <span className="mchat-reply-bar-name">{replyTo.sender_name}</span>
             <span className="mchat-reply-bar-text">
               {replyTo.content?.substring(0, 50) || '📎 File'}
             </span>
           </div>
-          <button className="mchat-reply-bar-close" onClick={onCancelReply}>✕</button>
+          <button className="mchat-reply-bar-close" onClick={onCancelReply}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
         </div>
       )}
 
@@ -152,9 +164,9 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
           {filteredMentions.map(m => (
             <button key={m.user_id} className="mchat-mention-item" onClick={() => handleSelectMention(m)}>
               <span className="mchat-mention-avatar">
-                {m.user_id === 'all' ? '👥' : m.user_name?.charAt(0)?.toUpperCase()}
+                {m.user_id === 'all' ? '@@' : m.user_name?.charAt(0)?.toUpperCase()}
               </span>
-              <span>{m.user_name}</span>
+              <span className="mchat-mention-name">{m.user_name}</span>
             </button>
           ))}
         </div>
@@ -162,43 +174,47 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
 
       {/* Input row */}
       <div className="mchat-input-row">
-        <button
-          className="mchat-attach-btn"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-        >
-          📎
-        </button>
-
-        <input
-          ref={inputRef}
-          className="mchat-text-input"
-          placeholder={uploading ? 'Đang tải...' : 'Nhập tin nhắn...'}
-          value={text}
-          onChange={handleTextChange}
-          onKeyDown={handleKeyDown}
-          onCompositionStart={() => { composingRef.current = true; }}
-          onCompositionEnd={() => { composingRef.current = false; }}
-          disabled={uploading}
-        />
-
-        <label className="mchat-img-btn">
-          🖼️
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageSelect}
-            style={{ display: 'none' }}
+        <div className="mchat-input-actions">
+          <label className="mchat-input-action-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+              disabled={uploading}
+            />
+          </label>
+          <button
+            className="mchat-input-action-btn"
+            onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+        </div>
+
+        <div className="mchat-textarea-wrap">
+          <textarea
+            ref={textareaRef}
+            className="mchat-textarea"
+            placeholder={uploading ? 'Đang tải lên...' : 'Nhập tin nhắn...'}
+            value={text}
+            onChange={handleTextChange}
+            onKeyDown={handleKeyDown}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
+            disabled={uploading}
+            rows={1}
           />
-        </label>
+        </div>
 
         <button
-          className="mchat-send-btn"
+          className={`mchat-send-btn ${text.trim() ? 'active' : ''}`}
           onClick={handleSend}
           disabled={(!text.trim() && !uploading) || sending}
         >
-          ➤
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
 

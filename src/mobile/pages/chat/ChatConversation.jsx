@@ -14,7 +14,7 @@ const formatDateSeparator = (dateStr) => {
   const diffDays = Math.floor((today - msgDay) / 86400000);
   if (diffDays === 0) return 'Hôm nay';
   if (diffDays === 1) return 'Hôm qua';
-  return vnDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return vnDate.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
 const getMessageDate = (dateStr) => {
@@ -30,6 +30,7 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
   const [replyTo, setReplyTo] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   const messagesEndRef = useRef(null);
   const containerRef = useRef(null);
@@ -87,6 +88,22 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
     }
   }, [messages.length, user?.id]);
 
+  // Show/hide scroll-to-bottom button
+  useEffect(() => {
+    const c = containerRef.current;
+    if (!c) return;
+    const onScroll = () => {
+      const distFromBottom = c.scrollHeight - c.scrollTop - c.clientHeight;
+      setShowScrollBtn(distFromBottom > 300);
+    };
+    c.addEventListener('scroll', onScroll, { passive: true });
+    return () => c.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
   // Context menu
   const handleContextMenu = useCallback((msg, x, y) => {
     setContextMenu({ message: msg, x, y });
@@ -109,8 +126,9 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
     return map;
   }, [messages]);
 
-  // Group by date
+  // Group by date + detect continued messages
   let lastDate = null;
+  let lastSenderId = null;
 
   return (
     <div className="mchat-conversation" ref={wrapperRef}>
@@ -121,20 +139,37 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
         {hasMore && messages.length > 0 && (
           <div className="mchat-load-more">
             <button onClick={handleLoadMore} disabled={loadingMore}>
-              {loadingMore ? 'Đang tải...' : 'Tải tin nhắn cũ hơn'}
+              {loadingMore ? (
+                <><span className="mchat-spinner-sm" /> Đang tải...</>
+              ) : (
+                'Tải tin nhắn cũ hơn'
+              )}
             </button>
           </div>
         )}
 
         {loading ? (
-          <div className="mchat-center-text">Đang tải...</div>
+          <div className="mchat-center-text">
+            <div className="mchat-spinner" />
+            <p>Đang tải tin nhắn...</p>
+          </div>
         ) : messages.length === 0 ? (
-          <div className="mchat-center-text">Chưa có tin nhắn. Hãy bắt đầu!</div>
+          <div className="mchat-center-text">
+            <div className="mchat-empty-conv-icon">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <p className="mchat-empty-conv-text">Bắt đầu cuộc trò chuyện!</p>
+            <p className="mchat-empty-conv-sub">Gửi tin nhắn đầu tiên</p>
+          </div>
         ) : (
           messages.map((msg) => {
             const msgDate = getMessageDate(msg.created_at);
             const showDate = msgDate !== lastDate;
+            if (showDate) lastSenderId = null;
             lastDate = msgDate;
+
+            const isContinued = msg.sender_id === lastSenderId && msg.message_type !== 'system';
+            lastSenderId = msg.message_type === 'system' ? null : msg.sender_id;
 
             return (
               <React.Fragment key={msg.id}>
@@ -147,6 +182,7 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
                   message={msg}
                   isOwn={msg.sender_id === user?.id}
                   isGroup={isGroup}
+                  isContinued={isContinued}
                   replyMessage={msg.reply_to ? replyLookup[msg.reply_to] : null}
                   onContextMenu={handleContextMenu}
                   onImagePreview={setImagePreview}
@@ -157,6 +193,13 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollBtn && (
+        <button className="mchat-scroll-bottom" onClick={scrollToBottom}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
+        </button>
+      )}
 
       {/* Input */}
       <ChatInput
@@ -172,24 +215,21 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
       {contextMenu && (
         <>
           <div className="mchat-ctx-overlay" onClick={() => setContextMenu(null)} />
-          <div
-            className="mchat-ctx-menu"
-            style={{
-              top: Math.min(contextMenu.y, window.innerHeight - 200),
-              left: Math.min(contextMenu.x, window.innerWidth - 160)
-            }}
-          >
+          <div className="mchat-ctx-menu">
             <button onClick={() => { setReplyTo(contextMenu.message); setContextMenu(null); }}>
-              ↩️ Trả lời
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+              Trả lời
             </button>
             {contextMenu.message.content && (
               <button onClick={() => handleCopy(contextMenu.message)}>
-                📋 Sao chép
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Sao chép
               </button>
             )}
             {contextMenu.message.sender_id === user?.id && (
               <button className="danger" onClick={() => handleDelete(contextMenu.message)}>
-                🗑️ Xóa
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Xóa
               </button>
             )}
           </div>
@@ -200,7 +240,9 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
       {imagePreview && (
         <div className="mchat-img-preview" onClick={() => setImagePreview(null)}>
           <img src={imagePreview} alt="" />
-          <button className="mchat-img-close" onClick={() => setImagePreview(null)}>✕</button>
+          <button className="mchat-img-close" onClick={() => setImagePreview(null)}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
         </div>
       )}
     </div>

@@ -1,6 +1,18 @@
 import React, { useRef, useCallback } from 'react';
 import { getChatImageUrl } from '../../../utils/cloudinaryUpload';
 
+const AVATAR_COLORS = [
+  '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c',
+  '#3498db', '#9b59b6', '#e91e63', '#00bcd4', '#ff5722',
+];
+
+const getAvatarColor = (name) => {
+  if (!name) return AVATAR_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+};
+
 const MENTION_REGEX = /(@(?:Tất cả|[^\s@]{1,30}(?:\s[^\s@]{1,30})*))/g;
 
 const formatTime = (dateStr) => {
@@ -32,7 +44,7 @@ const renderContent = (content) => {
   });
 };
 
-export default function ChatMessage({ message, isOwn, isGroup, replyMessage, onContextMenu, onImagePreview }) {
+export default function ChatMessage({ message, isOwn, isGroup, isContinued, replyMessage, onContextMenu, onImagePreview }) {
   const longPressTimer = useRef(null);
   const touchMoved = useRef(false);
 
@@ -73,70 +85,95 @@ export default function ChatMessage({ message, isOwn, isGroup, replyMessage, onC
     );
   }
 
+  const senderColor = getAvatarColor(message.sender_name);
+  const showAvatar = isGroup && !isOwn && !isContinued;
+  const showSender = isGroup && !isOwn && !isContinued;
+
   return (
     <div
-      className={`mchat-msg ${isOwn ? 'own' : ''}`}
+      className={`mchat-msg ${isOwn ? 'own' : ''} ${isContinued ? 'continued' : ''}`}
       id={`msg-${message.id}`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Sender name (group only, not own) */}
+      {/* Avatar for group messages (other) */}
       {isGroup && !isOwn && (
-        <div className="mchat-sender">{message.sender_name}</div>
+        <div className="mchat-msg-avatar-col">
+          {showAvatar ? (
+            <div className="mchat-msg-avatar" style={{ background: senderColor }}>
+              {message.sender_name?.charAt(0)?.toUpperCase()}
+            </div>
+          ) : (
+            <div className="mchat-msg-avatar-spacer" />
+          )}
+        </div>
       )}
 
-      {/* Reply quote */}
-      {replyMessage && (
-        <div className="mchat-reply-quote">
-          <div className="mchat-reply-name">{replyMessage.sender_name}</div>
-          <div className="mchat-reply-text">
-            {replyMessage.content?.substring(0, 60) || (replyMessage.file_name ? `📎 ${replyMessage.file_name}` : '')}
+      <div className="mchat-msg-content">
+        {/* Sender name */}
+        {showSender && (
+          <div className="mchat-sender" style={{ color: senderColor }}>{message.sender_name}</div>
+        )}
+
+        {/* Reply quote */}
+        {replyMessage && (
+          <div className={`mchat-reply-quote ${isOwn ? 'own' : ''}`}>
+            <div className="mchat-reply-name">{replyMessage.sender_name}</div>
+            <div className="mchat-reply-text">
+              {replyMessage.content?.substring(0, 60) || (replyMessage.file_name ? `📎 ${replyMessage.file_name}` : '')}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Image */}
-      {message.message_type === 'image' && message.file_url && (
-        <div className="mchat-img-wrap" onClick={() => onImagePreview?.(message.file_url)}>
-          <img src={getChatImageUrl(message.file_url)} alt="" loading="lazy" />
-        </div>
-      )}
-
-      {/* File */}
-      {message.message_type === 'file' && message.file_url && (
-        <a className="mchat-file-wrap" href={message.file_url} target="_blank" rel="noopener noreferrer">
-          <span className="mchat-file-icon">
-            {FILE_ICONS[message.file_name?.split('.').pop()?.toLowerCase()] || '📎'}
-          </span>
-          <div className="mchat-file-info">
-            <div className="mchat-file-name">{message.file_name}</div>
-            <div className="mchat-file-size">{formatFileSize(message.file_size)}</div>
+        {/* Image */}
+        {message.message_type === 'image' && message.file_url && (
+          <div className="mchat-img-wrap" onClick={() => onImagePreview?.(message.file_url)}>
+            <img src={getChatImageUrl(message.file_url)} alt="" loading="lazy" />
           </div>
-        </a>
-      )}
+        )}
 
-      {/* Text content */}
-      {message.content && (
-        <div className="mchat-bubble">
-          {renderContent(message.content)}
-        </div>
-      )}
+        {/* File */}
+        {message.message_type === 'file' && message.file_url && (
+          <a className={`mchat-file-wrap ${isOwn ? 'own' : ''}`} href={message.file_url} target="_blank" rel="noopener noreferrer">
+            <span className="mchat-file-icon">
+              {FILE_ICONS[message.file_name?.split('.').pop()?.toLowerCase()] || '📎'}
+            </span>
+            <div className="mchat-file-info">
+              <div className="mchat-file-name">{message.file_name}</div>
+              <div className="mchat-file-size">{formatFileSize(message.file_size)}</div>
+            </div>
+          </a>
+        )}
 
-      {/* Entity attachments */}
-      {message.attachments?.length > 0 && message.attachments.map((att, i) => (
-        <div key={i} className="mchat-bubble mchat-attachment">
-          <div className="mchat-att-title">
-            {att.type === 'order' ? '📦' : att.type === 'task' ? '🎬' : '📎'} {att.title}
+        {/* Text content */}
+        {message.content && (
+          <div className="mchat-bubble">
+            {renderContent(message.content)}
+            <span className="mchat-bubble-time">
+              {message.is_edited && <span className="mchat-edited">đã sửa</span>}
+              {formatTime(message.created_at)}
+            </span>
           </div>
-          {att.subtitle && <div className="mchat-att-sub">{att.subtitle}</div>}
-        </div>
-      ))}
+        )}
 
-      {/* Time */}
-      <div className="mchat-time">
-        {message.is_edited && <span>đã sửa · </span>}
-        {formatTime(message.created_at)}
+        {/* Time for non-text (image/file only) */}
+        {!message.content && (
+          <div className="mchat-time-standalone">
+            {message.is_edited && <span>đã sửa · </span>}
+            {formatTime(message.created_at)}
+          </div>
+        )}
+
+        {/* Entity attachments */}
+        {message.attachments?.length > 0 && message.attachments.map((att, i) => (
+          <div key={i} className="mchat-bubble mchat-attachment">
+            <div className="mchat-att-title">
+              {att.type === 'order' ? '📦' : att.type === 'task' ? '🎬' : '📎'} {att.title}
+            </div>
+            {att.subtitle && <div className="mchat-att-sub">{att.subtitle}</div>}
+          </div>
+        ))}
       </div>
     </div>
   );
