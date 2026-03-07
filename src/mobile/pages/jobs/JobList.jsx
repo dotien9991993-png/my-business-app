@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../../supabaseClient';
 import JobCard from './JobCard';
 
-const PAGE_SIZE = 20;
-
 const STATUS_OPTIONS = [
   { id: 'all', label: 'Tất cả' },
   { id: 'Chờ XN', label: 'Chờ XN' },
@@ -12,11 +10,8 @@ const STATUS_OPTIONS = [
 ];
 
 export default function JobList({ user, tenantId, onOpenJob }) {
-  const [jobs, setJobs] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
+  const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('all');
   const [techFilter, setTechFilter] = useState('all');
   const [viewTab, setViewTab] = useState('my'); // 'my' | 'all'
@@ -45,60 +40,30 @@ export default function JobList({ user, tenantId, onOpenJob }) {
     loadPerm();
   }, [user?.id, tenantId]);
 
-  // Load jobs — server-side filter + pagination
-  const loadJobs = useCallback(async (pg = 1, append = false) => {
+  // Load ALL jobs for selected month — giống desktop (no limit)
+  const loadJobs = useCallback(async () => {
     if (!tenantId) return;
-    if (pg === 1) setLoading(true);
-    else setLoadingMore(true);
+    setLoading(true);
 
-    try {
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
-      const lastDay = new Date(year, month, 0);
-      const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0);
+    const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
-      const from = (pg - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from('technical_jobs')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .gte('scheduled_date', monthStart)
+      .lte('scheduled_date', monthEnd)
+      .order('scheduled_date', { ascending: false })
+      .order('scheduled_time', { ascending: false });
 
-      let query = supabase
-        .from('technical_jobs')
-        .select('*', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .gte('scheduled_date', monthStart)
-        .lte('scheduled_date', monthEnd)
-        .order('scheduled_date', { ascending: false })
-        .order('scheduled_time', { ascending: false })
-        .range(from, to);
+    if (!error) setAllJobs(data || []);
+    setLoading(false);
+  }, [tenantId, selectedMonth]);
 
-      // Server-side "Của tôi" filter
-      if (viewTab === 'my' || permLevel < 2) {
-        const safe = (user?.name || '').replace(/"/g, '\\"');
-        query = query.or(`created_by.eq."${safe}",technicians.cs.["${safe}"]`);
-      }
-
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      const { data, count, error } = await query;
-      if (!error) {
-        if (append) {
-          setJobs(prev => [...prev, ...(data || [])]);
-        } else {
-          setJobs(data || []);
-        }
-        setTotalCount(count || 0);
-        setPage(pg);
-      }
-    } catch (err) {
-      console.error('Error loading jobs:', err);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [tenantId, selectedMonth, statusFilter, viewTab, permLevel, user?.name]);
-
-  useEffect(() => { loadJobs(1); }, [loadJobs]);
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   // Realtime
   useEffect(() => {
@@ -107,39 +72,47 @@ export default function JobList({ user, tenantId, onOpenJob }) {
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'technical_jobs',
         filter: `tenant_id=eq.${tenantId}`,
-      }, () => loadJobs(1))
+      }, () => loadJobs())
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [tenantId, loadJobs]);
 
-  // Get unique technicians from loaded jobs for filter dropdown
+  // Get unique technicians for filter
   const allTechs = useMemo(() => {
     const set = new Set();
-    jobs.forEach(j => (j.technicians || []).forEach(t => set.add(t)));
+    allJobs.forEach(j => (j.technicians || []).forEach(t => set.add(t)));
     return Array.from(set).sort();
-  }, [jobs]);
+  }, [allJobs]);
 
-  // Client-side tech filter (additional filter on loaded results)
+  // Client-side filter — giống desktop
   const filtered = useMemo(() => {
-    if (techFilter === 'all') return jobs;
-    return jobs.filter(j => (j.technicians || []).includes(techFilter));
-  }, [jobs, techFilter]);
+    let result = allJobs;
 
-  const hasMore = page * PAGE_SIZE < totalCount;
-  const loadMore = useCallback(() => {
-    if (hasMore && !loadingMore) loadJobs(page + 1, true);
-  }, [hasMore, loadingMore, page, loadJobs]);
+    // "Của tôi" filter
+    if (viewTab === 'my' || permLevel < 2) {
+      result = result.filter(j =>
+        j.created_by === user?.name ||
+        (j.technicians || []).includes(user?.name)
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      result = result.filter(j => j.status === statusFilter);
+    }
+
+    // Tech filter
+    if (techFilter !== 'all') {
+      result = result.filter(j => (j.technicians || []).includes(techFilter));
+    }
+
+    return result;
+  }, [allJobs, viewTab, permLevel, user?.name, statusFilter, techFilter]);
 
   const handleMonthChange = (delta) => {
     const [y, m] = selectedMonth.split('-').map(Number);
     const d = new Date(y, m - 1 + delta, 1);
     setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    setTechFilter('all');
-  };
-
-  const handleViewTabChange = (tab) => {
-    setViewTab(tab);
-    setTechFilter('all');
   };
 
   const monthLabel = (() => {
@@ -152,10 +125,10 @@ export default function JobList({ user, tenantId, onOpenJob }) {
       {/* View tabs: My / All */}
       {permLevel >= 2 && (
         <div className="mjob-view-tabs">
-          <button className={`mjob-view-tab ${viewTab === 'my' ? 'active' : ''}`} onClick={() => handleViewTabChange('my')}>
+          <button className={`mjob-view-tab ${viewTab === 'my' ? 'active' : ''}`} onClick={() => setViewTab('my')}>
             Của tôi
           </button>
-          <button className={`mjob-view-tab ${viewTab === 'all' ? 'active' : ''}`} onClick={() => handleViewTabChange('all')}>
+          <button className={`mjob-view-tab ${viewTab === 'all' ? 'active' : ''}`} onClick={() => setViewTab('all')}>
             Tất cả
           </button>
         </div>
@@ -192,9 +165,7 @@ export default function JobList({ user, tenantId, onOpenJob }) {
       )}
 
       {/* Count */}
-      <div className="mjob-count">
-        {totalCount} công việc{filtered.length < totalCount ? ` (${filtered.length} hiển thị)` : ''}
-      </div>
+      <div className="mjob-count">{filtered.length} công việc</div>
 
       {/* Job list */}
       <div className="mjob-list">
@@ -203,20 +174,9 @@ export default function JobList({ user, tenantId, onOpenJob }) {
         ) : filtered.length === 0 ? (
           <div className="mjob-empty">Không có công việc nào</div>
         ) : (
-          <>
-            {filtered.map(job => (
-              <JobCard key={job.id} job={job} onClick={() => onOpenJob(job)} />
-            ))}
-            {hasMore && (
-              <button
-                className="mjob-load-more"
-                onClick={loadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? 'Đang tải...' : 'Xem thêm'}
-              </button>
-            )}
-          </>
+          filtered.map(job => (
+            <JobCard key={job.id} job={job} onClick={() => onOpenJob(job)} />
+          ))
         )}
       </div>
     </div>

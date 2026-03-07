@@ -1,14 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 
-const PAGE_SIZE = 20;
-
 export function useMobileMedia(userId, userName, tenantId) {
-  const [tasks, setTasks] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
+  const [allTasks, setAllTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
     tab: 'my',        // 'my' | 'all'
     status: 'all',    // all | Đang Làm | Chờ Duyệt | Đã Duyệt | Hoàn Thành
@@ -40,85 +35,27 @@ export function useMobileMedia(userId, userName, tenantId) {
     loadPerm();
   }, [userId, tenantId]);
 
-  // Load tasks — server-side filter + pagination
-  const loadTasks = useCallback(async (pg = 1, append = false) => {
-    if (!tenantId || !userName) return;
-    if (pg === 1) setLoading(true);
-    else setLoadingMore(true);
-
+  // Load ALL tasks — giống hệt desktop (DataContext.jsx loadTasks)
+  const loadTasks = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
     try {
-      const from = (pg - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
+      const { data, error } = await supabase
         .from('tasks')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false })
-        .range(from, to);
+        .order('created_at', { ascending: false });
 
-      // Server-side "Của tôi" filter — check all roles user can have
-      if (filters.tab === 'my' || permLevel < 2) {
-        const safe = userName.replace(/"/g, '\\"');
-        query = query.or(
-          `assignee.eq."${safe}",created_by.eq."${safe}",cameramen.cs.["${safe}"],editors.cs.["${safe}"],actors.cs.["${safe}"]`
-        );
-      }
-
-      // Status filter
-      if (filters.status !== 'all') {
-        query = query.eq('status', filters.status);
-      }
-
-      // Date range filter
-      if (filters.dateRange === 'overdue') {
-        const now = new Date();
-        const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-        const todayStr = vnNow.toLocaleDateString('en-CA');
-        query = query.lt('due_date', todayStr).neq('status', 'Hoàn Thành');
-      } else if (filters.dateRange !== 'all') {
-        const now = new Date();
-        const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-        const todayStr = vnNow.toLocaleDateString('en-CA');
-
-        if (filters.dateRange === 'today') {
-          query = query
-            .gte('due_date', todayStr + 'T00:00:00')
-            .lte('due_date', todayStr + 'T23:59:59');
-        } else if (filters.dateRange === 'week') {
-          const weekLater = new Date(vnNow);
-          weekLater.setDate(weekLater.getDate() + 7);
-          query = query
-            .gte('due_date', todayStr + 'T00:00:00')
-            .lte('due_date', weekLater.toLocaleDateString('en-CA') + 'T23:59:59');
-        } else if (filters.dateRange === 'month') {
-          const monthEnd = new Date(vnNow.getFullYear(), vnNow.getMonth() + 1, 0);
-          const monthStart = `${vnNow.getFullYear()}-${String(vnNow.getMonth() + 1).padStart(2, '0')}-01`;
-          query = query
-            .gte('due_date', monthStart + 'T00:00:00')
-            .lte('due_date', monthEnd.toLocaleDateString('en-CA') + 'T23:59:59');
-        }
-      }
-
-      const { data, count, error } = await query;
       if (error) throw error;
-
-      if (append) {
-        setTasks(prev => [...prev, ...(data || [])]);
-      } else {
-        setTasks(data || []);
-      }
-      setTotalCount(count || 0);
-      setPage(pg);
+      setAllTasks(data || []);
     } catch (err) {
       console.error('Error loading tasks:', err);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
-  }, [tenantId, userName, permLevel, filters]);
+  }, [tenantId]);
 
-  useEffect(() => { loadTasks(1); }, [loadTasks]);
+  useEffect(() => { loadTasks(); }, [loadTasks]);
 
   // Realtime subscription
   useEffect(() => {
@@ -129,11 +66,65 @@ export function useMobileMedia(userId, userName, tenantId) {
         schema: 'public',
         table: 'tasks',
         filter: `tenant_id=eq.${tenantId}`,
-      }, () => { loadTasks(1); })
+      }, () => { loadTasks(); })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [tenantId, loadTasks]);
+
+  // Client-side filter — giống hệt desktop MyTasksView.jsx line 31-37
+  const tasks = useMemo(() => {
+    let result = allTasks;
+
+    // "Của tôi" filter — check 5 fields giống desktop
+    if (filters.tab === 'my' || permLevel < 2) {
+      result = result.filter(t =>
+        t.assignee === userName ||
+        t.created_by === userName ||
+        (t.cameramen || []).includes(userName) ||
+        (t.editors || []).includes(userName) ||
+        (t.actors || []).includes(userName)
+      );
+    }
+
+    // Status filter
+    if (filters.status !== 'all') {
+      result = result.filter(t => t.status === filters.status);
+    }
+
+    // Date range filter
+    if (filters.dateRange !== 'all') {
+      const now = new Date();
+      const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+      const todayStr = vnNow.toLocaleDateString('en-CA');
+
+      if (filters.dateRange === 'overdue') {
+        result = result.filter(t =>
+          t.due_date && t.due_date < todayStr && t.status !== 'Hoàn Thành'
+        );
+      } else if (filters.dateRange === 'today') {
+        result = result.filter(t =>
+          t.due_date && t.due_date.startsWith(todayStr)
+        );
+      } else if (filters.dateRange === 'week') {
+        const weekLater = new Date(vnNow);
+        weekLater.setDate(weekLater.getDate() + 7);
+        const weekStr = weekLater.toLocaleDateString('en-CA');
+        result = result.filter(t =>
+          t.due_date && t.due_date >= todayStr && t.due_date <= weekStr
+        );
+      } else if (filters.dateRange === 'month') {
+        const monthStart = `${vnNow.getFullYear()}-${String(vnNow.getMonth() + 1).padStart(2, '0')}-01`;
+        const monthEnd = new Date(vnNow.getFullYear(), vnNow.getMonth() + 1, 0);
+        const monthEndStr = monthEnd.toLocaleDateString('en-CA');
+        result = result.filter(t =>
+          t.due_date && t.due_date >= monthStart && t.due_date <= monthEndStr
+        );
+      }
+    }
+
+    return result;
+  }, [allTasks, userName, permLevel, filters]);
 
   // Update task status
   const updateTaskStatus = useCallback(async (taskId, newStatus) => {
@@ -183,23 +174,14 @@ export function useMobileMedia(userId, userName, tenantId) {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const hasMore = page * PAGE_SIZE < totalCount;
-  const loadMore = useCallback(() => {
-    if (hasMore && !loadingMore) loadTasks(page + 1, true);
-  }, [hasMore, loadingMore, page, loadTasks]);
-
   return {
     tasks,
-    totalCount,
     loading,
-    loadingMore,
     filters,
     permLevel,
     updateFilter,
     updateTaskStatus,
     addComment,
-    hasMore,
-    loadMore,
-    refresh: () => loadTasks(1),
+    refresh: loadTasks,
   };
 }

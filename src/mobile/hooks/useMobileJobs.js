@@ -1,14 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 
-const PAGE_SIZE = 20;
-
 export function useMobileJobs(userId, userName, tenantId) {
-  const [jobs, setJobs] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
+  const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
     tab: 'my',          // 'my' | 'all'
     status: 'all',      // all | Chờ XN | Đang làm | Hoàn thành | Hủy
@@ -40,77 +35,28 @@ export function useMobileJobs(userId, userName, tenantId) {
     loadPerm();
   }, [userId, tenantId]);
 
-  // Load jobs — server-side filter + pagination
-  const loadJobs = useCallback(async (pg = 1, append = false) => {
-    if (!tenantId || !userName) return;
-    if (pg === 1) setLoading(true);
-    else setLoadingMore(true);
-
+  // Load ALL jobs — giống hệt desktop (DataContext.jsx loadTechnicalJobs)
+  const loadJobs = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
     try {
-      const from = (pg - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      let query = supabase
+      const { data, error } = await supabase
         .from('technical_jobs')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('tenant_id', tenantId)
         .order('scheduled_date', { ascending: false })
-        .order('scheduled_time', { ascending: false })
-        .range(from, to);
+        .order('scheduled_time', { ascending: false });
 
-      // Server-side "Của tôi" filter
-      if (filters.tab === 'my' || permLevel < 2) {
-        const safe = userName.replace(/"/g, '\\"');
-        query = query.or(`created_by.eq."${safe}",technicians.cs.["${safe}"]`);
-      }
-
-      // Status filter
-      if (filters.status !== 'all') {
-        query = query.eq('status', filters.status);
-      }
-
-      // Date range filter
-      if (filters.dateRange !== 'all') {
-        const now = new Date();
-        const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-        const todayStr = vnNow.toLocaleDateString('en-CA');
-
-        if (filters.dateRange === 'today') {
-          query = query.eq('scheduled_date', todayStr);
-        } else if (filters.dateRange === 'week') {
-          const weekLater = new Date(vnNow);
-          weekLater.setDate(weekLater.getDate() + 7);
-          query = query
-            .gte('scheduled_date', todayStr)
-            .lte('scheduled_date', weekLater.toLocaleDateString('en-CA'));
-        } else if (filters.dateRange === 'month') {
-          const monthStart = `${vnNow.getFullYear()}-${String(vnNow.getMonth() + 1).padStart(2, '0')}-01`;
-          const monthEnd = new Date(vnNow.getFullYear(), vnNow.getMonth() + 1, 0);
-          query = query
-            .gte('scheduled_date', monthStart)
-            .lte('scheduled_date', monthEnd.toLocaleDateString('en-CA'));
-        }
-      }
-
-      const { data, count, error } = await query;
       if (error) throw error;
-
-      if (append) {
-        setJobs(prev => [...prev, ...(data || [])]);
-      } else {
-        setJobs(data || []);
-      }
-      setTotalCount(count || 0);
-      setPage(pg);
+      setAllJobs(data || []);
     } catch (err) {
       console.error('Error loading jobs:', err);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
-  }, [tenantId, userName, permLevel, filters]);
+  }, [tenantId]);
 
-  useEffect(() => { loadJobs(1); }, [loadJobs]);
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   // Realtime
   useEffect(() => {
@@ -121,10 +67,55 @@ export function useMobileJobs(userId, userName, tenantId) {
         schema: 'public',
         table: 'technical_jobs',
         filter: `tenant_id=eq.${tenantId}`,
-      }, () => { loadJobs(1); })
+      }, () => { loadJobs(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [tenantId, loadJobs]);
+
+  // Client-side filter — giống desktop
+  const jobs = useMemo(() => {
+    let result = allJobs;
+
+    // "Của tôi" filter
+    if (filters.tab === 'my' || permLevel < 2) {
+      result = result.filter(j =>
+        j.created_by === userName ||
+        (j.technicians || []).includes(userName)
+      );
+    }
+
+    // Status filter
+    if (filters.status !== 'all') {
+      result = result.filter(j => j.status === filters.status);
+    }
+
+    // Date range filter
+    if (filters.dateRange !== 'all') {
+      const now = new Date();
+      const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+      const todayStr = vnNow.toLocaleDateString('en-CA');
+
+      if (filters.dateRange === 'today') {
+        result = result.filter(j => j.scheduled_date === todayStr);
+      } else if (filters.dateRange === 'week') {
+        const weekLater = new Date(vnNow);
+        weekLater.setDate(weekLater.getDate() + 7);
+        const weekStr = weekLater.toLocaleDateString('en-CA');
+        result = result.filter(j =>
+          j.scheduled_date >= todayStr && j.scheduled_date <= weekStr
+        );
+      } else if (filters.dateRange === 'month') {
+        const monthStart = `${vnNow.getFullYear()}-${String(vnNow.getMonth() + 1).padStart(2, '0')}-01`;
+        const monthEnd = new Date(vnNow.getFullYear(), vnNow.getMonth() + 1, 0);
+        const monthEndStr = monthEnd.toLocaleDateString('en-CA');
+        result = result.filter(j =>
+          j.scheduled_date >= monthStart && j.scheduled_date <= monthEndStr
+        );
+      }
+    }
+
+    return result;
+  }, [allJobs, userName, permLevel, filters]);
 
   // Update job status
   const updateJobStatus = useCallback(async (jobId, newStatus) => {
@@ -157,23 +148,14 @@ export function useMobileJobs(userId, userName, tenantId) {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const hasMore = page * PAGE_SIZE < totalCount;
-  const loadMore = useCallback(() => {
-    if (hasMore && !loadingMore) loadJobs(page + 1, true);
-  }, [hasMore, loadingMore, page, loadJobs]);
-
   return {
     jobs,
-    totalCount,
     loading,
-    loadingMore,
     filters,
     permLevel,
     updateFilter,
     updateJobStatus,
     addExpense,
-    hasMore,
-    loadMore,
-    refresh: () => loadJobs(1),
+    refresh: loadJobs,
   };
 }

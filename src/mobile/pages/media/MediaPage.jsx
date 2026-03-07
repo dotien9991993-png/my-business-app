@@ -20,9 +20,8 @@ const DATE_FILTERS = [
 
 export default function MediaPage({ user, tenantId }) {
   const {
-    tasks, totalCount, loading, loadingMore, filters, permLevel,
-    updateFilter, updateTaskStatus, addComment,
-    hasMore, loadMore, refresh,
+    tasks, loading, filters, permLevel,
+    updateFilter, updateTaskStatus, addComment, refresh,
   } = useMobileMedia(user?.id, user?.name, tenantId);
 
   const [selectedTask, setSelectedTask] = useState(null);
@@ -136,7 +135,7 @@ export default function MediaPage({ user, tenantId }) {
 
       {/* Count */}
       <div className="mmed-count">
-        {totalCount} video{tasks.length < totalCount ? ` (${tasks.length} đã tải)` : ''}
+        {tasks.length} video
       </div>
 
       {/* Task list */}
@@ -151,26 +150,15 @@ export default function MediaPage({ user, tenantId }) {
             <p>{filters.tab === 'my' ? 'Bạn chưa có task nào' : 'Không có task nào'}</p>
           </div>
         ) : (
-          <>
-            {tasks.map(task => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                onClick={() => handleOpenDetail(task)}
-                onToggleStep={handleToggleStep}
-                onCopyLink={handleCopyLink}
-              />
-            ))}
-            {hasMore && (
-              <button
-                className="mmed-load-more"
-                onClick={loadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? 'Đang tải...' : 'Xem thêm'}
-              </button>
-            )}
-          </>
+          tasks.map(task => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              onClick={() => handleOpenDetail(task)}
+              onToggleStep={handleToggleStep}
+              onCopyLink={handleCopyLink}
+            />
+          ))
         )}
       </div>
 
