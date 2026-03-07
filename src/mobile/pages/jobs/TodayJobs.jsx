@@ -36,6 +36,26 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [permLevel, setPermLevel] = useState(1);
+
+  // Load permission — giống desktop TodayJobsDashboard
+  useEffect(() => {
+    if (!user?.id || !tenantId) return;
+    const loadPerm = async () => {
+      const { data: u } = await supabase
+        .from('users').select('role')
+        .eq('id', user.id).single();
+      if (u?.role === 'Admin' || u?.role === 'admin' || u?.role === 'Manager') {
+        setPermLevel(3);
+        return;
+      }
+      const { data: perm } = await supabase
+        .from('user_permissions').select('permission_level')
+        .eq('user_id', user.id).eq('module', 'technical').single();
+      setPermLevel(perm?.permission_level || 1);
+    };
+    loadPerm();
+  }, [user?.id, tenantId]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -64,11 +84,21 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
     return () => supabase.removeChannel(channel);
   }, [tenantId]);
 
+  // Permission filter — giống desktop TodayJobsDashboard:
+  // Admin/Manager see all, others see only created_by or technicians.includes
+  const filteredJobs = useMemo(() => {
+    if (permLevel >= 3) return jobs; // Admin/Manager
+    return jobs.filter(j =>
+      j.created_by === user?.name ||
+      (j.technicians || []).includes(user?.name)
+    );
+  }, [jobs, permLevel, user?.name]);
+
   const categorized = useMemo(() => {
     const vnNow = new Date(currentTime.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const currentTotalMinutes = vnNow.getHours() * 60 + vnNow.getMinutes();
 
-    return jobs.map(job => {
+    return filteredJobs.map(job => {
       const [jobHour, jobMinute] = (job.scheduled_time || '09:00').split(':').map(Number);
       const jobTotalMinutes = jobHour * 60 + jobMinute;
       const diffMinutes = jobTotalMinutes - currentTotalMinutes;
@@ -96,7 +126,7 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
 
       return { ...job, category, countdown, diffMinutes };
     }).filter(Boolean);
-  }, [jobs, currentTime]);
+  }, [filteredJobs, currentTime]);
 
   const groups = useMemo(() => {
     const map = {};
@@ -109,6 +139,7 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
 
   const completedCount = groups.completed.length;
   const totalActive = categorized.length - completedCount;
+  const totalRevenue = categorized.reduce((sum, j) => sum + (j.customer_payment || 0), 0);
 
   if (loading) return <div className="mjob-empty">Đang tải...</div>;
 
@@ -128,6 +159,12 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
           <span className="mjob-stat-num">{completedCount}</span>
           <span className="mjob-stat-label">Hoàn thành</span>
         </div>
+        {totalRevenue > 0 && (
+          <div className="mjob-today-stat mjob-stat-revenue">
+            <span className="mjob-stat-num">{formatMoney(totalRevenue)}</span>
+            <span className="mjob-stat-label">Doanh thu</span>
+          </div>
+        )}
       </div>
 
       {categorized.length === 0 ? (

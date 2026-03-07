@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../../supabaseClient';
 import { formatMoney } from '../../utils/formatters';
 
@@ -8,40 +8,64 @@ export default function JobWages({ user, tenantId }) {
   const [jobs, setJobs] = useState([]);
   const [bonuses, setBonuses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [permLevel, setPermLevel] = useState(1);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const [showBonusModal, setShowBonusModal] = useState(false);
+  const [selectedTech, setSelectedTech] = useState(null);
+  const [bonusInput, setBonusInput] = useState('');
+  const [bonusNote, setBonusNote] = useState('');
+  const [savingBonus, setSavingBonus] = useState(false);
+
+  // Permission gate — giống desktop TechnicianWagesView: requires permLevel >= 2
+  useEffect(() => {
+    if (!user?.id || !tenantId) return;
+    const loadPerm = async () => {
+      const { data: u } = await supabase
+        .from('users').select('role')
+        .eq('id', user.id).single();
+      if (u?.role === 'Admin' || u?.role === 'admin' || u?.role === 'Manager') {
+        setPermLevel(3);
+        return;
+      }
+      const { data: perm } = await supabase
+        .from('user_permissions').select('permission_level')
+        .eq('user_id', user.id).eq('module', 'technical').single();
+      setPermLevel(perm?.permission_level || 1);
+    };
+    loadPerm();
+  }, [user?.id, tenantId]);
 
   // Load completed jobs + bonuses
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!tenantId) return;
-    const load = async () => {
-      setLoading(true);
-      const monthStart = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-      const lastDay = new Date(selectedYear, selectedMonth, 0);
-      const monthEnd = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+    setLoading(true);
+    const monthStart = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(selectedYear, selectedMonth, 0);
+    const monthEnd = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
-      const [jobsRes, bonusRes] = await Promise.all([
-        supabase
-          .from('technical_jobs')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .eq('status', 'Hoàn thành')
-          .gte('scheduled_date', monthStart)
-          .lte('scheduled_date', monthEnd),
-        supabase
-          .from('technician_bonuses')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .eq('month', selectedMonth)
-          .eq('year', selectedYear),
-      ]);
+    const [jobsRes, bonusRes] = await Promise.all([
+      supabase
+        .from('technical_jobs')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'Hoàn thành')
+        .gte('scheduled_date', monthStart)
+        .lte('scheduled_date', monthEnd),
+      supabase
+        .from('technician_bonuses')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('month', selectedMonth)
+        .eq('year', selectedYear),
+    ]);
 
-      if (!jobsRes.error) setJobs(jobsRes.data || []);
-      if (!bonusRes.error) setBonuses(bonusRes.data || []);
-      setLoading(false);
-    };
-    load();
+    if (!jobsRes.error) setJobs(jobsRes.data || []);
+    if (!bonusRes.error) setBonuses(bonusRes.data || []);
+    setLoading(false);
   }, [tenantId, selectedMonth, selectedYear]);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   // Bonus lookup
   const bonusMap = useMemo(() => {
@@ -99,6 +123,55 @@ export default function JobWages({ user, tenantId }) {
 
   const [expandedTech, setExpandedTech] = useState(null);
 
+  // Open bonus modal — giống desktop TechnicianWagesView
+  const handleOpenBonus = (tech) => {
+    setSelectedTech(tech);
+    setBonusInput(String(tech.bonus || 0));
+    setBonusNote(tech.bonusNote || '');
+    setShowBonusModal(true);
+  };
+
+  // Save bonus — giống desktop saveBonus
+  const handleSaveBonus = async () => {
+    if (!selectedTech || permLevel < 3) return;
+    setSavingBonus(true);
+    try {
+      const bonusData = {
+        tenant_id: tenantId,
+        technician_name: selectedTech.name,
+        month: selectedMonth,
+        year: selectedYear,
+        bonus_amount: parseFloat(bonusInput) || 0,
+        note: bonusNote,
+        created_by: user?.name,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Check if record exists
+      const existingBonus = bonuses.find(b => b.technician_name === selectedTech.name);
+      if (existingBonus) {
+        const { error } = await supabase
+          .from('technician_bonuses')
+          .update({ bonus_amount: bonusData.bonus_amount, note: bonusData.note, updated_at: bonusData.updated_at })
+          .eq('id', existingBonus.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('technician_bonuses')
+          .insert([bonusData]);
+        if (error) throw error;
+      }
+
+      setShowBonusModal(false);
+      await loadData();
+    } catch (err) {
+      console.error('Error saving bonus:', err);
+      alert('Lỗi khi lưu: ' + err.message);
+    } finally {
+      setSavingBonus(false);
+    }
+  };
+
   const handleMonthChange = (delta) => {
     let m = selectedMonth + delta;
     let y = selectedYear;
@@ -113,6 +186,17 @@ export default function JobWages({ user, tenantId }) {
   });
 
   if (loading) return <div className="mjob-empty">Đang tải...</div>;
+
+  // Permission gate — giống desktop: requires permLevel >= 2
+  if (permLevel < 2) {
+    return (
+      <div className="mjob-empty">
+        <div style={{ fontSize: '3rem', marginBottom: 8 }}>🔒</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Quyền truy cập hạn chế</div>
+        <div style={{ color: '#666' }}>Bạn không có quyền xem thông tin tiền công.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="mjob-wages">
@@ -175,11 +259,17 @@ export default function JobWages({ user, tenantId }) {
                     <span>Lương cơ bản ({tech.jobCount} × {formatMoney(BASE_WAGE)})</span>
                     <span>{formatMoney(tech.baseWage)}</span>
                   </div>
-                  {tech.bonus > 0 && (
-                    <div className="mjob-wages-row mjob-text-green">
-                      <span>Thưởng {tech.bonusNote ? `(${tech.bonusNote})` : ''}</span>
-                      <span>+{formatMoney(tech.bonus)}</span>
-                    </div>
+                  <div className="mjob-wages-row mjob-text-green">
+                    <span>Thưởng {tech.bonusNote ? `(${tech.bonusNote})` : ''}</span>
+                    <span>{tech.bonus > 0 ? `+${formatMoney(tech.bonus)}` : formatMoney(0)}</span>
+                  </div>
+                  {permLevel >= 3 && (
+                    <button
+                      className="mjob-bonus-edit-btn"
+                      onClick={(e) => { e.stopPropagation(); handleOpenBonus(tech); }}
+                    >
+                      ✏️ Sửa thưởng
+                    </button>
                   )}
                   <div className="mjob-wages-row mjob-wages-row-total">
                     <span>Tổng</span>
@@ -202,6 +292,41 @@ export default function JobWages({ user, tenantId }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+      {/* Bonus Modal — giống desktop TechnicianWagesView */}
+      {showBonusModal && selectedTech && (
+        <div className="mjob-modal-overlay" onClick={() => setShowBonusModal(false)}>
+          <div className="mjob-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="mjob-modal-header">
+              💰 Công Phát Sinh - {selectedTech.name}
+            </div>
+            <div className="mjob-modal-body">
+              <label className="mjob-modal-label">Số tiền (VNĐ)</label>
+              <input
+                type="number"
+                value={bonusInput}
+                onChange={e => setBonusInput(e.target.value)}
+                className="mjob-modal-input"
+                placeholder="VD: 500000"
+                inputMode="numeric"
+              />
+              <label className="mjob-modal-label">Ghi chú</label>
+              <textarea
+                value={bonusNote}
+                onChange={e => setBonusNote(e.target.value)}
+                className="mjob-modal-input mjob-modal-textarea"
+                rows={2}
+                placeholder="VD: Công việc khó, đi xa, OT..."
+              />
+            </div>
+            <div className="mjob-modal-footer">
+              <button className="mjob-modal-btn-cancel" onClick={() => setShowBonusModal(false)}>Hủy</button>
+              <button className="mjob-modal-btn-save" onClick={handleSaveBonus} disabled={savingBonus}>
+                {savingBonus ? '...' : '💾 Lưu'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

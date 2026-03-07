@@ -8,9 +8,29 @@ export default function JobSummary({ user, tenantId }) {
   const [jobs, setJobs] = useState([]);
   const [bonuses, setBonuses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [permLevel, setPermLevel] = useState(1);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [expandedJob, setExpandedJob] = useState(null);
+
+  // Permission gate — giống desktop: wages/summary cần permLevel >= 2
+  useEffect(() => {
+    if (!user?.id || !tenantId) return;
+    const loadPerm = async () => {
+      const { data: u } = await supabase
+        .from('users').select('role')
+        .eq('id', user.id).single();
+      if (u?.role === 'Admin' || u?.role === 'admin' || u?.role === 'Manager') {
+        setPermLevel(3);
+        return;
+      }
+      const { data: perm } = await supabase
+        .from('user_permissions').select('permission_level')
+        .eq('user_id', user.id).eq('module', 'technical').single();
+      setPermLevel(perm?.permission_level || 1);
+    };
+    loadPerm();
+  }, [user?.id, tenantId]);
 
   // Load data
   useEffect(() => {
@@ -105,6 +125,17 @@ export default function JobSummary({ user, tenantId }) {
   });
 
   if (loading) return <div className="mjob-empty">Đang tải...</div>;
+
+  // Permission gate — giống desktop: requires permLevel >= 2
+  if (permLevel < 2) {
+    return (
+      <div className="mjob-empty">
+        <div style={{ fontSize: '3rem', marginBottom: 8 }}>🔒</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Quyền truy cập hạn chế</div>
+        <div style={{ color: '#666' }}>Bạn không có quyền xem tổng hợp.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="mjob-summary">

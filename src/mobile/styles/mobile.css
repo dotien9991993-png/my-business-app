@@ -4475,6 +4475,61 @@
 .mjob-text-green { color: #15803d !important; }
 .mjob-text-red { color: #dc2626 !important; }
 
+/* Revenue stat in Today */
+.mjob-stat-revenue .mjob-stat-num { font-size: 14px; }
+
+/* Locked card in Calendar */
+.mjob-card-locked {
+  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 8px; opacity: 0.8;
+}
+.mjob-card-locked .mjob-card-row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.mjob-card-locked .mjob-card-title { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.mjob-card-locked .mjob-card-techs { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
+.mjob-card-locked-msg { font-size: 12px; color: #9ca3af; font-style: italic; }
+
+/* Bonus edit button in Wages */
+.mjob-bonus-edit-btn {
+  display: block; width: 100%; margin-top: 6px; padding: 6px 0;
+  border: 1px dashed #d97706; border-radius: 6px; background: #fffbeb;
+  color: #d97706; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.mjob-bonus-edit-btn:active { background: #fef3c7; }
+
+/* Modal (reusable) */
+.mjob-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px;
+}
+.mjob-modal-content {
+  background: white; border-radius: 16px; width: 100%; max-width: 360px;
+  overflow: hidden;
+}
+.mjob-modal-header {
+  padding: 16px; font-size: 16px; font-weight: 700; border-bottom: 1px solid #e5e7eb;
+}
+.mjob-modal-body { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.mjob-modal-label { font-size: 13px; font-weight: 600; color: #374151; }
+.mjob-modal-input {
+  width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+  font-size: 15px; outline: none; box-sizing: border-box;
+}
+.mjob-modal-input:focus { border-color: #3b82f6; }
+.mjob-modal-textarea { resize: vertical; font-family: inherit; }
+.mjob-modal-footer {
+  display: flex; gap: 10px; padding: 16px; border-top: 1px solid #e5e7eb; background: #f9fafb;
+}
+.mjob-modal-btn-cancel {
+  flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db;
+  background: white; font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.mjob-modal-btn-save {
+  flex: 1; padding: 10px; border-radius: 8px; border: none;
+  background: #d97706; color: white; font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.mjob-modal-btn-save:disabled { opacity: 0.5; }
+.mjob-modal-btn-save:active { background: #b45309; }
+
 /* ===== Job Detail v2 ===== */
 
 .mjob-d2-page {

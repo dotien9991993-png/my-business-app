@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { supabase } from '../../../supabaseClient';
-import { formatMoney } from '../../utils/formatters';
+import { formatMoney, getTodayVN, getNowISO } from '../../utils/formatters';
 
 const STATUS_CONFIG = {
   'Chờ XN': { label: 'Chờ xác nhận', icon: '⏳', gradient: 'linear-gradient(135deg, #f97316, #ea580c)' },
@@ -14,7 +14,8 @@ const STATUS_FLOW = {
   'Đang làm': [{ status: 'Hoàn thành', label: 'Hoàn thành công việc', icon: '✅', cls: 'mjob-btn-green' }],
 };
 
-const EXPENSE_CATEGORIES = ['Tiền xe', 'Vật tư', 'Chi phí ăn uống', 'Chi phí khác'];
+// Giống desktop JobDetailModal expenseCategories
+const EXPENSE_CATEGORIES = ['Tiền xe', 'Chi phí ăn uống', 'Chi phí khác'];
 
 const formatDateTime = (dateStr) => {
   if (!dateStr) return '';
@@ -64,9 +65,126 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
     if (data) setJob(data);
   }, [job.id]);
 
+  // Auto-receipt creation — giống desktop JobDetailModal
+  const createReceiptFromJob = useCallback(async (jobData) => {
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const receiptNumber = `PT-${dateStr}-${randomNum}`;
+      const paymentAmount = jobData.customer_payment || 0;
+
+      const { error } = await supabase
+        .from('receipts_payments')
+        .insert([{
+          tenant_id: tenantId,
+          receipt_number: receiptNumber,
+          type: 'thu',
+          amount: paymentAmount,
+          description: `Thu tiền lắp đặt: ${jobData.title}`,
+          category: 'Lắp đặt tại nhà khách',
+          status: 'pending',
+          receipt_date: getTodayVN(),
+          note: `Khách hàng: ${jobData.customer_name || ''}\nSĐT: ${jobData.customer_phone || ''}\nĐịa chỉ: ${jobData.address || ''}\nKỹ thuật viên: ${(jobData.technicians || []).join(', ')}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
+          created_by: user?.name,
+          created_at: getNowISO(),
+        }]);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error('Error creating receipt:', err);
+      return false;
+    }
+  }, [tenantId, user?.name]);
+
+  const createExpenseReceiptsFromJob = useCallback(async (jobData) => {
+    const jobExpenses = jobData.expenses || [];
+    if (jobExpenses.length === 0) return true;
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const receiptNumber = `PC-${dateStr}-${randomNum}`;
+      const totalExpense = jobExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+      const expenseDetails = jobExpenses.map(e => `- ${e.category}${e.description ? ': ' + e.description : ''}: ${formatMoney(e.amount)}`).join('\n');
+
+      const { error } = await supabase
+        .from('receipts_payments')
+        .insert([{
+          tenant_id: tenantId,
+          receipt_number: receiptNumber,
+          type: 'chi',
+          amount: totalExpense,
+          description: `Chi phí lắp đặt: ${jobData.title}`,
+          category: 'Vận chuyển',
+          status: 'pending',
+          receipt_date: getTodayVN(),
+          note: `Chi tiết chi phí:\n${expenseDetails}\n\nKhách hàng: ${jobData.customer_name || ''}\nKỹ thuật viên: ${(jobData.technicians || []).join(', ')}\n\n[Tự động tạo từ công việc kỹ thuật - Chờ duyệt]`,
+          created_by: user?.name,
+          created_at: getNowISO(),
+        }]);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error('Error creating expense receipt:', err);
+      return false;
+    }
+  }, [tenantId, user?.name]);
+
   const handleStatusUpdate = async (newStatus) => {
     setStatusUpdating(true);
     try {
+      // Khi hoàn thành — giống desktop: confirm + auto-receipt
+      if (newStatus === 'Hoàn thành') {
+        // Load latest job data
+        const { data: freshJob } = await supabase
+          .from('technical_jobs').select('*').eq('id', job.id).single();
+        const latestJob = freshJob || job;
+
+        const hasPayment = (latestJob.customer_payment || 0) > 0;
+        const hasExpenses = (latestJob.expenses || []).length > 0;
+        const totalExp = (latestJob.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+        const paymentAmount = latestJob.customer_payment || 0;
+
+        let confirmMsg = 'Xác nhận hoàn thành công việc?\n\n';
+        if (hasPayment) confirmMsg += `Thu khách: ${formatMoney(paymentAmount)}\n`;
+        if (hasExpenses) confirmMsg += `Chi phí: ${formatMoney(totalExp)}\n`;
+
+        if (hasPayment || hasExpenses) {
+          confirmMsg += `\nTạo phiếu tự động?\n`;
+          if (hasPayment) confirmMsg += `• Phiếu thu: ${formatMoney(paymentAmount)}\n`;
+          if (hasExpenses) confirmMsg += `• Phiếu chi: ${formatMoney(totalExp)}\n`;
+          confirmMsg += `\nOK → Tạo phiếu | Cancel → Không tạo`;
+
+          const createReceipts = window.confirm(confirmMsg);
+
+          const { error } = await supabase
+            .from('technical_jobs')
+            .update({ status: newStatus, updated_at: new Date().toISOString() })
+            .eq('id', job.id);
+          if (error) throw error;
+
+          if (createReceipts) {
+            if (hasPayment) await createReceiptFromJob(latestJob);
+            if (hasExpenses) await createExpenseReceiptsFromJob(latestJob);
+          }
+
+          setJob(prev => ({ ...prev, status: newStatus }));
+          setStatusUpdating(false);
+          return;
+        } else {
+          if (!window.confirm('Xác nhận hoàn thành công việc?\n\nSau khi hoàn thành, không thể thay đổi trạng thái.')) {
+            setStatusUpdating(false);
+            return;
+          }
+        }
+      } else if (newStatus === 'Hủy') {
+        if (!window.confirm('Xác nhận hủy công việc?\n\nSau khi hủy, không thể thay đổi trạng thái.')) {
+          setStatusUpdating(false);
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('technical_jobs')
         .update({ status: newStatus, updated_at: new Date().toISOString() })

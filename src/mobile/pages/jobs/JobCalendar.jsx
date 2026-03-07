@@ -13,6 +13,26 @@ export default function JobCalendar({ user, tenantId, onOpenJob }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [permLevel, setPermLevel] = useState(1);
+
+  // Load permission
+  useEffect(() => {
+    if (!user?.id || !tenantId) return;
+    const loadPerm = async () => {
+      const { data: u } = await supabase
+        .from('users').select('role')
+        .eq('id', user.id).single();
+      if (u?.role === 'Admin' || u?.role === 'admin' || u?.role === 'Manager') {
+        setPermLevel(3);
+        return;
+      }
+      const { data: perm } = await supabase
+        .from('user_permissions').select('permission_level')
+        .eq('user_id', user.id).eq('module', 'technical').single();
+      setPermLevel(perm?.permission_level || 1);
+    };
+    loadPerm();
+  }, [user?.id, tenantId]);
 
   // Load jobs for current month
   useEffect(() => {
@@ -171,9 +191,32 @@ export default function JobCalendar({ user, tenantId, onOpenJob }) {
           {selectedJobs.length === 0 ? (
             <div className="mjob-empty">Không có việc ngày này</div>
           ) : (
-            selectedJobs.map(job => (
-              <JobCard key={job.id} job={job} onClick={() => onOpenJob(job)} />
-            ))
+            selectedJobs.map(job => {
+              // Permission hiding — giống desktop TechnicalCalendarView:
+              // Admin/Manager/creator/technician can see details, others see 🔒
+              const isAdmin = permLevel >= 3;
+              const isCreator = job.created_by === user?.name;
+              const isTechnician = (job.technicians || []).includes(user?.name);
+              const canViewDetail = isAdmin || isCreator || isTechnician;
+
+              if (!canViewDetail) {
+                return (
+                  <div key={job.id} className="mjob-card mjob-card-locked">
+                    <div className="mjob-card-row1">
+                      <span className="mjob-card-time">🕐 {(job.scheduled_time || '').slice(0, 5)}</span>
+                      <span className={`mjob-badge2 ${job.status === 'Hoàn thành' ? 'mjob-badge-done' : job.status === 'Đang làm' ? 'mjob-badge-active' : 'mjob-badge-pending'}`}>
+                        {job.status || 'Chờ XN'}
+                      </span>
+                    </div>
+                    <div className="mjob-card-title">{job.title}</div>
+                    <div className="mjob-card-techs">🔧 {(job.technicians || []).join(', ') || 'Chưa phân công'}</div>
+                    <div className="mjob-card-locked-msg">🔒 Xem chi tiết: liên hệ người tạo/KTV</div>
+                  </div>
+                );
+              }
+
+              return <JobCard key={job.id} job={job} onClick={() => onOpenJob(job)} />;
+            })
           )}
         </div>
       )}
