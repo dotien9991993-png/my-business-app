@@ -44,7 +44,7 @@ const renderContent = (content) => {
   });
 };
 
-export default function ChatMessage({ message, isOwn, isGroup, isContinued, replyMessage, onContextMenu, onImagePreview }) {
+export default function ChatMessage({ message, isOwn, isGroup, isContinued, replyMessage, allUsers, onContextMenu, onImagePreview }) {
   const longPressTimer = useRef(null);
   const touchMoved = useRef(false);
 
@@ -85,6 +85,9 @@ export default function ChatMessage({ message, isOwn, isGroup, isContinued, repl
     );
   }
 
+  // Lookup sender's CURRENT avatar from allUsers (primary), fallback to denormalized sender_avatar
+  const senderUser = isGroup && !isOwn ? (allUsers || []).find(u => u.id === message.sender_id) : null;
+  const senderAvatarUrl = senderUser?.avatar_url || message.sender_avatar || null;
   const senderColor = getAvatarColor(message.sender_name);
   const showAvatar = isGroup && !isOwn && !isContinued;
   const showSender = isGroup && !isOwn && !isContinued;
@@ -101,9 +104,9 @@ export default function ChatMessage({ message, isOwn, isGroup, isContinued, repl
       {isGroup && !isOwn && (
         <div className="mchat-msg-avatar-col">
           {showAvatar ? (
-            <div className="mchat-msg-avatar" style={{ background: message.sender_avatar ? 'transparent' : senderColor }}>
-              {message.sender_avatar
-                ? <img src={message.sender_avatar} alt="" className="mchat-msg-avatar-img" />
+            <div className="mchat-msg-avatar" style={{ background: senderAvatarUrl ? 'transparent' : senderColor }}>
+              {senderAvatarUrl
+                ? <img src={senderAvatarUrl} alt="" className="mchat-msg-avatar-img" />
                 : message.sender_name?.charAt(0)?.toUpperCase()
               }
             </div>

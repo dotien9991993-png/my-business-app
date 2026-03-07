@@ -186,6 +186,7 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
                   isGroup={isGroup}
                   isContinued={isContinued}
                   replyMessage={msg.reply_to ? replyLookup[msg.reply_to] : null}
+                  allUsers={allUsers}
                   onContextMenu={handleContextMenu}
                   onImagePreview={setImagePreview}
                 />
