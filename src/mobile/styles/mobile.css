@@ -3002,7 +3002,7 @@
   color: white;
   flex-shrink: 0;
   background: #166534;
-  border-radius: 0 0 20px 20px;
+  border-radius: 20px;
 }
 .mmed-d2-back {
   display: flex;
