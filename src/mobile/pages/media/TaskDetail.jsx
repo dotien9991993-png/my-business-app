@@ -138,7 +138,7 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
   return (
     <div className="mobile-page mmed-detail-page">
       {/* Gradient Header */}
-      <div className="mmed-d2-header" style={{ background: status.gradient }}>
+      <div className="mmed-d2-header">
         <button className="mmed-d2-back" onClick={onBack}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
           Quay lại
