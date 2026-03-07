@@ -101,8 +101,11 @@ export default function ChatMessage({ message, isOwn, isGroup, isContinued, repl
       {isGroup && !isOwn && (
         <div className="mchat-msg-avatar-col">
           {showAvatar ? (
-            <div className="mchat-msg-avatar" style={{ background: senderColor }}>
-              {message.sender_name?.charAt(0)?.toUpperCase()}
+            <div className="mchat-msg-avatar" style={{ background: message.sender_avatar ? 'transparent' : senderColor }}>
+              {message.sender_avatar
+                ? <img src={message.sender_avatar} alt="" className="mchat-msg-avatar-img" />
+                : message.sender_name?.charAt(0)?.toUpperCase()
+              }
             </div>
           ) : (
             <div className="mchat-msg-avatar-spacer" />
