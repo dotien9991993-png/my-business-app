@@ -3,6 +3,7 @@ import { useMobileAttendance } from '../../hooks/useMobileAttendance';
 import CheckInButton from './CheckInButton';
 import AttendanceCalendar from './AttendanceCalendar';
 import AttendanceHistory from './AttendanceHistory';
+import AttendanceSummary from './AttendanceSummary';
 
 export default function AttendancePage({ user, tenantId, onBack }) {
   const {
@@ -13,7 +14,8 @@ export default function AttendancePage({ user, tenantId, onBack }) {
   } = useMobileAttendance(user?.id, user?.name, tenantId);
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [tab, setTab] = useState('today'); // 'today' | 'calendar' | 'history'
+  const [tab, setTab] = useState('today'); // 'today' | 'calendar' | 'history' | 'summary'
+  const isAdmin = user?.role === 'Admin' || user?.role === 'admin' || user?.role === 'Manager';
 
   // Live clock
   useEffect(() => {
@@ -93,6 +95,14 @@ export default function AttendancePage({ user, tenantId, onBack }) {
         >
           Lịch sử
         </button>
+        {isAdmin && (
+          <button
+            className={`matt-tab ${tab === 'summary' ? 'active' : ''}`}
+            onClick={() => setTab('summary')}
+          >
+            Tổng hợp
+          </button>
+        )}
       </div>
 
       {tab === 'today' && (
@@ -163,6 +173,10 @@ export default function AttendancePage({ user, tenantId, onBack }) {
           extractTime={extractTime}
           calculateHours={calculateHours}
         />
+      )}
+
+      {tab === 'summary' && isAdmin && (
+        <AttendanceSummary tenantId={tenantId} />
       )}
     </div>
   );
