@@ -1,15 +1,12 @@
 import React from 'react';
+import logo from '../assets/logo.png';
 
-export default function MobileHeader({ tenant }) {
+export default function MobileHeader() {
   return (
     <header className="mobile-header">
       <div className="mobile-header-content">
-        {tenant?.logo_url ? (
-          <img src={tenant.logo_url} alt="" className="mobile-header-logo" />
-        ) : (
-          <span className="mobile-header-logo-fallback">🎵</span>
-        )}
-        <span className="mobile-header-title">{tenant?.name || 'Hoàng Nam Audio'}</span>
+        <img src={logo} alt="Logo" className="mobile-header-logo" />
+        <span className="mobile-header-title">HOÀNG NAM AUDIO</span>
       </div>
     </header>
   );
