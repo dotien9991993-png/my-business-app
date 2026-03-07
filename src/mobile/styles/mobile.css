@@ -2837,11 +2837,12 @@
 .mmed-empty p { margin: 4px 0 0; }
 
 /* ── Task Card (v2) ── */
+/* ── Compact Task Card ── */
 .mmed-card {
   background: white;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin: 0 16px 10px;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 0 16px 8px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -2853,50 +2854,33 @@
   background: #fafafa;
 }
 
-.mmed-card-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
-  margin-bottom: 8px;
-  line-height: 1.3;
-}
-
-/* Stats row */
-.mmed-stats-row {
+/* Row 1: title + badge */
+.mmed-c-row1 {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  color: #6b7280;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 4px;
 }
-.mmed-stat-item {
-  display: flex;
-  align-items: center;
-  gap: 3px;
+.mmed-c-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-/* Revenue */
-.mmed-revenue {
-  font-size: 15px;
-  font-weight: 700;
-  color: #16a34a;
-  margin-bottom: 8px;
-}
-
-/* Badges */
-.mmed-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
+/* Badge (shared with detail) */
 .mmed-badge {
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .mmed-badge-done { background: #16a34a; color: white; }
 .mmed-badge-content { background: #2563eb; color: white; }
@@ -2905,120 +2889,60 @@
 .mmed-badge-performance { background: #f3f4f6; color: #6b7280; }
 .mmed-badge-guide { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
 
-/* Info row */
-.mmed-card-info {
-  font-size: 13px;
+/* Row 2: meta */
+.mmed-c-meta {
+  font-size: 12px;
   color: #6b7280;
-  margin-bottom: 4px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  margin-bottom: 6px;
 }
-.mmed-card-info-dot {
+.mmed-c-dot {
   color: #d1d5db;
 }
 
-/* ── Progress Steps ── */
-.mmed-progress {
-  margin: 10px 0;
-  padding: 10px 12px;
-  background: #f9fafb;
-  border-radius: 8px;
-}
-.mmed-progress-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #6b7280;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.mmed-progress-steps {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-.mmed-step {
+/* Row 3: bottom bar — steps + stats + copy */
+.mmed-c-bottom {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  border: none;
-  background: #f3f4f6;
-  color: #9ca3af;
-  -webkit-tap-highlight-color: transparent;
-}
-.mmed-step:disabled { cursor: default; }
-.mmed-step-done {
-  background: #dcfce7;
-  color: #15803d;
-  font-weight: 500;
-}
-.mmed-step-pending {
-  background: #f3f4f6;
-  color: #9ca3af;
-}
-.mmed-step-active {
-  background: #dbeafe;
-  color: #1d4ed8;
-  font-weight: 600;
-  border: 1.5px solid #93c5fd;
-}
-
-/* Platform / Product chips */
-.mmed-products {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.mmed-product-chip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #15803d;
-  font-weight: 500;
-}
-
-/* Action buttons */
-.mmed-actions {
-  display: flex;
   gap: 8px;
-  margin-top: 10px;
 }
-.mmed-action-btn {
-  flex: 1;
+.mmed-c-steps {
+  display: flex;
+  gap: 2px;
+}
+.mmed-c-step {
+  font-size: 14px;
+  opacity: 0.25;
+}
+.mmed-c-step.done {
+  opacity: 1;
+}
+.mmed-c-stats {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-left: auto;
+}
+.mmed-c-copy {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
+  flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
 }
-.mmed-btn-copy {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1.5px solid #bfdbfe;
+.mmed-c-copy:active {
+  background: #f3f4f6;
 }
-.mmed-btn-copy:active { background: #dbeafe; }
-.mmed-btn-view {
-  background: #dc2626;
-  color: white;
-}
-.mmed-btn-view:active { background: #b91c1c; }
 
 /* ── Toast ── */
 .mmed-toast {
