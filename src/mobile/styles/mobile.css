@@ -2037,6 +2037,141 @@
   color: #3b82f6;
 }
 
+/* Status-specific hstatus */
+.matt-hstatus.late { color: #f97316; }
+.matt-hstatus.early_leave { color: #eab308; }
+.matt-hstatus.absent { color: #ef4444; }
+.matt-hstatus.annual_leave { color: #3b82f6; }
+.matt-hstatus.sick { color: #a855f7; }
+.matt-hstatus.present { color: #22c55e; }
+
+/* No employee warning */
+.matt-no-employee {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: white;
+  border-radius: 16px;
+  margin-top: 16px;
+}
+
+/* Shift info in clock */
+.matt-shift-info {
+  font-size: 13px;
+  margin-top: 8px;
+  opacity: 0.85;
+  background: rgba(255,255,255,0.15);
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+/* Work shift info bar */
+.matt-work-shift-info {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* Late badge */
+.matt-late-badge {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* Status late variant */
+.matt-status.late {
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+/* Calendar status colors */
+.matt-cal-day.late {
+  background: #ffedd5;
+}
+.matt-cal-day.late .matt-cal-hours {
+  color: #ea580c;
+}
+
+.matt-cal-day.early {
+  background: #fef9c3;
+}
+.matt-cal-day.early .matt-cal-hours {
+  color: #ca8a04;
+}
+
+.matt-cal-day.absent {
+  background: #fee2e2;
+}
+.matt-cal-day.absent .matt-cal-hours {
+  color: #dc2626;
+}
+
+.matt-cal-day.leave {
+  background: #dbeafe;
+}
+.matt-cal-day.leave .matt-cal-hours {
+  color: #2563eb;
+}
+
+.matt-cal-day.sick {
+  background: #f3e8ff;
+}
+.matt-cal-day.sick .matt-cal-hours {
+  color: #9333ea;
+}
+
+.matt-cal-day.halfday {
+  background: #f3f4f6;
+}
+.matt-cal-day.halfday .matt-cal-hours {
+  color: #6b7280;
+}
+
+/* Legend dots for new statuses */
+.matt-dot.late-dot {
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+}
+.matt-dot.early-dot {
+  background: #fef9c3;
+  border: 1px solid #fde047;
+}
+.matt-dot.absent-dot {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+}
+.matt-dot.leave-dot {
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+}
+
+/* Stats grid 6 cards (3x2) */
+.matt-stats-grid.matt-stats-6 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* Warning stat number (late/early) */
+.matt-stat-num.matt-stat-warn {
+  color: #ea580c;
+}
+
 /* ===== ORDERS MODULE ===== */
 
 .mord-page {

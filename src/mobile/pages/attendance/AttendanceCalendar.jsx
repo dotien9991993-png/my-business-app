@@ -4,17 +4,32 @@ const WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 const MONTH_NAMES = ['', 'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
   'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
 
+// Status priority: late > early_leave > present > absent > annual_leave > sick > half_day > holiday
+const STATUS_PRIORITY = { late: 8, early_leave: 7, present: 6, absent: 5, annual_leave: 4, sick: 3, half_day: 2, holiday: 1 };
+
+// Tính giờ giữa 2 ISO timestamps
+const calcHours = (checkIn, checkOut) => {
+  if (!checkIn || !checkOut) return 0;
+  return Math.round((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60) * 10) / 10;
+};
+
 export default function AttendanceCalendar({ monthRecords, monthSummary, viewMonth, onChangeMonth }) {
   const { year, month } = viewMonth;
 
-  // Group records by date
+  // Group records by date, pick highest priority status
   const dateMap = useMemo(() => {
     const map = {};
     (monthRecords || []).forEach(r => {
-      if (!map[r.date]) map[r.date] = { shifts: 0, hours: 0, hasCheckOut: true };
-      map[r.date].shifts++;
-      map[r.date].hours += parseFloat(r.work_hours || 0);
-      if (!r.check_out) map[r.date].hasCheckOut = false;
+      if (!map[r.date]) map[r.date] = { status: null, hours: 0, hasOpen: false, statusPriority: 0 };
+      const hours = calcHours(r.check_in, r.check_out);
+      map[r.date].hours += hours;
+      if (!r.check_out && r.check_in) map[r.date].hasOpen = true;
+
+      const prio = STATUS_PRIORITY[r.status] || 0;
+      if (prio > map[r.date].statusPriority) {
+        map[r.date].status = r.status;
+        map[r.date].statusPriority = prio;
+      }
     });
     return map;
   }, [monthRecords]);
@@ -25,9 +40,7 @@ export default function AttendanceCalendar({ monthRecords, monthSummary, viewMon
     const daysInMonth = new Date(year, month, 0).getDate();
     const days = [];
 
-    // Padding
     for (let i = 0; i < firstDay; i++) days.push(null);
-    // Days
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       days.push({ day: d, date: dateStr, record: dateMap[dateStr] || null });
@@ -52,8 +65,16 @@ export default function AttendanceCalendar({ monthRecords, monthSummary, viewMon
     let cls = 'matt-cal-day';
     if (item.date === today) cls += ' today';
     if (item.record) {
-      if (item.record.hasCheckOut) cls += ' worked';
-      else cls += ' working';
+      const st = item.record.status;
+      if (st === 'late') cls += ' late';
+      else if (st === 'early_leave') cls += ' early';
+      else if (st === 'absent') cls += ' absent';
+      else if (st === 'annual_leave') cls += ' leave';
+      else if (st === 'sick') cls += ' sick';
+      else if (st === 'half_day' || st === 'holiday') cls += ' halfday';
+      else if (st === 'present') cls += ' worked';
+      else if (item.record.hasOpen) cls += ' working';
+      else cls += ' worked';
     }
     return cls;
   };
@@ -70,12 +91,16 @@ export default function AttendanceCalendar({ monthRecords, monthSummary, viewMon
       {/* Summary */}
       <div className="matt-cal-summary">
         <div className="matt-cal-stat">
-          <span className="matt-cal-stat-num">{monthSummary.totalDays}</span>
+          <span className="matt-cal-stat-num">{monthSummary.workDays}</span>
           <span className="matt-cal-stat-label">Ngày công</span>
         </div>
         <div className="matt-cal-stat">
           <span className="matt-cal-stat-num">{monthSummary.totalHours}</span>
           <span className="matt-cal-stat-label">Tổng giờ</span>
+        </div>
+        <div className="matt-cal-stat">
+          <span className="matt-cal-stat-num">{monthSummary.lateDays}</span>
+          <span className="matt-cal-stat-label">Đi trễ</span>
         </div>
       </div>
 
@@ -93,7 +118,7 @@ export default function AttendanceCalendar({ monthRecords, monthSummary, viewMon
                 <span className="matt-cal-daynum">{item.day}</span>
                 {item.record && (
                   <span className="matt-cal-hours">
-                    {item.record.hours > 0 ? `${item.record.hours.toFixed(1)}h` : '•'}
+                    {item.record.hours > 0 ? `${item.record.hours.toFixed(1)}h` : item.record.hasOpen ? '•' : ''}
                   </span>
                 )}
               </>
@@ -105,8 +130,11 @@ export default function AttendanceCalendar({ monthRecords, monthSummary, viewMon
       {/* Legend */}
       <div className="matt-cal-legend">
         <span><i className="matt-dot worked" /> Đủ công</span>
-        <span><i className="matt-dot working" /> Đang làm</span>
-        <span><i className="matt-dot today-dot" /> Hôm nay</span>
+        <span><i className="matt-dot late-dot" /> Trễ</span>
+        <span><i className="matt-dot early-dot" /> Sớm</span>
+        <span><i className="matt-dot absent-dot" /> Vắng</span>
+        <span><i className="matt-dot leave-dot" /> Phép</span>
+        <span><i className="matt-dot today-dot" /> Nay</span>
       </div>
     </div>
   );
