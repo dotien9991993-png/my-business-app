@@ -2,6 +2,9 @@ import React, { useState, useCallback } from 'react';
 import { useMobileMedia } from '../../hooks/useMobileMedia';
 import TaskCard from './TaskCard';
 import TaskDetail from './TaskDetail';
+import MobileSkeleton from '../../components/MobileSkeleton';
+import MobilePullRefresh from '../../components/MobilePullRefresh';
+import { haptic } from '../../utils/haptics';
 
 const STATUS_TABS = [
   { id: 'all', label: 'Tất cả' },
@@ -56,6 +59,7 @@ export default function MediaPage({ user, tenantId }) {
 
     try {
       await updateTaskStatus(taskId, newStatus);
+      haptic();
       showToast('Đã cập nhật tiến trình!');
       refresh();
     } catch (err) {
@@ -88,6 +92,7 @@ export default function MediaPage({ user, tenantId }) {
   }
 
   return (
+    <MobilePullRefresh onRefresh={refresh}>
     <div className="mobile-page mmed-page">
       {/* Tab: My tasks / All tasks */}
       {permLevel >= 2 && (
@@ -141,10 +146,7 @@ export default function MediaPage({ user, tenantId }) {
       {/* Task list */}
       <div className="mmed-list">
         {loading ? (
-          <div className="mmed-empty">
-            <div className="mmed-spinner" />
-            <p>Đang tải...</p>
-          </div>
+          <MobileSkeleton type="card" count={3} />
         ) : tasks.length === 0 ? (
           <div className="mmed-empty">
             <p>{filters.tab === 'my' ? 'Bạn chưa có task nào' : 'Không có task nào'}</p>
@@ -165,5 +167,6 @@ export default function MediaPage({ user, tenantId }) {
       {/* Toast */}
       {toast && <div className="mmed-toast">{toast}</div>}
     </div>
+    </MobilePullRefresh>
   );
 }

@@ -4,6 +4,7 @@ import CheckInButton from './CheckInButton';
 import AttendanceCalendar from './AttendanceCalendar';
 import AttendanceHistory from './AttendanceHistory';
 import AttendanceSummary from './AttendanceSummary';
+import MobileSkeleton from '../../components/MobileSkeleton';
 
 export default function AttendancePage({ user, tenantId, onBack }) {
   const {
@@ -35,7 +36,7 @@ export default function AttendancePage({ user, tenantId, onBack }) {
   if (loading) {
     return (
       <div className="mobile-page">
-        <div className="matt-loading">Đang tải...</div>
+        <MobileSkeleton type="list" count={4} />
       </div>
     );
   }

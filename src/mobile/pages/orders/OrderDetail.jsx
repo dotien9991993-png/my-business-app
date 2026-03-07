@@ -60,7 +60,7 @@ export default function OrderDetail({ order, detail, loading, onBack }) {
   const remaining = (order.total_amount || 0) - (order.paid_amount || 0);
 
   return (
-    <div className="mobile-page mord-detail-page">
+    <div className="mobile-page mord-detail-page mpage-slide-in">
       {/* Header */}
       <div className="mord-detail-header">
         <button className="mord-detail-back" onClick={onBack}>← Quay lại</button>

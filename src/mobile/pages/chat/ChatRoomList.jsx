@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import MobileSkeleton from '../../components/MobileSkeleton';
 
 const AVATAR_COLORS = [
   '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c',
@@ -129,10 +130,7 @@ export default function ChatRoomList({
       {/* Room list */}
       <div className="mchat-rooms">
         {loading ? (
-          <div className="mchat-empty-state">
-            <div className="mchat-spinner" />
-            <p>Đang tải...</p>
-          </div>
+          <MobileSkeleton type="list" count={5} />
         ) : processedRooms.length === 0 ? (
           <div className="mchat-empty-state">
             <div className="mchat-empty-icon">

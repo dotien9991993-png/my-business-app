@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMobileAuth } from './hooks/useMobileAuth';
 import MobileHeader from './components/MobileHeader';
 import MobileBottomNav from './components/MobileBottomNav';
 import MobileLoading from './components/MobileLoading';
+import MobileErrorBoundary from './components/MobileErrorBoundary';
 import ChatPage from './pages/chat/ChatPage';
 import OrdersPage from './pages/orders/OrdersPage';
 import MediaPage from './pages/media/MediaPage';
@@ -16,14 +17,26 @@ export default function MobileApp() {
   const { currentUser, tenant, tenantId, loading, login, logout } = useMobileAuth();
   const [activeTab, setActiveTab] = useState('chat');
   const [hideNav, setHideNav] = useState(false);
-  // Sub-page navigation from MorePage
-  const [subPage, setSubPage] = useState(null); // 'attendance' | 'salary' | 'profile' | null
+  const [subPage, setSubPage] = useState(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+
+  // Offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   if (loading) return <MobileLoading text="Đang tải..." />;
 
@@ -89,13 +102,11 @@ export default function MobileApp() {
     );
   }
 
-  // Handle tab change — reset subPage when switching tabs
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setSubPage(null);
   };
 
-  // Navigate to sub-page from MorePage
   const handleMoreNavigate = (page) => {
     setSubPage(page);
   };
@@ -104,17 +115,15 @@ export default function MobileApp() {
     setSubPage(null);
   };
 
-  // Main app
   const renderPage = () => {
-    // Sub-pages from MorePage
     if (activeTab === 'more' && subPage) {
       switch (subPage) {
         case 'attendance':
-          return <AttendancePage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} />;
+          return <MobileErrorBoundary><AttendancePage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} /></MobileErrorBoundary>;
         case 'salary':
-          return <ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="salary" onBack={handleSubPageBack} />;
+          return <MobileErrorBoundary><ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="salary" onBack={handleSubPageBack} /></MobileErrorBoundary>;
         case 'profile':
-          return <ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="info" onBack={handleSubPageBack} />;
+          return <MobileErrorBoundary><ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="info" onBack={handleSubPageBack} /></MobileErrorBoundary>;
         default:
           break;
       }
@@ -122,15 +131,15 @@ export default function MobileApp() {
 
     switch (activeTab) {
       case 'chat':
-        return <ChatPage user={currentUser} tenantId={tenantId} onHideNav={setHideNav} />;
+        return <MobileErrorBoundary><ChatPage user={currentUser} tenantId={tenantId} onHideNav={setHideNav} /></MobileErrorBoundary>;
       case 'orders':
-        return <OrdersPage user={currentUser} tenantId={tenantId} />;
+        return <MobileErrorBoundary><OrdersPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
       case 'media':
-        return <MediaPage user={currentUser} tenantId={tenantId} />;
+        return <MobileErrorBoundary><MediaPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
       case 'jobs':
-        return <JobsPage user={currentUser} tenantId={tenantId} />;
+        return <MobileErrorBoundary><JobsPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
       case 'more':
-        return <MorePage user={currentUser} tenantId={tenantId} onNavigate={handleMoreNavigate} onLogout={logout} />;
+        return <MobileErrorBoundary><MorePage user={currentUser} tenantId={tenantId} onNavigate={handleMoreNavigate} onLogout={logout} /></MobileErrorBoundary>;
       default:
         return null;
     }
@@ -138,6 +147,11 @@ export default function MobileApp() {
 
   return (
     <div className="mobile-app">
+      {!isOnline && (
+        <div className="mobile-offline-bar">
+          📡 Không có kết nối mạng
+        </div>
+      )}
       {!hideNav && <MobileHeader user={currentUser} tenantId={tenantId} onNavigate={(page) => { setActiveTab('more'); setSubPage(page); }} />}
       <main className="mobile-content">
         {renderPage()}

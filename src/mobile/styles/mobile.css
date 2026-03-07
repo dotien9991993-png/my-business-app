@@ -5390,3 +5390,136 @@
   color: #9ca3af;
   margin-top: 4px;
 }
+
+/* === PULL TO REFRESH === */
+.mpr-container {
+  position: relative;
+}
+
+.mpr-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.mpr-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid #e5e7eb;
+  border-top-color: #15803d;
+  border-radius: 50%;
+  animation: mpr-spin 0.8s linear infinite;
+}
+
+@keyframes mpr-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mpr-arrow {
+  font-size: 18px;
+  color: #9ca3af;
+  transition: transform 0.2s ease;
+  display: block;
+}
+
+/* === SKELETON LOADING === */
+.mskel-wrap {
+  padding: 12px 16px;
+}
+
+.mskel-line {
+  height: 10px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  animation: mskel-pulse 1.5s ease-in-out infinite;
+}
+
+.mskel-line-short {
+  height: 8px;
+}
+
+@keyframes mskel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.mskel-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 10px;
+}
+
+.mskel-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.mskel-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  flex-shrink: 0;
+  animation: mskel-pulse 1.5s ease-in-out infinite;
+}
+
+.mskel-lines {
+  flex: 1;
+}
+
+.mskel-chat {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mskel-chat-right {
+  flex-direction: row-reverse;
+}
+
+.mskel-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  flex-shrink: 0;
+  animation: mskel-pulse 1.5s ease-in-out infinite;
+}
+
+.mskel-bubble {
+  height: 32px;
+  border-radius: 16px;
+  background: #e5e7eb;
+  animation: mskel-pulse 1.5s ease-in-out infinite;
+}
+
+/* === OFFLINE BAR === */
+.mobile-offline-bar {
+  background: #fef3c7;
+  color: #92400e;
+  text-align: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* === PAGE TRANSITIONS === */
+.mpage-slide-in {
+  animation: mpage-slide-in 0.25s ease-out;
+}
+
+@keyframes mpage-slide-in {
+  from { transform: translateX(30%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

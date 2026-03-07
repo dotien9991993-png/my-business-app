@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { uploadImage } from '../../../utils/cloudinaryUpload';
 import { supabase } from '../../../supabaseClient';
+import { haptic } from '../../utils/haptics';
 
 export default function ChatInput({ room, user, members, onSend, replyTo, onCancelReply }) {
   const [text, setText] = useState('');
@@ -75,6 +76,7 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     setSending(true);
     try {
       await onSend(text.trim(), 'text', null, replyTo, mentionedIds, user);
+      haptic();
       setText('');
       onCancelReply?.();
       // Reset textarea height

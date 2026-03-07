@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { haptic } from '../../utils/haptics';
 
 const STATUS_ICONS = {
   present: '✅',
@@ -28,10 +29,12 @@ export default function CheckInButton({
     try {
       if (action === 'in') {
         const data = await onCheckIn();
+        haptic('heavy');
         const lateText = data._isLate ? ' (Đi trễ)' : '';
         setMessage({ type: 'success', text: `Check-in Ca ${data.shift_number || todayRecords.length} lúc ${data._extractedTime}!${lateText}` });
       } else {
         const data = await onCheckOut();
+        haptic('heavy');
         const earlyText = data._isEarly ? ' (Về sớm)' : '';
         const hours = data._hours || calculateHours(data.check_in, data.check_out);
         setMessage({ type: 'success', text: `Check-out thành công! ${hours}h${earlyText}` });

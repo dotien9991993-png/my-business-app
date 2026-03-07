@@ -238,7 +238,7 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
   };
 
   return (
-    <div className="mobile-page mjob-d2-page">
+    <div className="mobile-page mjob-d2-page mpage-slide-in">
       {/* Gradient Header */}
       <div className="mjob-d2-header" style={{ background: status.gradient }}>
         <button className="mjob-d2-back" onClick={onBack}>← Quay lại</button>

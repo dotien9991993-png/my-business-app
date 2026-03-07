@@ -136,7 +136,7 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
   const hasStats = totalStats.views > 0 || totalStats.likes > 0;
 
   return (
-    <div className="mobile-page mmed-detail-page">
+    <div className="mobile-page mmed-detail-page mpage-slide-in">
       {/* Gradient Header */}
       <div className="mmed-d2-header">
         <button className="mmed-d2-back" onClick={onBack}>

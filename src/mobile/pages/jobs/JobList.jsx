@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../../supabaseClient';
 import JobCard from './JobCard';
+import MobileSkeleton from '../../components/MobileSkeleton';
+import MobilePullRefresh from '../../components/MobilePullRefresh';
 
 const STATUS_OPTIONS = [
   { id: 'all', label: 'Tất cả' },
@@ -121,6 +123,7 @@ export default function JobList({ user, tenantId, onOpenJob }) {
   })();
 
   return (
+    <MobilePullRefresh onRefresh={loadJobs}>
     <div className="mjob-list-view">
       {/* View tabs: My / All */}
       {permLevel >= 2 && (
@@ -170,7 +173,7 @@ export default function JobList({ user, tenantId, onOpenJob }) {
       {/* Job list */}
       <div className="mjob-list">
         {loading ? (
-          <div className="mjob-empty">Đang tải...</div>
+          <MobileSkeleton type="card" count={3} />
         ) : filtered.length === 0 ? (
           <div className="mjob-empty">Không có công việc nào</div>
         ) : (
@@ -180,5 +183,6 @@ export default function JobList({ user, tenantId, onOpenJob }) {
         )}
       </div>
     </div>
+    </MobilePullRefresh>
   );
 }

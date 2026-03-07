@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useMobileOrders } from '../../hooks/useMobileOrders';
 import OrderCard from './OrderCard';
 import OrderDetail from './OrderDetail';
+import MobileSkeleton from '../../components/MobileSkeleton';
+import MobilePullRefresh from '../../components/MobilePullRefresh';
 
 const STATUS_TABS = [
   { id: 'all', label: 'Tất cả' },
@@ -71,6 +73,7 @@ export default function OrdersPage({ user, tenantId }) {
   }
 
   return (
+    <MobilePullRefresh onRefresh={refresh}>
     <div className="mobile-page mord-page">
       {/* Search */}
       <div className="mord-search">
@@ -115,7 +118,7 @@ export default function OrdersPage({ user, tenantId }) {
       {/* Order list */}
       <div className="mord-list">
         {loading ? (
-          <div className="mord-empty">Đang tải...</div>
+          <MobileSkeleton type="card" count={3} />
         ) : orders.length === 0 ? (
           <div className="mord-empty">
             {filters.search ? 'Không tìm thấy đơn hàng' : 'Chưa có đơn hàng'}
@@ -131,5 +134,6 @@ export default function OrdersPage({ user, tenantId }) {
         )}
       </div>
     </div>
+    </MobilePullRefresh>
   );
 }

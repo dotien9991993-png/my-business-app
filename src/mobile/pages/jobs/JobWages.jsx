@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../../supabaseClient';
 import { formatMoney } from '../../utils/formatters';
+import MobileSkeleton from '../../components/MobileSkeleton';
 
 const BASE_WAGE = 200000; // 200,000đ per completed job
 
@@ -185,7 +186,7 @@ export default function JobWages({ user, tenantId }) {
     month: 'long', year: 'numeric',
   });
 
-  if (loading) return <div className="mjob-empty">Đang tải...</div>;
+  if (loading) return <MobileSkeleton type="card" count={3} />;
 
   // Permission gate — giống desktop: requires permLevel >= 2
   if (permLevel < 2) {

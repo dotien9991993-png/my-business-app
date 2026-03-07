@@ -3,6 +3,7 @@ import { useMobileChatConversation } from '../../hooks/useMobileChat';
 import ChatHeader from './ChatHeader';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
+import MobileSkeleton from '../../components/MobileSkeleton';
 
 const formatDateSeparator = (dateStr) => {
   const d = new Date(dateStr);
@@ -110,7 +111,11 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
   }, []);
 
   const handleDelete = async (msg) => {
-    await deleteMessage(msg.id);
+    try {
+      await deleteMessage(msg.id);
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
     setContextMenu(null);
   };
 
@@ -149,10 +154,7 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
         )}
 
         {loading ? (
-          <div className="mchat-center-text">
-            <div className="mchat-spinner" />
-            <p>Đang tải tin nhắn...</p>
-          </div>
+          <MobileSkeleton type="chat" count={8} />
         ) : messages.length === 0 ? (
           <div className="mchat-center-text">
             <div className="mchat-empty-conv-icon">

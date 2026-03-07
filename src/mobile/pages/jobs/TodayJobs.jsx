@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../../supabaseClient';
 import { formatMoney, getTodayVN } from '../../utils/formatters';
+import MobileSkeleton from '../../components/MobileSkeleton';
 
 const getMapUrl = (address) => {
   if (!address) return null;
@@ -141,7 +142,7 @@ export default function TodayJobs({ user, tenantId, onOpenJob }) {
   const totalActive = categorized.length - completedCount;
   const totalRevenue = categorized.reduce((sum, j) => sum + (j.customer_payment || 0), 0);
 
-  if (loading) return <div className="mjob-empty">Đang tải...</div>;
+  if (loading) return <MobileSkeleton type="card" count={3} />;
 
   return (
     <div className="mjob-today">
