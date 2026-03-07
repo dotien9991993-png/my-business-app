@@ -138,7 +138,7 @@ export default function MobileApp() {
 
   return (
     <div className="mobile-app">
-      {!hideNav && <MobileHeader tenant={tenant} />}
+      {!hideNav && <MobileHeader user={currentUser} tenantId={tenantId} />}
       <main className="mobile-content">
         {renderPage()}
       </main>
