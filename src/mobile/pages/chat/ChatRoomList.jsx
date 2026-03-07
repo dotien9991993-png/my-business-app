@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import MobileSkeleton from '../../components/MobileSkeleton';
 
 const AVATAR_COLORS = [
@@ -43,6 +43,12 @@ export default function ChatRoomList({
 }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+
+  // Debug: log avatar data
+  if (allUsers?.length) {
+    const withAv = allUsers.filter(u => u.avatar_url);
+    console.log('[ChatRoomList] allUsers:', allUsers.length, 'with avatar:', withAv.length, withAv.map(u => u.name));
+  }
 
   const processedRooms = useMemo(() => {
     return rooms
@@ -154,7 +160,7 @@ export default function ChatRoomList({
               >
                 <div className="mchat-room-avatar" style={{ background: room.displayAvatar ? 'transparent' : (room.isGroup ? '#4a90d9' : avatarColor) }}>
                   {room.displayAvatar
-                    ? <img src={room.displayAvatar} alt="" />
+                    ? <img src={room.displayAvatar} alt="" onError={e => { e.target.style.display='none'; e.target.parentElement.style.background=avatarColor; e.target.parentElement.textContent=room.displayName?.charAt(0)?.toUpperCase(); }} />
                     : room.isGroup
                       ? <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
                       : room.displayName?.charAt(0)?.toUpperCase()

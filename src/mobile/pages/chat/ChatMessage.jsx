@@ -106,7 +106,7 @@ export default function ChatMessage({ message, isOwn, isGroup, isContinued, repl
           {showAvatar ? (
             <div className="mchat-msg-avatar" style={{ background: senderAvatarUrl ? 'transparent' : senderColor }}>
               {senderAvatarUrl
-                ? <img src={senderAvatarUrl} alt="" className="mchat-msg-avatar-img" />
+                ? <img src={senderAvatarUrl} alt="" className="mchat-msg-avatar-img" onError={e => { e.target.style.display='none'; e.target.parentElement.style.background=senderColor; e.target.parentElement.textContent=message.sender_name?.charAt(0)?.toUpperCase(); }} />
                 : message.sender_name?.charAt(0)?.toUpperCase()
               }
             </div>

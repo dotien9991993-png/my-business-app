@@ -66,6 +66,28 @@ export function useMobileChat(userId, tenantId) {
 
       setRooms(roomsWithMembers);
 
+      // Sync stale chat_room_members.user_avatar from users table
+      // (rooms created before user set avatar have user_avatar = null)
+      try {
+        const { data: freshUsers } = await supabase
+          .from('users')
+          .select('id, avatar_url')
+          .eq('tenant_id', tenantId)
+          .not('avatar_url', 'is', null);
+
+        if (freshUsers?.length) {
+          const avatarMap = {};
+          freshUsers.forEach(u => { avatarMap[u.id] = u.avatar_url; });
+          const staleMembers = (allMembers || []).filter(m => !m.user_avatar && avatarMap[m.user_id]);
+          for (const m of staleMembers) {
+            supabase.from('chat_room_members')
+              .update({ user_avatar: avatarMap[m.user_id] })
+              .eq('id', m.id)
+              .then(() => {});
+          }
+        }
+      } catch (_) { /* non-critical */ }
+
       // Count unread
       const counts = {};
       for (const roomId of roomIds) {
