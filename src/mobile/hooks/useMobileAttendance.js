@@ -65,16 +65,18 @@ export function useMobileAttendance(userId, userName, tenantId) {
 
     const loadEmployeeAndShift = async () => {
       try {
-        // Copy ĐÚNG logic desktop: tìm employee bằng full_name
-        // Desktop: employees.find(e => e.full_name === currentUser.name && e.status === 'active')
-        const { data: emp } = await supabase
+        // Copy ĐÚNG logic desktop: select('*') rồi filter client-side
+        // Desktop DataContext: supabase.from('employees').select('*').eq('tenant_id', tenant.id)
+        // Desktop HrmAttendanceView: employees.find(e => e.full_name === currentUser.name && e.status === 'active')
+        const { data: allEmployees } = await supabase
           .from('employees')
-          .select('id, full_name, shift_id, status')
-          .eq('tenant_id', tenantId)
-          .eq('full_name', userName)
-          .eq('status', 'active')
-          .limit(1)
-          .maybeSingle();
+          .select('*')
+          .eq('tenant_id', tenantId);
+
+        // Filter client-side giống desktop
+        const emp = (allEmployees || []).find(e =>
+          e.full_name === userName && e.status === 'active'
+        );
 
         if (emp) {
           setEmployeeId(emp.id);
