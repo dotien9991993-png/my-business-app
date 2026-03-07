@@ -5,8 +5,7 @@ export default function MobileHeader() {
   return (
     <header className="mobile-header">
       <div className="mobile-header-content">
-        <img src={logo} alt="Logo" className="mobile-header-logo" />
-        <span className="mobile-header-title">HOÀNG NAM AUDIO</span>
+        <img src={logo} alt="Hoàng Nam Audio" className="mobile-header-logo" />
       </div>
     </header>
   );
