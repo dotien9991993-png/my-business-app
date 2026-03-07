@@ -177,47 +177,107 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
           </div>
         )}
 
-        {/* Info section */}
-        <div className="mmed-d2-section">
-          <h3 className="mmed-d2-section-title">📋 Thông tin</h3>
-          <div className="mmed-d2-info-card">
-            <div className="mmed-d2-info-row">
-              <span className="mmed-d2-info-label">Người phụ trách</span>
-              <span className="mmed-d2-info-val">👤 {task.assignee || '—'}</span>
-            </div>
-            <div className="mmed-d2-info-row">
-              <span className="mmed-d2-info-label">Team</span>
-              <span className="mmed-d2-info-val">🏢 {task.team || '—'}</span>
-            </div>
-            {task.due_date && (
-              <div className="mmed-d2-info-row">
-                <span className="mmed-d2-info-label">Deadline</span>
-                <span className={`mmed-d2-info-val ${overdue ? 'mmed-text-red' : ''}`}>
-                  📅 {formatDate(task.due_date)}
-                </span>
+        {/* 1. Links đã đăng — ưu tiên cao nhất */}
+        {postLinks.length > 0 && (
+          <div className="mmed-links-section">
+            <div className="mmed-d2-section-title">🔗 Links đã đăng ({postLinks.length})</div>
+            {postLinks.map((link, i) => (
+              <div key={i} className="mmed-link-item">
+                <div className="mmed-link-header">
+                  <span className="mmed-link-platform">
+                    {PLATFORM_ICONS[link.type] || '🔗'} {link.type || 'Link'}
+                  </span>
+                  <button className="mmed-copy-btn" onClick={() => handleCopy(link.url)}>
+                    📋 Copy
+                  </button>
+                </div>
+                <a className="mmed-link-url" href={link.url} target="_blank" rel="noopener noreferrer">
+                  {link.url}
+                </a>
+                {link.stats && (
+                  <div className="mmed-link-stats">
+                    <span>👁 {formatNum(link.stats.views || 0)}</span>
+                    <span> · ❤️ {formatNum(link.stats.likes || 0)}</span>
+                    <span> · 💬 {formatNum(link.stats.comments || 0)}</span>
+                    <span> · 🔄 {formatNum(link.stats.shares || 0)}</span>
+                  </div>
+                )}
               </div>
-            )}
-            {task.platform && (
-              <div className="mmed-d2-info-row">
-                <span className="mmed-d2-info-label">Nền tảng</span>
-                <span className="mmed-d2-info-val">📱 {task.platform}</span>
-              </div>
-            )}
-            {task.media_salary > 0 && (
-              <div className="mmed-d2-info-row">
-                <span className="mmed-d2-info-label">Thù lao</span>
-                <span className="mmed-d2-info-val mmed-text-green">💰 {formatMoney(task.media_salary)}</span>
-              </div>
-            )}
-            {task.priority && task.priority !== 'Trung bình' && (
-              <div className="mmed-d2-info-row">
-                <span className="mmed-d2-info-label">Ưu tiên</span>
-                <span className={`mmed-d2-info-val ${task.priority === 'Cao' ? 'mmed-text-red' : ''}`}>
-                  {task.priority === 'Cao' ? '🔴' : '🟢'} {task.priority}
-                </span>
-              </div>
-            )}
+            ))}
           </div>
+        )}
+
+        {/* 2. Tiến trình sản xuất — grid 2 cột */}
+        <div className="mmed-d2-section">
+          <h3 className="mmed-d2-section-title">📊 Tiến trình sản xuất</h3>
+          <div className="mmed-progress-grid">
+            {timelineSteps.map((step, i) => (
+              <button
+                key={i}
+                className={`mmed-progress-item ${step.done ? 'mmed-step-done' : 'mmed-step-pending'}`}
+                onClick={() => { if (!step.done && i > 0) handleTimelineAction(i); }}
+                disabled={statusUpdating || step.done || (i > 1 && !timelineSteps[i - 1].done)}
+              >
+                <span className="mmed-step-icon">{step.icon}</span>
+                <span className="mmed-step-label">{step.label}</span>
+                {step.time && <span className="mmed-step-time">{formatDateTime(step.time)}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Thông tin — compact grid 2×2 */}
+        <div className="mmed-info-compact">
+          <div className="mmed-info-item">
+            <span>👤</span>
+            <div>
+              <div className="mmed-info-label">Phụ trách</div>
+              <div className="mmed-info-value">{task.assignee || '—'}</div>
+            </div>
+          </div>
+          <div className="mmed-info-item">
+            <span>🏢</span>
+            <div>
+              <div className="mmed-info-label">Team</div>
+              <div className="mmed-info-value">{task.team || '—'}</div>
+            </div>
+          </div>
+          {task.due_date && (
+            <div className="mmed-info-item">
+              <span>📅</span>
+              <div>
+                <div className="mmed-info-label">Deadline</div>
+                <div className={`mmed-info-value ${overdue ? 'mmed-text-red' : ''}`}>{formatDate(task.due_date)}</div>
+              </div>
+            </div>
+          )}
+          {task.platform && (
+            <div className="mmed-info-item">
+              <span>📱</span>
+              <div>
+                <div className="mmed-info-label">Nền tảng</div>
+                <div className="mmed-info-value">{task.platform}</div>
+              </div>
+            </div>
+          )}
+          {task.media_salary > 0 && (
+            <div className="mmed-info-item">
+              <span>💰</span>
+              <div>
+                <div className="mmed-info-label">Thù lao</div>
+                <div className="mmed-info-value mmed-text-green">{formatMoney(task.media_salary)}</div>
+              </div>
+            </div>
+          )}
+          {task.priority && task.priority !== 'Trung bình' && (
+            <div className="mmed-info-item">
+              <span>{task.priority === 'Cao' ? '🔴' : '🟢'}</span>
+              <div>
+                <div className="mmed-info-label">Ưu tiên</div>
+                <div className={`mmed-info-value ${task.priority === 'Cao' ? 'mmed-text-red' : ''}`}>{task.priority}</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Description */}
@@ -228,120 +288,27 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
           </div>
         )}
 
-        {/* Team (Ekip) - full details */}
+        {/* 4. Ekip — inline chips */}
         {(cameramen.length > 0 || editors.length > 0 || actors.length > 0) && (
           <div className="mmed-d2-section">
             <h3 className="mmed-d2-section-title">👥 Ekip</h3>
-            <div className="mmed-d2-info-card">
-              {cameramen.length > 0 && (
-                <div className="mmed-d2-crew-row">
-                  <span className="mmed-d2-crew-label">🎬 Quay phim</span>
-                  <div className="mmed-d2-crew-tags">
-                    {cameramen.map((c, i) => (
-                      <span key={i} className={`mmed-d2-crew-tag ${c === userName ? 'mmed-d2-crew-me' : ''}`}>
-                        {c} {c === userName ? '(Bạn)' : ''}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {editors.length > 0 && (
-                <div className="mmed-d2-crew-row">
-                  <span className="mmed-d2-crew-label">✂️ Dựng phim</span>
-                  <div className="mmed-d2-crew-tags">
-                    {editors.map((e, i) => (
-                      <span key={i} className={`mmed-d2-crew-tag ${e === userName ? 'mmed-d2-crew-me' : ''}`}>
-                        {e} {e === userName ? '(Bạn)' : ''}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {actors.length > 0 && (
-                <div className="mmed-d2-crew-row">
-                  <span className="mmed-d2-crew-label">🎭 Diễn viên</span>
-                  <div className="mmed-d2-crew-tags">
-                    {actors.map((a, i) => (
-                      <span key={i} className="mmed-d2-crew-tag">{a}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Production timeline */}
-        <div className="mmed-d2-section">
-          <button className="mmed-d2-section-title mmed-d2-section-toggle" onClick={() => toggleSection('timeline')}>
-            📊 Tiến trình sản xuất
-            <span>{expandSection.timeline ? '▼' : '▶'}</span>
-          </button>
-          {expandSection.timeline && (
-            <div className="mmed-d2-timeline">
-              {timelineSteps.map((step, i) => (
-                <div key={i} className={`mmed-d2-tl-step ${step.done ? 'done' : ''}`}>
-                  <div className="mmed-d2-tl-left">
-                    <div className={`mmed-d2-tl-dot ${step.done ? 'done' : ''}`}>
-                      {step.icon}
-                    </div>
-                    {i < timelineSteps.length - 1 && (
-                      <div className={`mmed-d2-tl-line ${step.done ? 'done' : ''}`} />
-                    )}
-                  </div>
-                  <div className="mmed-d2-tl-info">
-                    <span className="mmed-d2-tl-label">{step.label}</span>
-                    {step.time && <span className="mmed-d2-tl-time">{formatDateTime(step.time)}</span>}
-                    {!step.done && i > 0 && (
-                      <button
-                        className="mmed-d2-tl-btn"
-                        onClick={() => handleTimelineAction(i)}
-                        disabled={statusUpdating || (i > 1 && !timelineSteps[i - 1].done)}
-                      >
-                        {statusUpdating ? '...' : 'Đánh dấu hoàn thành'}
-                      </button>
-                    )}
-                  </div>
-                </div>
+            <div className="mmed-ekip">
+              {cameramen.map((c, i) => (
+                <span key={`cam-${i}`} className={`mmed-ekip-chip ${c === userName ? 'mmed-ekip-me' : ''}`}>
+                  🎬 {c} {c === userName ? '(Bạn)' : ''} <span className="mmed-ekip-role">(Quay)</span>
+                </span>
+              ))}
+              {editors.map((e, i) => (
+                <span key={`edit-${i}`} className={`mmed-ekip-chip ${e === userName ? 'mmed-ekip-me' : ''}`}>
+                  ✂️ {e} {e === userName ? '(Bạn)' : ''} <span className="mmed-ekip-role">(Dựng)</span>
+                </span>
+              ))}
+              {actors.map((a, i) => (
+                <span key={`act-${i}`} className="mmed-ekip-chip">
+                  🎭 {a} <span className="mmed-ekip-role">(Diễn)</span>
+                </span>
               ))}
             </div>
-          )}
-        </div>
-
-        {/* Post links */}
-        {postLinks.length > 0 && (
-          <div className="mmed-d2-section">
-            <button className="mmed-d2-section-title mmed-d2-section-toggle" onClick={() => toggleSection('links')}>
-              🔗 Links đã đăng ({postLinks.length})
-              <span>{expandSection.links ? '▼' : '▶'}</span>
-            </button>
-            {expandSection.links && (
-              <div className="mmed-d2-links">
-                {postLinks.map((link, i) => (
-                  <div key={i} className="mmed-d2-link-card">
-                    <div className="mmed-d2-link-top">
-                      <span className="mmed-d2-link-type">
-                        {PLATFORM_ICONS[link.type] || '🔗'} {link.type || 'Link'}
-                      </span>
-                      <button className="mmed-d2-link-copy" onClick={() => handleCopy(link.url)}>
-                        📋 Copy
-                      </button>
-                    </div>
-                    <a className="mmed-d2-link-url" href={link.url} target="_blank" rel="noopener noreferrer">
-                      {link.url?.length > 60 ? link.url.slice(0, 60) + '...' : link.url}
-                    </a>
-                    {link.stats && (
-                      <div className="mmed-d2-link-stats">
-                        <span>👁 {formatNum(link.stats.views || 0)}</span>
-                        <span>❤️ {formatNum(link.stats.likes || 0)}</span>
-                        <span>💬 {formatNum(link.stats.comments || 0)}</span>
-                        <span>🔄 {formatNum(link.stats.shares || 0)}</span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
