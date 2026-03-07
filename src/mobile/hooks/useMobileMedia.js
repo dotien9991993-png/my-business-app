@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 20;
 
 export function useMobileMedia(userId, userName, tenantId) {
   const [tasks, setTasks] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
     tab: 'my',        // 'my' | 'all'
-    status: 'all',    // all | Nháp | Chờ Duyệt | Đã Duyệt | Đang Làm | Hoàn Thành
+    status: 'all',    // all | Đang Làm | Chờ Duyệt | Đã Duyệt | Hoàn Thành
     dateRange: 'all', // all | today | week | month | overdue
   });
   const [permLevel, setPermLevel] = useState(1);
@@ -17,7 +20,6 @@ export function useMobileMedia(userId, userName, tenantId) {
   useEffect(() => {
     if (!userId || !tenantId) return;
     const loadPerm = async () => {
-      // Check if admin
       const { data: user } = await supabase
         .from('users')
         .select('role')
@@ -27,7 +29,6 @@ export function useMobileMedia(userId, userName, tenantId) {
         setPermLevel(3);
         return;
       }
-      // Check user_permissions
       const { data: perm } = await supabase
         .from('user_permissions')
         .select('permission_level')
@@ -39,17 +40,30 @@ export function useMobileMedia(userId, userName, tenantId) {
     loadPerm();
   }, [userId, tenantId]);
 
-  // Load tasks
-  const loadTasks = useCallback(async () => {
-    if (!tenantId) return;
-    setLoading(true);
+  // Load tasks — server-side filter + pagination
+  const loadTasks = useCallback(async (pg = 1, append = false) => {
+    if (!tenantId || !userName) return;
+    if (pg === 1) setLoading(true);
+    else setLoadingMore(true);
+
     try {
+      const from = (pg - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
       let query = supabase
         .from('tasks')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE);
+        .range(from, to);
+
+      // Server-side "Của tôi" filter — check all roles user can have
+      if (filters.tab === 'my' || permLevel < 2) {
+        const safe = userName.replace(/"/g, '\\"');
+        query = query.or(
+          `assignee.eq."${safe}",created_by.eq."${safe}",cameramen.cs.["${safe}"],editors.cs.["${safe}"],actors.cs.["${safe}"]`
+        );
+      }
 
       // Status filter
       if (filters.status !== 'all') {
@@ -86,31 +100,25 @@ export function useMobileMedia(userId, userName, tenantId) {
         }
       }
 
-      const { data, error } = await query;
+      const { data, count, error } = await query;
       if (error) throw error;
 
-      let result = data || [];
-
-      // Filter by permission / tab
-      if (filters.tab === 'my' || permLevel < 2) {
-        result = result.filter(t =>
-          t.assignee === userName ||
-          t.created_by === userName ||
-          (t.cameramen || []).includes(userName) ||
-          (t.editors || []).includes(userName) ||
-          (t.actors || []).includes(userName)
-        );
+      if (append) {
+        setTasks(prev => [...prev, ...(data || [])]);
+      } else {
+        setTasks(data || []);
       }
-
-      setTasks(result);
+      setTotalCount(count || 0);
+      setPage(pg);
     } catch (err) {
       console.error('Error loading tasks:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [tenantId, userName, permLevel, filters]);
 
-  useEffect(() => { loadTasks(); }, [loadTasks]);
+  useEffect(() => { loadTasks(1); }, [loadTasks]);
 
   // Realtime subscription
   useEffect(() => {
@@ -121,7 +129,7 @@ export function useMobileMedia(userId, userName, tenantId) {
         schema: 'public',
         table: 'tasks',
         filter: `tenant_id=eq.${tenantId}`,
-      }, () => { loadTasks(); })
+      }, () => { loadTasks(1); })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -175,14 +183,23 @@ export function useMobileMedia(userId, userName, tenantId) {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
+  const hasMore = page * PAGE_SIZE < totalCount;
+  const loadMore = useCallback(() => {
+    if (hasMore && !loadingMore) loadTasks(page + 1, true);
+  }, [hasMore, loadingMore, page, loadTasks]);
+
   return {
     tasks,
+    totalCount,
     loading,
+    loadingMore,
     filters,
     permLevel,
     updateFilter,
     updateTaskStatus,
     addComment,
-    refresh: loadTasks,
+    hasMore,
+    loadMore,
+    refresh: () => loadTasks(1),
   };
 }

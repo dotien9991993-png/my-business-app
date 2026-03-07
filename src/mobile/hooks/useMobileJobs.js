@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 20;
 
 export function useMobileJobs(userId, userName, tenantId) {
   const [jobs, setJobs] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
     tab: 'my',          // 'my' | 'all'
     status: 'all',      // all | Chờ XN | Đang làm | Hoàn thành | Hủy
@@ -37,18 +40,29 @@ export function useMobileJobs(userId, userName, tenantId) {
     loadPerm();
   }, [userId, tenantId]);
 
-  // Load jobs
-  const loadJobs = useCallback(async () => {
-    if (!tenantId) return;
-    setLoading(true);
+  // Load jobs — server-side filter + pagination
+  const loadJobs = useCallback(async (pg = 1, append = false) => {
+    if (!tenantId || !userName) return;
+    if (pg === 1) setLoading(true);
+    else setLoadingMore(true);
+
     try {
+      const from = (pg - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
       let query = supabase
         .from('technical_jobs')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('tenant_id', tenantId)
         .order('scheduled_date', { ascending: false })
         .order('scheduled_time', { ascending: false })
-        .limit(PAGE_SIZE);
+        .range(from, to);
+
+      // Server-side "Của tôi" filter
+      if (filters.tab === 'my' || permLevel < 2) {
+        const safe = userName.replace(/"/g, '\\"');
+        query = query.or(`created_by.eq."${safe}",technicians.cs.["${safe}"]`);
+      }
 
       // Status filter
       if (filters.status !== 'all') {
@@ -78,28 +92,25 @@ export function useMobileJobs(userId, userName, tenantId) {
         }
       }
 
-      const { data, error } = await query;
+      const { data, count, error } = await query;
       if (error) throw error;
 
-      let result = data || [];
-
-      // Filter by permission / tab
-      if (filters.tab === 'my' || permLevel < 2) {
-        result = result.filter(j =>
-          j.created_by === userName ||
-          (j.technicians || []).includes(userName)
-        );
+      if (append) {
+        setJobs(prev => [...prev, ...(data || [])]);
+      } else {
+        setJobs(data || []);
       }
-
-      setJobs(result);
+      setTotalCount(count || 0);
+      setPage(pg);
     } catch (err) {
       console.error('Error loading jobs:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [tenantId, userName, permLevel, filters]);
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  useEffect(() => { loadJobs(1); }, [loadJobs]);
 
   // Realtime
   useEffect(() => {
@@ -110,7 +121,7 @@ export function useMobileJobs(userId, userName, tenantId) {
         schema: 'public',
         table: 'technical_jobs',
         filter: `tenant_id=eq.${tenantId}`,
-      }, () => { loadJobs(); })
+      }, () => { loadJobs(1); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [tenantId, loadJobs]);
@@ -146,14 +157,23 @@ export function useMobileJobs(userId, userName, tenantId) {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
+  const hasMore = page * PAGE_SIZE < totalCount;
+  const loadMore = useCallback(() => {
+    if (hasMore && !loadingMore) loadJobs(page + 1, true);
+  }, [hasMore, loadingMore, page, loadJobs]);
+
   return {
     jobs,
+    totalCount,
     loading,
+    loadingMore,
     filters,
     permLevel,
     updateFilter,
     updateJobStatus,
     addExpense,
-    refresh: loadJobs,
+    hasMore,
+    loadMore,
+    refresh: () => loadJobs(1),
   };
 }
