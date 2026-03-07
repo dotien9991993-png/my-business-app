@@ -57,7 +57,11 @@ export function useMobileAttendance(userId, userName, tenantId) {
 
   // Load employee + work shift
   useEffect(() => {
-    if (!userId || !tenantId) return;
+    if (!userId || !tenantId) {
+      setEmployeeLoaded(true);
+      setLoading(false);
+      return;
+    }
 
     const loadEmployeeAndShift = async () => {
       try {
@@ -69,7 +73,7 @@ export function useMobileAttendance(userId, userName, tenantId) {
           .or(`user_id.eq.${userId},full_name.eq.${userName}`)
           .eq('status', 'active')
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (emp) {
           setEmployeeId(emp.id);
@@ -88,9 +92,13 @@ export function useMobileAttendance(userId, userName, tenantId) {
               : shifts[0];
             setWorkShift(matched);
           }
+        } else {
+          // Không tìm thấy employee → dừng loading
+          setLoading(false);
         }
       } catch (err) {
         console.error('Load employee/shift error:', err);
+        setLoading(false);
       } finally {
         setEmployeeLoaded(true);
       }
