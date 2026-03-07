@@ -57,7 +57,7 @@ export function useMobileAttendance(userId, userName, tenantId) {
 
   // Load employee + work shift
   useEffect(() => {
-    if (!userId || !tenantId) {
+    if (!userName || !tenantId) {
       setEmployeeLoaded(true);
       setLoading(false);
       return;
@@ -65,12 +65,13 @@ export function useMobileAttendance(userId, userName, tenantId) {
 
     const loadEmployeeAndShift = async () => {
       try {
-        // Query employee bằng user_id trước, fallback full_name
+        // Copy ĐÚNG logic desktop: tìm employee bằng full_name
+        // Desktop: employees.find(e => e.full_name === currentUser.name && e.status === 'active')
         const { data: emp } = await supabase
           .from('employees')
           .select('id, full_name, shift_id, status')
           .eq('tenant_id', tenantId)
-          .or(`user_id.eq.${userId},full_name.eq.${userName}`)
+          .eq('full_name', userName)
           .eq('status', 'active')
           .limit(1)
           .maybeSingle();
@@ -105,7 +106,7 @@ export function useMobileAttendance(userId, userName, tenantId) {
     };
 
     loadEmployeeAndShift();
-  }, [userId, userName, tenantId]);
+  }, [userName, tenantId]);
 
   // Load today's records từ hrm_attendances
   const loadToday = useCallback(async () => {
