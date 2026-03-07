@@ -138,7 +138,7 @@ export default function MobileApp() {
 
   return (
     <div className="mobile-app">
-      {!hideNav && <MobileHeader user={currentUser} tenantId={tenantId} />}
+      {!hideNav && <MobileHeader user={currentUser} tenantId={tenantId} onNavigate={(page) => { setActiveTab('more'); setSubPage(page); }} />}
       <main className="mobile-content">
         {renderPage()}
       </main>

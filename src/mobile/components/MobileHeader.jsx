@@ -1,36 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import logo from '../../assets/logo.png';
 import { supabase } from '../../supabaseClient';
-import { getNowISOVN, getTodayVN } from '../../utils/dateUtils';
 
-export default function MobileHeader({ user, tenantId }) {
-  const [toast, setToast] = useState(null);
-  const [quickLoading, setQuickLoading] = useState(false);
+export default function MobileHeader({ user, tenantId, onNavigate }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const employeeRef = useRef(null);
-  const shiftRef = useRef(null);
-
-  // Load employee + shift (once)
-  useEffect(() => {
-    if (!user?.name || !tenantId) return;
-    const load = async () => {
-      const { data: allEmp } = await supabase
-        .from('employees').select('*').eq('tenant_id', tenantId);
-      const emp = (allEmp || []).find(e => e.full_name === user.name && e.status === 'active');
-      employeeRef.current = emp || null;
-
-      if (emp) {
-        const { data: shifts } = await supabase
-          .from('work_shifts').select('*').eq('tenant_id', tenantId).eq('is_active', true).order('start_time');
-        if (shifts?.length > 0) {
-          shiftRef.current = emp.shift_id ? (shifts.find(s => s.id === emp.shift_id) || shifts[0]) : shifts[0];
-        }
-      }
-    };
-    load();
-  }, [user?.name, tenantId]);
 
   // Count unread notifications
   useEffect(() => {
@@ -57,99 +32,10 @@ export default function MobileHeader({ user, tenantId }) {
     return () => supabase.removeChannel(channel);
   }, [user?.id, tenantId]);
 
-  // Show toast helper
-  const showToast = useCallback((msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  }, []);
-
-  // Quick check-in/check-out
-  const handleQuickCheckIn = useCallback(async () => {
-    const emp = employeeRef.current;
-    if (!emp) {
-      showToast('⚠️ Chưa có hồ sơ nhân viên');
-      return;
-    }
-    if (quickLoading) return;
-    setQuickLoading(true);
-
-    try {
-      const today = getTodayVN();
-
-      // Get today's records
-      const { data: records } = await supabase
-        .from('hrm_attendances').select('*')
-        .eq('employee_id', emp.id).eq('tenant_id', tenantId).eq('date', today)
-        .order('shift_number', { ascending: true });
-
-      const openShift = (records || []).find(r => r.check_in && !r.check_out);
-
-      if (openShift) {
-        // Check-out
-        const nowISO = getNowISOVN();
-        const shift = shiftRef.current;
-        const isEarly = openShift.shift_number === 1 && shift?.end_time
-          ? (() => {
-              const now = new Date(nowISO);
-              const [eh, em] = shift.end_time.split(':').map(Number);
-              const end = new Date(now); end.setHours(eh, em, 0, 0);
-              return now < end;
-            })()
-          : false;
-
-        const updateData = { check_out: nowISO, check_out_method: 'manual' };
-        if (isEarly && openShift.status !== 'late') updateData.status = 'early_leave';
-
-        const { error } = await supabase
-          .from('hrm_attendances').update(updateData).eq('id', openShift.id);
-
-        if (error) throw error;
-        const time = new Date(nowISO).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' });
-        showToast(`✅ Đã chấm công ra lúc ${time}`);
-
-      } else {
-        // Check if all shifts are closed
-        const allClosed = (records || []).length > 0 && (records || []).every(r => r.check_in && r.check_out);
-
-        if (allClosed && (records || []).length > 0) {
-          // Already done, create new shift
-        }
-
-        // Check-in
-        const nowISO = getNowISOVN();
-        const shiftNum = (records || []).length + 1;
-        const shift = shiftRef.current;
-        const isLate = shiftNum === 1 && shift?.start_time
-          ? (() => {
-              const now = new Date(nowISO);
-              const [sh, sm] = shift.start_time.split(':').map(Number);
-              const start = new Date(now); start.setHours(sh, sm, 0, 0);
-              return now > start;
-            })()
-          : false;
-
-        const { error } = await supabase
-          .from('hrm_attendances').insert({
-            tenant_id: tenantId,
-            employee_id: emp.id,
-            date: today,
-            shift_number: shiftNum,
-            check_in: nowISO,
-            check_in_method: 'manual',
-            status: isLate ? 'late' : 'present'
-          });
-
-        if (error) throw error;
-        const time = new Date(nowISO).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' });
-        showToast(`✅ Đã chấm công vào lúc ${time}${isLate ? ' (Trễ)' : ''}`);
-      }
-    } catch (err) {
-      console.error('Quick check-in error:', err);
-      showToast('❌ Lỗi: ' + (err.message || 'Không thể chấm công'));
-    } finally {
-      setQuickLoading(false);
-    }
-  }, [tenantId, quickLoading, showToast]);
+  // Navigate to attendance page
+  const handleGoToAttendance = useCallback(() => {
+    if (onNavigate) onNavigate('attendance');
+  }, [onNavigate]);
 
   // Load notifications list
   const handleOpenNotifications = useCallback(async () => {
@@ -183,11 +69,7 @@ export default function MobileHeader({ user, tenantId }) {
             <img src={logo} alt="Hoàng Nam Audio" className="mobile-header-logo" />
           </div>
           <div className="mobile-header-right">
-            <button
-              className={`mobile-header-icon ${quickLoading ? 'loading' : ''}`}
-              onClick={handleQuickCheckIn}
-              disabled={quickLoading}
-            >
+            <button className="mobile-header-icon" onClick={handleGoToAttendance}>
               ⏰
             </button>
             <button className="mobile-header-icon" onClick={handleOpenNotifications}>
@@ -201,9 +83,6 @@ export default function MobileHeader({ user, tenantId }) {
           </div>
         </div>
       </header>
-
-      {/* Toast */}
-      {toast && <div className="mobile-toast">{toast}</div>}
 
       {/* Notifications panel */}
       {showNotifications && (
