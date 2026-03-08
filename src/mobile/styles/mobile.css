@@ -50,7 +50,7 @@
 }
 
 .mobile-header-content {
-  height: 44px;
+  height: 40px;
   display: flex;
   align-items: center;
   padding: 0 12px;
@@ -161,7 +161,7 @@
   color: rgba(255,255,255,0.6);
   font-size: 10px;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 0;
   -webkit-tap-highlight-color: transparent;
   transition: color 0.2s;
   position: relative;
@@ -184,9 +184,9 @@
 }
 
 .mobile-nav-icon {
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
   position: relative;
 }
 
