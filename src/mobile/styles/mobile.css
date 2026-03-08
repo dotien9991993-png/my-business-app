@@ -18,16 +18,8 @@
 }
 
 .mobile-splash-logo {
-  height: 80px;
+  height: 120px;
   width: auto;
-}
-
-.mobile-splash-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: #111827;
-  margin-top: 16px;
-  letter-spacing: 1px;
 }
 
 @keyframes splash-fade {

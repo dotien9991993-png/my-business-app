@@ -52,7 +52,6 @@ export default function MobileApp() {
     return (
       <div className={`mobile-splash ${splashFading ? 'fade-out' : ''}`}>
         <img src={splashLogo} alt="" className="mobile-splash-logo" />
-        <div className="mobile-splash-name">HOÀNG NAM AUDIO</div>
       </div>
     );
   }
