@@ -453,7 +453,7 @@ export function DataProvider({ children }) {
         product_ids: productIds.length > 0 ? productIds : []
       };
       if (category) taskData.category = category;
-      const { error } = await supabase.from('tasks').insert([taskData]);
+      const { data: insertedTask, error } = await supabase.from('tasks').insert([taskData]).select('id').single();
       if (error) throw error;
       if (assignee !== currentUser?.name && createNotification) {
         const assigneeUser = (allUsers || []).find(u => u.name === assignee);
@@ -462,7 +462,7 @@ export function DataProvider({ children }) {
             userId: assigneeUser.id, type: 'task_assigned',
             title: '📋 Video mới được giao',
             message: `${currentUser.name} đã giao task cho bạn: "${title}"`,
-            icon: '📋', referenceType: 'task', referenceId: null
+            icon: '📋', referenceType: 'task', referenceId: insertedTask?.id || null
           });
         }
       }
@@ -476,14 +476,14 @@ export function DataProvider({ children }) {
   const createTechnicalJob = useCallback(async (jobData) => {
     try {
       setLoading(true);
-      const { error } = await supabase.from('technical_jobs').insert([{
+      const { data: insertedJob, error } = await supabase.from('technical_jobs').insert([{
         tenant_id: tenant.id, title: jobData.title, type: jobData.type,
         customer_name: jobData.customerName, customer_phone: jobData.customerPhone,
         address: jobData.address, equipment: jobData.equipment,
         technicians: jobData.technicians, scheduled_date: jobData.scheduledDate,
         scheduled_time: jobData.scheduledTime, customer_payment: jobData.customerPayment,
         created_by: jobData.createdBy || currentUser?.name, status: 'Chờ XN'
-      }]);
+      }]).select('id').single();
       if (error) throw error;
       if (createNotification) {
         for (const techName of jobData.technicians) {
@@ -494,7 +494,7 @@ export function DataProvider({ children }) {
                 userId: techUser.id, type: 'job_assigned',
                 title: '🔧 Công việc kỹ thuật mới',
                 message: `${currentUser.name} đã giao: "${jobData.title}" tại ${jobData.address || 'N/A'}`,
-                icon: '🔧', referenceType: 'job', referenceId: null
+                icon: '🔧', referenceType: 'job', referenceId: insertedJob?.id || null
               });
             }
           }

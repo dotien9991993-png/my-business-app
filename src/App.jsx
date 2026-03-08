@@ -1,5 +1,7 @@
 import React, { useEffect, Suspense, Component } from 'react';
 import { supabase } from './supabaseClient';
+import { useMobile } from './hooks/useMobile';
+import MobileApp from './mobile/MobileApp';
 
 // Context providers
 import { AppProvider, useApp } from './contexts/AppContext';
@@ -402,6 +404,11 @@ function AppContent() {
 }
 
 export default function App() {
+  const isMobile = useMobile();
+
+  // Mobile → render standalone Mobile Lite App (no desktop providers)
+  if (isMobile) return <MobileApp />;
+
   return (
     <AppProvider>
       <NotificationProvider>
