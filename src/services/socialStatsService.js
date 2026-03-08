@@ -433,6 +433,28 @@ export function validateLinkForPlatform(url, platform) {
 /**
  * Trả về error message cụ thể nếu URL sai, null nếu hợp lệ
  */
+/**
+ * Check trùng link trong tất cả tasks (trừ task hiện tại)
+ * @returns {{ id, title }} nếu trùng, null nếu không trùng
+ */
+export async function checkDuplicateLink(supabaseClient, tenantId, url, currentTaskId) {
+  const { data, error } = await supabaseClient
+    .from('tasks')
+    .select('id, title, post_links')
+    .eq('tenant_id', tenantId)
+    .neq('id', currentTaskId);
+
+  if (error || !data) return null;
+
+  for (const task of data) {
+    const links = task.post_links || [];
+    if (links.some(link => link.url === url)) {
+      return { id: task.id, title: task.title };
+    }
+  }
+  return null;
+}
+
 export function getValidationErrorMessage(url, platform) {
   if (!url) return null;
 

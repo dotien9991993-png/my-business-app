@@ -535,6 +535,12 @@ export function DataProvider({ children }) {
   const addPostLink = useCallback(async (taskId, url, type, linkValid = true) => {
     if (!url.trim()) return;
     try {
+      // Check trùng link trong các task khác (dùng state sẵn có)
+      const duplicate = tasks.find(t => t.id !== taskId && (t.postLinks || []).some(l => l.url === url));
+      if (duplicate) {
+        alert(`Link đã tồn tại trong task: "${duplicate.title}"`);
+        return;
+      }
       const task = tasks.find(t => t.id === taskId);
       const timeStr = getNowStringVN();
       const newLink = { url, type: type || 'Other', addedBy: currentUser?.name, addedAt: timeStr, link_valid: linkValid };

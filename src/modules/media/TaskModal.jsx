@@ -4,7 +4,7 @@ import { isAdmin } from '../../utils/permissionUtils';
 import { formatMoney } from '../../utils/formatUtils';
 import { getNowISOVN, getVietnamDate } from '../../utils/dateUtils';
 import EkipSelector from './EkipSelector';
-import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs, validateLinkForPlatform, getValidationErrorMessage } from '../../services/socialStatsService';
+import { detectPlatform, fetchStatsForLink, saveStatsToTask, loadPageConfigs, validateLinkForPlatform, getValidationErrorMessage, checkDuplicateLink } from '../../services/socialStatsService';
 
 const TaskModal = ({
   selectedTask,
@@ -51,6 +51,7 @@ const TaskModal = ({
   const [searchingEditProducts, setSearchingEditProducts] = useState(false);
   const editProductSearchRef = useRef(null);
   const editDebounceRef = useRef(null);
+  const dupCheckRef = useRef({});
 
   // Social stats
   const [pageConfigs, setPageConfigs] = useState([]);
@@ -230,7 +231,7 @@ const TaskModal = ({
     }
   }, []);
 
-  // Handle link input change — validate + trigger preview
+  // Handle link input change — validate + trigger preview + check trùng
   const handleLinkInput = useCallback((plat, val) => {
     setLinkInputValues(prev => ({ ...prev, [plat]: val }));
     setLinkPreviews(prev => { const n = { ...prev }; delete n[plat]; return n; });
@@ -247,20 +248,39 @@ const TaskModal = ({
       setLinkInputErrors(prev => ({ ...prev, [plat]: error }));
     } else {
       setLinkInputErrors(prev => { const n = { ...prev }; delete n[plat]; return n; });
-      fetchLinkPreview(plat, trimmed);
+      // Check trùng link (debounce 500ms)
+      if (dupCheckRef.current[plat]) clearTimeout(dupCheckRef.current[plat]);
+      dupCheckRef.current[plat] = setTimeout(async () => {
+        if (tenant?.id && selectedTask?.id) {
+          const dup = await checkDuplicateLink(supabase, tenant.id, trimmed, selectedTask.id);
+          if (dup) {
+            setLinkInputErrors(prev => ({ ...prev, [plat]: `Link đã tồn tại trong: "${dup.title}"` }));
+            return;
+          }
+        }
+        fetchLinkPreview(plat, trimmed);
+      }, 500);
     }
-  }, [fetchLinkPreview]);
+  }, [fetchLinkPreview, tenant?.id, selectedTask?.id]);
 
-  // Xác nhận + lưu link
-  const handleConfirmLink = useCallback((plat) => {
+  // Xác nhận + lưu link (check trùng trước khi lưu)
+  const handleConfirmLink = useCallback(async (plat) => {
     const url = (linkInputValues[plat] || '').trim();
     if (!url) return;
+    // Guard: check trùng lần nữa trước khi lưu
+    if (tenant?.id && selectedTask?.id) {
+      const dup = await checkDuplicateLink(supabase, tenant.id, url, selectedTask.id);
+      if (dup) {
+        setLinkInputErrors(prev => ({ ...prev, [plat]: `Link đã tồn tại trong: "${dup.title}"` }));
+        return;
+      }
+    }
     addPostLink(selectedTask.id, url, plat, true);
     setLinkInputValues(prev => { const n = { ...prev }; delete n[plat]; return n; });
     setLinkPreviews(prev => { const n = { ...prev }; delete n[plat]; return n; });
     setLinkInputErrors(prev => { const n = { ...prev }; delete n[plat]; return n; });
     latestPreviewUrl.current[plat] = '';
-  }, [linkInputValues, addPostLink, selectedTask?.id]);
+  }, [linkInputValues, addPostLink, selectedTask?.id, tenant?.id]);
 
   const videoCategories = [
     { id: 'video_dan', name: '🎬 Video dàn', color: 'purple' },

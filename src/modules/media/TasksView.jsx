@@ -207,6 +207,12 @@ const TasksView = ({
       const linkTypes = (t.postLinks || []).map(l => l.type);
       if (platforms.length === 0 || !platforms.some(p => !linkTypes.includes(p))) return false;
     }
+    if (filterLinkIssue === 'no_stats') {
+      const links = t.postLinks || [];
+      const hasLink = links.some(l => l.type === 'Facebook' || l.type === 'TikTok');
+      const hasStats = links.some(l => l.stats && (l.stats.views > 0 || l.stats.likes > 0));
+      if (!hasLink || hasStats) return false;
+    }
 
     // Date filter (Vietnam timezone)
     if (dateFilter !== 'all') {
@@ -359,6 +365,12 @@ const TasksView = ({
     if (platforms.length === 0) return false;
     const linkTypes = (t.postLinks || []).map(l => l.type);
     return platforms.some(p => !linkTypes.includes(p));
+  }).length;
+  const noStatsCount = tasksForLinkBadge.filter(t => {
+    const links = t.postLinks || [];
+    const hasLink = links.some(l => l.type === 'Facebook' || l.type === 'TikTok');
+    const hasStats = links.some(l => l.stats && (l.stats.views > 0 || l.stats.likes > 0));
+    return hasLink && !hasStats;
   }).length;
 
   const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
@@ -629,7 +641,7 @@ const TasksView = ({
           </div>
 
           {/* Link Filter */}
-          {(invalidLinkCount > 0 || missingLinkCount > 0) && (
+          {(invalidLinkCount > 0 || missingLinkCount > 0 || noStatsCount > 0) && (
             <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t">
               <label className="text-xs sm:text-sm font-medium mb-2 block">🔗 Links:</label>
               <div className="flex gap-1.5 md:gap-2 flex-wrap">
@@ -665,6 +677,19 @@ const TasksView = ({
                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                       filterLinkIssue === 'missing' ? 'bg-amber-400 text-white' : 'bg-amber-100 text-amber-600'
                     }`}>{missingLinkCount}</span>
+                  </button>
+                )}
+                {noStatsCount > 0 && (
+                  <button
+                    onClick={() => setFilterLinkIssue('no_stats')}
+                    className={`px-2.5 md:px-4 py-1 md:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all flex items-center gap-1 ${
+                      filterLinkIssue === 'no_stats' ? 'bg-orange-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    📊 Lỗi stats
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      filterLinkIssue === 'no_stats' ? 'bg-orange-400 text-white' : 'bg-orange-100 text-orange-600'
+                    }`}>{noStatsCount}</span>
                   </button>
                 )}
               </div>
@@ -839,6 +864,11 @@ const TasksView = ({
             {(task.postLinks || []).some(l => l.link_valid === false) && (
               <div className="mt-0.5 md:mt-1">
                 <span className="px-1.5 md:px-2 py-0.5 bg-red-50 border border-red-200 text-red-600 rounded-full text-[10px] md:text-xs">⚠️ Link sai</span>
+              </div>
+            )}
+            {!platformStats && (task.postLinks || []).some(l => l.type === 'Facebook' || l.type === 'TikTok') && (
+              <div className="mt-0.5 md:mt-1">
+                <span className="px-1.5 md:px-2 py-0.5 bg-orange-50 border border-orange-200 text-orange-600 rounded-full text-[10px] md:text-xs">📊 Không có stats</span>
               </div>
             )}
             {task.isOverdue && (
