@@ -172,7 +172,12 @@ export default function MobileApp() {
           📡 Không có kết nối mạng
         </div>
       )}
-      {!hideNav && <MobileHeader user={currentUser} tenantId={tenantId} onNavigate={(page) => { setActiveTab('more'); setSubPage(page); }} />}
+      {!hideNav && <MobileHeader
+        user={currentUser}
+        tenantId={tenantId}
+        onNavigate={(page) => { setActiveTab('more'); setSubPage(page); }}
+        onNotifNavigate={(tab, sub) => { setActiveTab(tab); setSubPage(sub); }}
+      />}
       <main className="mobile-content">
         {renderPage()}
       </main>
