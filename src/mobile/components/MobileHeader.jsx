@@ -106,7 +106,7 @@ export default function MobileHeader({ user, tenantId, onNavigate }) {
                     <span className="mobile-notif-icon">{n.icon || '🔔'}</span>
                     <div className="mobile-notif-body">
                       <div className="mobile-notif-item-title">{n.title}</div>
-                      <div className="mobile-notif-msg">{n.message}</div>
+                      <div className="mobile-notif-msg">{n.content || n.message || 'Thông báo mới'}</div>
                       <div className="mobile-notif-time">
                         {new Date(n.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
                       </div>
