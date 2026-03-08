@@ -1175,6 +1175,10 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.keyboard-open .mchat-input-area {
+  padding-bottom: 0;
+}
+
 .mchat-reply-bar {
   display: flex;
   align-items: center;

@@ -49,6 +49,8 @@ export default function ChatConversation({ room, user, tenantId, allUsers, onBac
       if (el) {
         el.style.height = `${vv.height}px`;
         el.style.top = `${vv.offsetTop}px`;
+        const kbOpen = window.innerHeight - vv.height > 100;
+        el.classList.toggle('keyboard-open', kbOpen);
       }
       requestAnimationFrame(() => {
         const c = containerRef.current;
