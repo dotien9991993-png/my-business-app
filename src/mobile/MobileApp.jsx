@@ -38,6 +38,13 @@ export default function MobileApp() {
     return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
   }, []);
 
+  // Request notification permission
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Offline detection
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
