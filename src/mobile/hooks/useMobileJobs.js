@@ -117,14 +117,55 @@ export function useMobileJobs(userId, userName, tenantId) {
     return result;
   }, [allJobs, userName, permLevel, filters]);
 
-  // Update job status
+  // Update job status + create notification
   const updateJobStatus = useCallback(async (jobId, newStatus) => {
     const { error } = await supabase
       .from('technical_jobs')
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', jobId);
     if (error) throw error;
-  }, []);
+
+    // Create notification for job creator / admins
+    try {
+      const job = allJobs.find(j => j.id === jobId);
+      if (!job) return;
+
+      const statusIcons = { 'Đang làm': '🟡', 'Hoàn thành': '✅', 'Hủy': '❌' };
+      const icon = statusIcons[newStatus] || '🔧';
+
+      // Notify admins who are not the current user
+      const { data: admins } = await supabase
+        .from('users')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('role', ['Admin', 'admin', 'Manager'])
+        .neq('id', userId);
+
+      const recipients = new Set((admins || []).map(a => a.id));
+
+      // Also notify job creator if not current user and not already admin
+      if (job.created_by_user_id && job.created_by_user_id !== userId) {
+        recipients.add(job.created_by_user_id);
+      }
+
+      const notifications = [...recipients].map(uid => ({
+        tenant_id: tenantId,
+        user_id: uid,
+        type: 'job_status_changed',
+        title: `${icon} Job: ${job.title || 'Phiếu KT'}`,
+        message: `${userName} cập nhật → ${newStatus}`,
+        icon,
+        reference_type: 'job',
+        reference_id: jobId,
+        created_by: userId,
+        is_read: false,
+      }));
+
+      if (notifications.length > 0) {
+        await supabase.from('notifications').insert(notifications);
+      }
+    } catch (_) { /* non-critical */ }
+  }, [allJobs, userId, userName, tenantId]);
 
   // Add expense
   const addExpense = useCallback(async (jobId, expense, currentExpenses = []) => {

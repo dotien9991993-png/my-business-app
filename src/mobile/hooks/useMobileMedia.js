@@ -126,7 +126,7 @@ export function useMobileMedia(userId, userName, tenantId) {
     return result;
   }, [allTasks, userName, permLevel, filters]);
 
-  // Update task status
+  // Update task status + create notification
   const updateTaskStatus = useCallback(async (taskId, newStatus) => {
     const now = new Date().toISOString();
     const updateData = { status: newStatus, updated_at: now };
@@ -144,7 +144,49 @@ export function useMobileMedia(userId, userName, tenantId) {
       .eq('id', taskId);
 
     if (error) throw error;
-  }, []);
+
+    // Create notification for task assignee / admins
+    try {
+      const task = allTasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      const statusIcons = { 'Đã Quay': '📹', 'Đang Edit': '✂️', 'Chờ Duyệt': '🔵', 'Hoàn Thành': '✅' };
+      const icon = statusIcons[newStatus] || '🎬';
+
+      const recipients = new Set();
+
+      // Notify admins
+      const { data: admins } = await supabase
+        .from('users')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('role', ['Admin', 'admin', 'Manager'])
+        .neq('id', userId);
+      (admins || []).forEach(a => recipients.add(a.id));
+
+      // Notify task creator if different
+      if (task.created_by_user_id && task.created_by_user_id !== userId) {
+        recipients.add(task.created_by_user_id);
+      }
+
+      const notifications = [...recipients].map(uid => ({
+        tenant_id: tenantId,
+        user_id: uid,
+        type: 'task_status_changed',
+        title: `${icon} ${task.title || 'Task'}`,
+        message: `${userName} cập nhật → ${newStatus}`,
+        icon,
+        reference_type: 'task',
+        reference_id: taskId,
+        created_by: userId,
+        is_read: false,
+      }));
+
+      if (notifications.length > 0) {
+        await supabase.from('notifications').insert(notifications);
+      }
+    } catch (_) { /* non-critical */ }
+  }, [allTasks, userId, userName, tenantId]);
 
   // Add comment
   const addComment = useCallback(async (taskId, text, currentComments = []) => {
