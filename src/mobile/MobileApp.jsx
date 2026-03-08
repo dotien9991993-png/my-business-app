@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useMobileAuth } from './hooks/useMobileAuth';
+import { useMobileChatBadge } from './hooks/useMobileChatBadge';
 import MobileHeader from './components/MobileHeader';
 import MobileBottomNav from './components/MobileBottomNav';
 import MobileLoading from './components/MobileLoading';
@@ -16,6 +17,7 @@ import './styles/mobile.css';
 
 export default function MobileApp() {
   const { currentUser, tenant, tenantId, loading, login, logout } = useMobileAuth();
+  const { totalUnread: chatUnread } = useMobileChatBadge(currentUser?.id, tenantId);
   const [activeTab, setActiveTab] = useState('chat');
   const [hideNav, setHideNav] = useState(false);
   const [subPage, setSubPage] = useState(null);
@@ -178,6 +180,7 @@ export default function MobileApp() {
         <MobileBottomNav
           activeTab={activeTab}
           onTabChange={handleTabChange}
+          badges={{ chat: chatUnread }}
         />
       )}
     </div>
