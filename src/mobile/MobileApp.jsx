@@ -11,6 +11,7 @@ import JobsPage from './pages/jobs/JobsPage';
 import MorePage from './pages/more/MorePage';
 import AttendancePage from './pages/attendance/AttendancePage';
 import ProfilePage from './pages/profile/ProfilePage';
+import splashLogo from './assets/logo.png';
 import './styles/mobile.css';
 
 export default function MobileApp() {
@@ -19,12 +20,21 @@ export default function MobileApp() {
   const [hideNav, setHideNav] = useState(false);
   const [subPage, setSubPage] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+
+  // Splash screen — show 2s then fade out
+  useEffect(() => {
+    const fadeTimer = setTimeout(() => setSplashFading(true), 2000);
+    const hideTimer = setTimeout(() => setShowSplash(false), 2300);
+    return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
+  }, []);
 
   // Offline detection
   useEffect(() => {
@@ -37,6 +47,15 @@ export default function MobileApp() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  if (showSplash) {
+    return (
+      <div className={`mobile-splash ${splashFading ? 'fade-out' : ''}`}>
+        <img src={splashLogo} alt="" className="mobile-splash-logo" />
+        <div className="mobile-splash-name">HOÀNG NAM AUDIO</div>
+      </div>
+    );
+  }
 
   if (loading) return <MobileLoading text="Đang tải..." />;
 
