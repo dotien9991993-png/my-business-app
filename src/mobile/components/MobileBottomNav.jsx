@@ -2,10 +2,10 @@ import React from 'react';
 
 const TABS = [
   { id: 'chat', icon: '💬', label: 'Chat' },
-  { id: 'attendance', icon: '✅', label: 'Chấm công' },
   { id: 'orders', icon: '📦', label: 'Đơn hàng' },
   { id: 'media', icon: '🎬', label: 'Video' },
-  { id: 'profile', icon: '👤', label: 'Tôi' },
+  { id: 'jobs', icon: '🔧', label: 'Kỹ thuật' },
+  { id: 'more', icon: '☰', label: 'Khác' },
 ];
 
 export default function MobileBottomNav({ activeTab, onTabChange, badges = {} }) {

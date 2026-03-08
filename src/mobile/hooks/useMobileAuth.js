@@ -70,11 +70,13 @@ export function useMobileAuth() {
   const login = useCallback(async (username, password) => {
     if (!tenant) throw new Error('Tenant chưa tải');
 
+    // Desktop dùng email để đăng nhập
+    const cleanInput = username.trim().toLowerCase();
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .eq('username', username)
+      .eq('email', cleanInput)
       .single();
 
     if (error || !user) throw new Error('Tài khoản không tồn tại');

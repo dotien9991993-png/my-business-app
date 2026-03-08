@@ -1,33 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useMobileAuth } from './hooks/useMobileAuth';
+import { useMobileChatBadge } from './hooks/useMobileChatBadge';
 import MobileHeader from './components/MobileHeader';
 import MobileBottomNav from './components/MobileBottomNav';
 import MobileLoading from './components/MobileLoading';
+import MobileErrorBoundary from './components/MobileErrorBoundary';
 import ChatPage from './pages/chat/ChatPage';
-import AttendancePage from './pages/attendance/AttendancePage';
 import OrdersPage from './pages/orders/OrdersPage';
 import MediaPage from './pages/media/MediaPage';
+import JobsPage from './pages/jobs/JobsPage';
+import MorePage from './pages/more/MorePage';
+import AttendancePage from './pages/attendance/AttendancePage';
 import ProfilePage from './pages/profile/ProfilePage';
+import splashLogo from './assets/logo-splash.png';
 import './styles/mobile.css';
-
-const TAB_TITLES = {
-  chat: 'Chat',
-  attendance: 'Chấm công',
-  orders: 'Đơn hàng',
-  media: 'Video',
-  profile: 'Tôi',
-};
 
 export default function MobileApp() {
   const { currentUser, tenant, tenantId, loading, login, logout } = useMobileAuth();
+  const { totalUnread: chatUnread } = useMobileChatBadge(currentUser?.id, tenantId);
   const [activeTab, setActiveTab] = useState('chat');
   const [hideNav, setHideNav] = useState(false);
+  const [subPage, setSubPage] = useState(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+
+  // Splash screen — show 2s then fade out
+  useEffect(() => {
+    const fadeTimer = setTimeout(() => setSplashFading(true), 2000);
+    const hideTimer = setTimeout(() => setShowSplash(false), 2300);
+    return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
+  }, []);
+
+  // Request notification permission
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (showSplash) {
+    return (
+      <div className={`mobile-splash ${splashFading ? 'fade-out' : ''}`}>
+        <img src={splashLogo} alt="" className="mobile-splash-logo" />
+      </div>
+    );
+  }
 
   if (loading) return <MobileLoading text="Đang tải..." />;
 
@@ -69,10 +105,10 @@ export default function MobileApp() {
           <form onSubmit={handleLogin} className="mobile-login-form">
             <input
               type="text"
-              placeholder="Tên đăng nhập"
+              placeholder="Email"
               value={loginUsername}
               onChange={e => setLoginUsername(e.target.value)}
-              autoComplete="username"
+              autoComplete="email"
               required
             />
             <input
@@ -93,19 +129,44 @@ export default function MobileApp() {
     );
   }
 
-  // Main app
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSubPage(null);
+  };
+
+  const handleMoreNavigate = (page) => {
+    setSubPage(page);
+  };
+
+  const handleSubPageBack = () => {
+    setSubPage(null);
+  };
+
   const renderPage = () => {
+    if (activeTab === 'more' && subPage) {
+      switch (subPage) {
+        case 'attendance':
+          return <MobileErrorBoundary><AttendancePage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} /></MobileErrorBoundary>;
+        case 'salary':
+          return <MobileErrorBoundary><ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="salary" onBack={handleSubPageBack} /></MobileErrorBoundary>;
+        case 'profile':
+          return <MobileErrorBoundary><ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="info" onBack={handleSubPageBack} /></MobileErrorBoundary>;
+        default:
+          break;
+      }
+    }
+
     switch (activeTab) {
       case 'chat':
-        return <ChatPage user={currentUser} tenantId={tenantId} onHideNav={setHideNav} />;
-      case 'attendance':
-        return <AttendancePage user={currentUser} tenantId={tenantId} />;
+        return <MobileErrorBoundary><ChatPage user={currentUser} tenantId={tenantId} onHideNav={setHideNav} /></MobileErrorBoundary>;
       case 'orders':
-        return <OrdersPage user={currentUser} tenantId={tenantId} />;
+        return <MobileErrorBoundary><OrdersPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
       case 'media':
-        return <MediaPage user={currentUser} tenantId={tenantId} />;
-      case 'profile':
-        return <ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} />;
+        return <MobileErrorBoundary><MediaPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
+      case 'jobs':
+        return <MobileErrorBoundary><JobsPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
+      case 'more':
+        return <MobileErrorBoundary><MorePage user={currentUser} tenantId={tenantId} onNavigate={handleMoreNavigate} onLogout={logout} /></MobileErrorBoundary>;
       default:
         return null;
     }
@@ -113,14 +174,25 @@ export default function MobileApp() {
 
   return (
     <div className="mobile-app">
-      {!hideNav && <MobileHeader title={TAB_TITLES[activeTab]} />}
+      {!isOnline && (
+        <div className="mobile-offline-bar">
+          📡 Không có kết nối mạng
+        </div>
+      )}
+      {!hideNav && <MobileHeader
+        user={currentUser}
+        tenantId={tenantId}
+        onNavigate={(page) => { setActiveTab('more'); setSubPage(page); }}
+        onNotifNavigate={(tab, sub) => { setActiveTab(tab); setSubPage(sub); }}
+      />}
       <main className="mobile-content">
         {renderPage()}
       </main>
       {!hideNav && (
         <MobileBottomNav
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={handleTabChange}
+          badges={{ chat: chatUnread }}
         />
       )}
     </div>
