@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import logo from '../../assets/logo.png';
+import logo from '../assets/logo.png';
 import { supabase } from '../../supabaseClient';
 import { haptic } from '../utils/haptics';
 
