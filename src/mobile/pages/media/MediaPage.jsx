@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useMobileMedia } from '../../hooks/useMobileMedia';
 import TaskCard from './TaskCard';
 import TaskDetail from './TaskDetail';
+import MediaSummary from './MediaSummary';
 import MobileSkeleton from '../../components/MobileSkeleton';
 import MobilePullRefresh from '../../components/MobilePullRefresh';
 import { haptic } from '../../utils/haptics';
@@ -23,12 +24,15 @@ const DATE_FILTERS = [
 
 export default function MediaPage({ user, tenantId }) {
   const {
-    tasks, loading, filters, permLevel,
+    tasks, allTasks, loading, filters, permLevel,
     updateFilter, updateTaskStatus, addComment, refresh,
   } = useMobileMedia(user?.id, user?.name, tenantId);
 
+  const isAdmin = permLevel >= 3;
+
   const [selectedTask, setSelectedTask] = useState(null);
   const [toast, setToast] = useState(null);
+  const [pageTab, setPageTab] = useState('tasks');
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -94,75 +98,99 @@ export default function MediaPage({ user, tenantId }) {
   return (
     <MobilePullRefresh onRefresh={refresh}>
     <div className="mobile-page mmed-page">
-      {/* Tab: My tasks / All tasks */}
-      {permLevel >= 2 && (
+      {/* Page-level tabs: Tasks / Tổng (admin only) */}
+      {isAdmin && (
         <div className="mmed-view-tabs">
           <button
-            className={`mmed-view-tab ${filters.tab === 'my' ? 'active' : ''}`}
-            onClick={() => updateFilter('tab', 'my')}
+            className={`mmed-view-tab ${pageTab === 'tasks' ? 'active' : ''}`}
+            onClick={() => setPageTab('tasks')}
           >
-            Của tôi
+            Danh sách
           </button>
           <button
-            className={`mmed-view-tab ${filters.tab === 'all' ? 'active' : ''}`}
-            onClick={() => updateFilter('tab', 'all')}
+            className={`mmed-view-tab ${pageTab === 'summary' ? 'active' : ''}`}
+            onClick={() => setPageTab('summary')}
           >
-            Tất cả
+            Tổng quan
           </button>
         </div>
       )}
 
-      {/* Status tabs */}
-      <div className="mmed-status-tabs">
-        {STATUS_TABS.map(tab => (
-          <button
-            key={tab.id}
-            className={`mmed-status-tab ${filters.status === tab.id ? 'active' : ''}`}
-            onClick={() => updateFilter('status', tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {pageTab === 'summary' && isAdmin ? (
+        <MediaSummary allTasks={allTasks} />
+      ) : (
+        <>
+          {/* Tab: My tasks / All tasks */}
+          {permLevel >= 2 && (
+            <div className="mmed-subtabs">
+              <button
+                className={`mmed-subtab ${filters.tab === 'my' ? 'active' : ''}`}
+                onClick={() => updateFilter('tab', 'my')}
+              >
+                Của tôi
+              </button>
+              <button
+                className={`mmed-subtab ${filters.tab === 'all' ? 'active' : ''}`}
+                onClick={() => updateFilter('tab', 'all')}
+              >
+                Tất cả
+              </button>
+            </div>
+          )}
 
-      {/* Date filter */}
-      <div className="mmed-date-filter">
-        {DATE_FILTERS.map(f => (
-          <button
-            key={f.id}
-            className={`mmed-date-btn ${filters.dateRange === f.id ? 'active' : ''}`}
-            onClick={() => updateFilter('dateRange', f.id)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Count */}
-      <div className="mmed-count">
-        {tasks.length} video
-      </div>
-
-      {/* Task list */}
-      <div className="mmed-list">
-        {loading ? (
-          <MobileSkeleton type="card" count={3} />
-        ) : tasks.length === 0 ? (
-          <div className="mmed-empty">
-            <p>{filters.tab === 'my' ? 'Bạn chưa có task nào' : 'Không có task nào'}</p>
+          {/* Status tabs */}
+          <div className="mmed-status-tabs">
+            {STATUS_TABS.map(tab => (
+              <button
+                key={tab.id}
+                className={`mmed-status-tab ${filters.status === tab.id ? 'active' : ''}`}
+                onClick={() => updateFilter('status', tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        ) : (
-          tasks.map(task => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onClick={() => handleOpenDetail(task)}
-              onToggleStep={handleToggleStep}
-              onCopyLink={handleCopyLink}
-            />
-          ))
-        )}
-      </div>
+
+          {/* Date filter */}
+          <div className="mmed-date-filter">
+            {DATE_FILTERS.map(f => (
+              <button
+                key={f.id}
+                className={`mmed-date-btn ${filters.dateRange === f.id ? 'active' : ''}`}
+                onClick={() => updateFilter('dateRange', f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Count */}
+          <div className="mmed-count">
+            {tasks.length} video
+          </div>
+
+          {/* Task list */}
+          <div className="mmed-list">
+            {loading ? (
+              <MobileSkeleton type="card" count={3} />
+            ) : tasks.length === 0 ? (
+              <div className="mmed-empty">
+                <p>{filters.tab === 'my' ? 'Bạn chưa có task nào' : 'Không có task nào'}</p>
+              </div>
+            ) : (
+              tasks.map(task => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={() => handleOpenDetail(task)}
+                  onToggleStep={handleToggleStep}
+                  onCopyLink={handleCopyLink}
+                />
+              ))
+            )}
+          </div>
+        </>
+      )}
 
       {/* Toast */}
       {toast && <div className="mmed-toast">{toast}</div>}

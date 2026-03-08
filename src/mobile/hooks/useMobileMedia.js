@@ -176,6 +176,7 @@ export function useMobileMedia(userId, userName, tenantId) {
 
   return {
     tasks,
+    allTasks,
     loading,
     filters,
     permLevel,
