@@ -50,7 +50,7 @@
 }
 
 .mobile-header-content {
-  height: 48px;
+  height: 44px;
   display: flex;
   align-items: center;
   padding: 0 12px;
@@ -77,12 +77,12 @@
 }
 
 .mobile-header-icon {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: none;
   background: rgba(255,255,255,0.15);
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -120,7 +120,7 @@
 }
 
 .mobile-header-logo {
-  height: 44px;
+  height: 32px;
   object-fit: contain;
 }
 
@@ -138,7 +138,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: calc(60px + env(safe-area-inset-bottom));
+  height: calc(52px + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   background: #15803d;
   border-top: 1px solid rgba(255,255,255,0.15);
@@ -155,7 +155,7 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  height: 60px;
+  height: 52px;
   background: none;
   border: none;
   color: rgba(255,255,255,0.6);
@@ -220,7 +220,7 @@
 /* === Pages === */
 .mobile-page {
   padding: 16px;
-  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
   min-height: 100%;
 }
 
@@ -624,7 +624,7 @@
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
 
 .mchat-room-item {
@@ -1875,7 +1875,7 @@
 /* ===== ATTENDANCE MODULE ===== */
 
 .matt-page {
-  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
 
 .matt-loading {
@@ -2504,7 +2504,7 @@
 /* ===== ORDERS MODULE ===== */
 
 .mord-page {
-  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
 
 /* Search */
@@ -3314,7 +3314,7 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 12px 0;
-  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
   background: #f5f5f5;
 }
 
