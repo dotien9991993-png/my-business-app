@@ -1226,6 +1226,55 @@
   flex-shrink: 0;
 }
 
+/* Pending image preview */
+.mchat-pending-img {
+  padding: 8px 12px 0;
+  position: relative;
+  display: inline-block;
+}
+
+.mchat-pending-img img {
+  height: 80px;
+  max-width: 160px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #e5e7eb;
+}
+
+.mchat-pending-img-close {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Upload progress bar */
+.mchat-upload-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.mchat-upload-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #15803d;
+  border-radius: 50%;
+  animation: mmed-spin 0.7s linear infinite;
+}
+
 /* Mention dropdown */
 .mchat-mention-list {
   display: flex;

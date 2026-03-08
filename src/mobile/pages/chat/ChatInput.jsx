@@ -3,10 +3,21 @@ import { uploadImage } from '../../../utils/cloudinaryUpload';
 import { supabase } from '../../../supabaseClient';
 import { haptic } from '../../utils/haptics';
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_FILE_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+
 export default function ChatInput({ room, user, members, onSend, replyTo, onCancelReply }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
+  const [pendingImage, setPendingImage] = useState(null); // { file, preview }
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const textareaRef = useRef(null);
@@ -54,9 +65,11 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     textareaRef.current?.focus();
   }, [text]);
 
-  // Send
+  // Send text (or pending image with caption)
   const handleSend = useCallback(async () => {
-    if ((!text.trim() && !uploading) || sending) return;
+    const hasText = text.trim();
+    const hasImage = !!pendingImage;
+    if ((!hasText && !hasImage) || sending || uploading) return;
 
     const mentionedIds = [];
     const mentionRegex = /@([^\s@]+(?:\s[^\s@]+)*)/g;
@@ -75,18 +88,28 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
 
     setSending(true);
     try {
-      await onSend(text.trim(), 'text', null, replyTo, mentionedIds, user);
+      if (hasImage) {
+        // Upload image then send
+        setUploadProgress('Đang tải ảnh...');
+        const result = await uploadImage(pendingImage.file, 'chat');
+        await onSend(hasText ? text.trim() : null, 'image', { url: result.url, name: pendingImage.file.name, size: result.file_size }, replyTo, mentionedIds, user);
+        URL.revokeObjectURL(pendingImage.preview);
+        setPendingImage(null);
+      } else {
+        await onSend(text.trim(), 'text', null, replyTo, mentionedIds, user);
+      }
       haptic();
       setText('');
       onCancelReply?.();
-      // Reset textarea height
+      setUploadProgress('');
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
     } catch (err) {
       console.error('Send error:', err);
+      setUploadProgress('');
     } finally {
       setSending(false);
     }
-  }, [text, sending, uploading, replyTo, user, activeMembers, onSend, onCancelReply]);
+  }, [text, pendingImage, sending, uploading, replyTo, user, activeMembers, onSend, onCancelReply]);
 
   // Handle key
   const handleKeyDown = useCallback((e) => {
@@ -96,31 +119,59 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     }
   }, [handleSend]);
 
-  // Image upload
-  const handleImageSelect = useCallback(async (e) => {
+  // Image select → show preview (don't upload yet)
+  const handleImageSelect = useCallback((e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
 
-    setUploading(true);
-    try {
-      const result = await uploadImage(file, 'chat');
-      await onSend(null, 'image', { url: result.url, name: file.name, size: file.size }, replyTo, [], user);
-      onCancelReply?.();
-    } catch (err) {
-      console.error('Upload error:', err);
-    } finally {
-      setUploading(false);
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > MAX_FILE_SIZE) {
+      alert('Ảnh quá lớn. Tối đa 10MB.');
+      return;
     }
-  }, [onSend, replyTo, user, onCancelReply]);
 
-  // File upload
+    // Revoke old preview
+    if (pendingImage) URL.revokeObjectURL(pendingImage.preview);
+    setPendingImage({ file, preview: URL.createObjectURL(file) });
+    textareaRef.current?.focus();
+  }, [pendingImage]);
+
+  // Cancel pending image
+  const cancelPendingImage = useCallback(() => {
+    if (pendingImage) URL.revokeObjectURL(pendingImage.preview);
+    setPendingImage(null);
+  }, [pendingImage]);
+
+  // File upload (PDF, Excel, Word)
   const handleFileSelect = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
 
+    // If image selected via file button, redirect to image flow
+    if (file.type.startsWith('image/')) {
+      if (file.size > MAX_FILE_SIZE) {
+        alert('Ảnh quá lớn. Tối đa 10MB.');
+        return;
+      }
+      if (pendingImage) URL.revokeObjectURL(pendingImage.preview);
+      setPendingImage({ file, preview: URL.createObjectURL(file) });
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      alert('File quá lớn. Tối đa 10MB.');
+      return;
+    }
+
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      alert('Chỉ hỗ trợ PDF, Excel, Word.');
+      return;
+    }
+
     setUploading(true);
+    setUploadProgress('Đang tải file...');
     try {
       const ext = file.name.split('.').pop();
       const path = `${room.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
@@ -128,13 +179,16 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
       if (error) throw error;
       const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
       await onSend(null, 'file', { url: urlData.publicUrl, name: file.name, size: file.size }, replyTo, [], user);
+      haptic();
       onCancelReply?.();
     } catch (err) {
       console.error('File upload error:', err);
+      alert('Tải file thất bại.');
     } finally {
       setUploading(false);
+      setUploadProgress('');
     }
-  }, [room.id, onSend, replyTo, user, onCancelReply]);
+  }, [room.id, onSend, replyTo, user, onCancelReply, pendingImage]);
 
   const filteredMentions = showMentions
     ? [{ user_id: 'all', user_name: 'Tất cả' }, ...activeMembers]
@@ -157,6 +211,24 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
           <button className="mchat-reply-bar-close" onClick={onCancelReply}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
+        </div>
+      )}
+
+      {/* Pending image preview */}
+      {pendingImage && (
+        <div className="mchat-pending-img">
+          <img src={pendingImage.preview} alt="" />
+          <button className="mchat-pending-img-close" onClick={cancelPendingImage}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      )}
+
+      {/* Upload progress */}
+      {uploadProgress && (
+        <div className="mchat-upload-bar">
+          <span className="mchat-upload-spinner" />
+          <span>{uploadProgress}</span>
         </div>
       )}
 
@@ -184,13 +256,13 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
               accept="image/*"
               onChange={handleImageSelect}
               style={{ display: 'none' }}
-              disabled={uploading}
+              disabled={uploading || sending}
             />
           </label>
           <button
             className="mchat-input-action-btn"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || sending}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
@@ -200,7 +272,7 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
           <textarea
             ref={textareaRef}
             className="mchat-textarea"
-            placeholder={uploading ? 'Đang tải lên...' : 'Nhập tin nhắn...'}
+            placeholder={uploading ? 'Đang tải lên...' : pendingImage ? 'Thêm chú thích...' : 'Nhập tin nhắn...'}
             value={text}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
@@ -212,9 +284,9 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
         </div>
 
         <button
-          className={`mchat-send-btn ${text.trim() ? 'active' : ''}`}
+          className={`mchat-send-btn ${(text.trim() || pendingImage) ? 'active' : ''}`}
           onClick={handleSend}
-          disabled={(!text.trim() && !uploading) || sending}
+          disabled={(!text.trim() && !pendingImage) || sending || uploading}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
@@ -224,7 +296,7 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
         onChange={handleFileSelect}
         style={{ display: 'none' }}
       />
