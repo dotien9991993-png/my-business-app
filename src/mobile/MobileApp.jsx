@@ -11,7 +11,7 @@ import JobsPage from './pages/jobs/JobsPage';
 import MorePage from './pages/more/MorePage';
 import AttendancePage from './pages/attendance/AttendancePage';
 import ProfilePage from './pages/profile/ProfilePage';
-import splashLogo from './assets/logo.png';
+import splashLogo from './assets/logo-splash.png';
 import './styles/mobile.css';
 
 export default function MobileApp() {
