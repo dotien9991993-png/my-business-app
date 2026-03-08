@@ -55,6 +55,7 @@ export default function ChatPage({ user, tenantId, onHideNav }) {
       <ChatConversation
         room={activeRoom}
         user={user}
+        tenantId={tenantId}
         allUsers={allUsers}
         onBack={handleBack}
       />

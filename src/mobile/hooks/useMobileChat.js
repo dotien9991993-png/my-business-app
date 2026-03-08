@@ -385,7 +385,7 @@ export function useMobileChatConversation(roomId, userId) {
   }, [loadingMore, hasMore, messages, loadMessages]);
 
   // Send message
-  const sendMessage = useCallback(async (content, messageType = 'text', fileData = null, replyTo = null, mentions = [], currentUser = null) => {
+  const sendMessage = useCallback(async (content, messageType = 'text', fileData = null, replyTo = null, mentions = [], currentUser = null, attachments = []) => {
     const msgData = {
       room_id: roomId,
       sender_id: userId,
@@ -394,7 +394,7 @@ export function useMobileChatConversation(roomId, userId) {
       content: content || null,
       message_type: messageType,
       reply_to: replyTo?.id || null,
-      attachments: [],
+      attachments: attachments || [],
       mentions: mentions.length > 0 ? mentions : []
     };
 

@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { uploadImage } from '../../../utils/cloudinaryUpload';
 import { supabase } from '../../../supabaseClient';
 import { haptic } from '../../utils/haptics';
+import MobileAttachmentPicker from './MobileAttachmentPicker';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_FILE_TYPES = [
@@ -12,15 +13,18 @@ const ALLOWED_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
 
-export default function ChatInput({ room, user, members, onSend, replyTo, onCancelReply }) {
+export default function ChatInput({ room, user, tenantId, members, onSend, replyTo, onCancelReply }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [pendingImage, setPendingImage] = useState(null); // { file, preview }
+  const [pendingAttachments, setPendingAttachments] = useState([]); // business record attachments
+  const [showPicker, setShowPicker] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const textareaRef = useRef(null);
+  const imageInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const composingRef = useRef(false);
 
@@ -69,7 +73,8 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
   const handleSend = useCallback(async () => {
     const hasText = text.trim();
     const hasImage = !!pendingImage;
-    if ((!hasText && !hasImage) || sending || uploading) return;
+    const hasAttachments = pendingAttachments.length > 0;
+    if ((!hasText && !hasImage && !hasAttachments) || sending || uploading) return;
 
     const mentionedIds = [];
     const mentionRegex = /@([^\s@]+(?:\s[^\s@]+)*)/g;
@@ -89,17 +94,17 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     setSending(true);
     try {
       if (hasImage) {
-        // Upload image then send
         setUploadProgress('Đang tải ảnh...');
         const result = await uploadImage(pendingImage.file, 'chat');
-        await onSend(hasText ? text.trim() : null, 'image', { url: result.url, name: pendingImage.file.name, size: result.file_size }, replyTo, mentionedIds, user);
+        await onSend(hasText ? text.trim() : null, 'image', { url: result.url, name: pendingImage.file.name, size: result.file_size }, replyTo, mentionedIds, user, pendingAttachments.length > 0 ? pendingAttachments : undefined);
         URL.revokeObjectURL(pendingImage.preview);
         setPendingImage(null);
       } else {
-        await onSend(text.trim(), 'text', null, replyTo, mentionedIds, user);
+        await onSend(text.trim() || null, 'text', null, replyTo, mentionedIds, user, hasAttachments ? pendingAttachments : undefined);
       }
       haptic();
       setText('');
+      setPendingAttachments([]);
       onCancelReply?.();
       setUploadProgress('');
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -109,7 +114,7 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     } finally {
       setSending(false);
     }
-  }, [text, pendingImage, sending, uploading, replyTo, user, activeMembers, onSend, onCancelReply]);
+  }, [text, pendingImage, pendingAttachments, sending, uploading, replyTo, user, activeMembers, onSend, onCancelReply]);
 
   // Handle key
   const handleKeyDown = useCallback((e) => {
@@ -119,7 +124,7 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     }
   }, [handleSend]);
 
-  // Image select → show preview (don't upload yet)
+  // Image select → show preview
   const handleImageSelect = useCallback((e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -131,7 +136,6 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
       return;
     }
 
-    // Revoke old preview
     if (pendingImage) URL.revokeObjectURL(pendingImage.preview);
     setPendingImage({ file, preview: URL.createObjectURL(file) });
     textareaRef.current?.focus();
@@ -190,11 +194,24 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
     }
   }, [room.id, onSend, replyTo, user, onCancelReply, pendingImage]);
 
+  // Attachment picker callbacks
+  const handleAttachmentSelect = useCallback((attachment) => {
+    setPendingAttachments(prev => [...prev, attachment]);
+    setShowPicker(false);
+    textareaRef.current?.focus();
+  }, []);
+
+  const removeAttachment = useCallback((index) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
   const filteredMentions = showMentions
     ? [{ user_id: 'all', user_name: 'Tất cả' }, ...activeMembers]
         .filter(m => !mentionQuery || m.user_name?.toLowerCase().includes(mentionQuery))
         .slice(0, 6)
     : [];
+
+  const ATT_ICONS = { order: '📦', task: '🎬', product: '📦', customer: '👥', technical_job: '🔧', warranty: '🛡️' };
 
   return (
     <div className="mchat-input-area">
@@ -211,6 +228,20 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
           <button className="mchat-reply-bar-close" onClick={onCancelReply}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
+        </div>
+      )}
+
+      {/* Pending attachments (business records) */}
+      {pendingAttachments.length > 0 && (
+        <div className="mchat-pending-atts">
+          {pendingAttachments.map((att, i) => (
+            <div key={i} className="mchat-pending-att">
+              <span>{ATT_ICONS[att.type] || '📎'} {att.title}</span>
+              <button onClick={() => removeAttachment(i)}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -249,9 +280,17 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
       {/* Input row */}
       <div className="mchat-input-row">
         <div className="mchat-input-actions">
+          <button
+            className="mchat-input-action-btn"
+            onClick={() => setShowPicker(!showPicker)}
+            disabled={uploading || sending}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
           <label className="mchat-input-action-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
             <input
+              ref={imageInputRef}
               type="file"
               accept="image/*"
               onChange={handleImageSelect}
@@ -259,13 +298,6 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
               disabled={uploading || sending}
             />
           </label>
-          <button
-            className="mchat-input-action-btn"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading || sending}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          </button>
         </div>
 
         <div className="mchat-textarea-wrap">
@@ -284,9 +316,9 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
         </div>
 
         <button
-          className={`mchat-send-btn ${(text.trim() || pendingImage) ? 'active' : ''}`}
+          className={`mchat-send-btn ${(text.trim() || pendingImage || pendingAttachments.length > 0) ? 'active' : ''}`}
           onClick={handleSend}
-          disabled={(!text.trim() && !pendingImage) || sending || uploading}
+          disabled={(!text.trim() && !pendingImage && pendingAttachments.length === 0) || sending || uploading}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
@@ -300,6 +332,17 @@ export default function ChatInput({ room, user, members, onSend, replyTo, onCanc
         onChange={handleFileSelect}
         style={{ display: 'none' }}
       />
+
+      {/* Attachment picker menu */}
+      {showPicker && (
+        <MobileAttachmentPicker
+          tenantId={tenantId}
+          onSelect={handleAttachmentSelect}
+          onImageClick={() => imageInputRef.current?.click()}
+          onFileClick={() => fileInputRef.current?.click()}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   );
 }

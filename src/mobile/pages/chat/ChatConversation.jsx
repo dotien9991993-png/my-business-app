@@ -22,7 +22,7 @@ const getMessageDate = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 };
 
-export default function ChatConversation({ room, user, allUsers, onBack }) {
+export default function ChatConversation({ room, user, tenantId, allUsers, onBack }) {
   const {
     messages, loading, loadingMore, hasMore,
     handleLoadMore, sendMessage, deleteMessage
@@ -208,6 +208,7 @@ export default function ChatConversation({ room, user, allUsers, onBack }) {
       <ChatInput
         room={room}
         user={user}
+        tenantId={tenantId}
         members={room.members}
         onSend={sendMessage}
         replyTo={replyTo}
