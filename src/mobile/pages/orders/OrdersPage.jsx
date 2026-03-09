@@ -20,7 +20,7 @@ const DATE_FILTERS = [
   { id: 'month', label: 'Tháng này' },
 ];
 
-export default function OrdersPage({ user, tenantId }) {
+export default function OrdersPage({ user, tenantId, openEntityId, onEntityOpened }) {
   const {
     orders, totalCount, loading, filters,
     updateFilter, loadOrderDetail, refresh
@@ -31,6 +31,23 @@ export default function OrdersPage({ user, tenantId }) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const searchTimer = useRef(null);
+
+  // Open entity from chat attachment
+  useEffect(() => {
+    if (!openEntityId) return;
+    (async () => {
+      try {
+        const detail = await loadOrderDetail(openEntityId);
+        if (detail) {
+          setSelectedOrder(detail);
+          setOrderDetail(detail);
+        }
+      } catch (err) {
+        console.error('Error loading order:', err);
+      }
+      onEntityOpened?.();
+    })();
+  }, [openEntityId, onEntityOpened, loadOrderDetail]);
 
   // Debounce search
   useEffect(() => {

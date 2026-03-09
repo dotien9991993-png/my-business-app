@@ -3,7 +3,7 @@ import { useMobileChat } from '../../hooks/useMobileChat';
 import ChatRoomList from './ChatRoomList';
 import ChatConversation from './ChatConversation';
 
-export default function ChatPage({ user, tenantId, onHideNav }) {
+export default function ChatPage({ user, tenantId, onHideNav, onEntityNavigate }) {
   const {
     rooms, allUsers, unreadCounts, totalUnread,
     loadingRooms, loadRooms, setActiveRoomId,
@@ -58,6 +58,7 @@ export default function ChatPage({ user, tenantId, onHideNav }) {
         tenantId={tenantId}
         allUsers={allUsers}
         onBack={handleBack}
+        onEntityNavigate={onEntityNavigate}
       />
     );
   }

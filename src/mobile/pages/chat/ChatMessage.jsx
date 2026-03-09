@@ -44,7 +44,12 @@ const renderContent = (content) => {
   });
 };
 
-export default function ChatMessage({ message, isOwn, isGroup, isContinued, replyMessage, allUsers, onContextMenu, onImagePreview }) {
+const ATT_ICONS = {
+  order: '📦', task: '🎬', product: '📦', customer: '👥',
+  technical_job: '🔧', warranty: '🛡️',
+};
+
+export default function ChatMessage({ message, isOwn, isGroup, isContinued, replyMessage, allUsers, onContextMenu, onImagePreview, onAttachmentClick }) {
   const longPressTimer = useRef(null);
   const touchMoved = useRef(false);
 
@@ -173,11 +178,16 @@ export default function ChatMessage({ message, isOwn, isGroup, isContinued, repl
 
         {/* Entity attachments */}
         {message.attachments?.length > 0 && message.attachments.map((att, i) => (
-          <div key={i} className="mchat-bubble mchat-attachment">
-            <div className="mchat-att-title">
-              {att.type === 'order' ? '📦' : att.type === 'task' ? '🎬' : '📎'} {att.title}
-            </div>
+          <div
+            key={i}
+            className={`mchat-bubble mchat-attachment ${onAttachmentClick ? 'clickable' : ''}`}
+            onClick={(e) => { e.stopPropagation(); onAttachmentClick?.(att); }}
+          >
+            <div className="mchat-att-type">{ATT_ICONS[att.type] || '📎'} {att.type === 'order' ? 'ĐƠN HÀNG' : att.type === 'task' ? 'VIDEO TASK' : att.type === 'technical_job' ? 'KỸ THUẬT' : att.type === 'product' ? 'SẢN PHẨM' : att.type === 'customer' ? 'KHÁCH HÀNG' : att.type === 'warranty' ? 'BẢO HÀNH' : 'ĐÍNH KÈM'}</div>
+            <div className="mchat-att-title">{att.title}</div>
             {att.subtitle && <div className="mchat-att-sub">{att.subtitle}</div>}
+            {att.status_label && <div className="mchat-att-status">{att.status_label}</div>}
+            <div className="mchat-att-link">Xem chi tiết →</div>
           </div>
         ))}
       </div>

@@ -22,7 +22,7 @@ const getMessageDate = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 };
 
-export default function ChatConversation({ room, user, tenantId, allUsers, onBack }) {
+export default function ChatConversation({ room, user, tenantId, allUsers, onBack, onEntityNavigate }) {
   const {
     messages, loading, loadingMore, hasMore,
     handleLoadMore, sendMessage, deleteMessage
@@ -191,6 +191,7 @@ export default function ChatConversation({ room, user, tenantId, allUsers, onBac
                   allUsers={allUsers}
                   onContextMenu={handleContextMenu}
                   onImagePreview={setImagePreview}
+                  onAttachmentClick={onEntityNavigate}
                 />
               </React.Fragment>
             );

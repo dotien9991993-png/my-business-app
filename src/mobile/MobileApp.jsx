@@ -24,6 +24,7 @@ export default function MobileApp() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showSplash, setShowSplash] = useState(true);
   const [splashFading, setSplashFading] = useState(false);
+  const [entityToOpen, setEntityToOpen] = useState(null);
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
@@ -142,6 +143,24 @@ export default function MobileApp() {
     setSubPage(null);
   };
 
+  const handleEntityNavigate = (attachment) => {
+    if (!attachment?.type || !attachment?.id) return;
+    const TAB_MAP = { order: 'orders', task: 'media', technical_job: 'jobs' };
+    const tab = TAB_MAP[attachment.type];
+    if (!tab) {
+      alert(`${attachment.title || 'Chi tiết'}\n${attachment.subtitle || ''}\n${attachment.status_label || ''}`);
+      return;
+    }
+    setHideNav(false);
+    setSubPage(null);
+    setActiveTab(tab);
+    setEntityToOpen({ type: attachment.type, id: attachment.id });
+  };
+
+  const handleEntityOpened = () => {
+    setEntityToOpen(null);
+  };
+
   const renderPage = () => {
     if (activeTab === 'more' && subPage) {
       switch (subPage) {
@@ -158,13 +177,13 @@ export default function MobileApp() {
 
     switch (activeTab) {
       case 'chat':
-        return <MobileErrorBoundary><ChatPage user={currentUser} tenantId={tenantId} onHideNav={setHideNav} /></MobileErrorBoundary>;
+        return <MobileErrorBoundary><ChatPage user={currentUser} tenantId={tenantId} onHideNav={setHideNav} onEntityNavigate={handleEntityNavigate} /></MobileErrorBoundary>;
       case 'orders':
-        return <MobileErrorBoundary><OrdersPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
+        return <MobileErrorBoundary><OrdersPage user={currentUser} tenantId={tenantId} openEntityId={entityToOpen?.type === 'order' ? entityToOpen.id : null} onEntityOpened={handleEntityOpened} /></MobileErrorBoundary>;
       case 'media':
-        return <MobileErrorBoundary><MediaPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
+        return <MobileErrorBoundary><MediaPage user={currentUser} tenantId={tenantId} openEntityId={entityToOpen?.type === 'task' ? entityToOpen.id : null} onEntityOpened={handleEntityOpened} /></MobileErrorBoundary>;
       case 'jobs':
-        return <MobileErrorBoundary><JobsPage user={currentUser} tenantId={tenantId} /></MobileErrorBoundary>;
+        return <MobileErrorBoundary><JobsPage user={currentUser} tenantId={tenantId} openEntityId={entityToOpen?.type === 'technical_job' ? entityToOpen.id : null} onEntityOpened={handleEntityOpened} /></MobileErrorBoundary>;
       case 'more':
         return <MobileErrorBoundary><MorePage user={currentUser} tenantId={tenantId} onNavigate={handleMoreNavigate} onLogout={logout} /></MobileErrorBoundary>;
       default:

@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { supabase } from '../../../supabaseClient';
 import { useMobileMedia } from '../../hooks/useMobileMedia';
 import TaskCard from './TaskCard';
 import TaskDetail from './TaskDetail';
@@ -22,7 +23,7 @@ const DATE_FILTERS = [
   { id: 'overdue', label: '⚠️ Quá hạn' },
 ];
 
-export default function MediaPage({ user, tenantId }) {
+export default function MediaPage({ user, tenantId, openEntityId, onEntityOpened }) {
   const {
     tasks, allTasks, loading, filters, permLevel,
     updateFilter, updateTaskStatus, addComment, refresh,
@@ -33,6 +34,21 @@ export default function MediaPage({ user, tenantId }) {
   const [selectedTask, setSelectedTask] = useState(null);
   const [toast, setToast] = useState(null);
   const [pageTab, setPageTab] = useState('tasks');
+
+  // Open entity from chat attachment
+  useEffect(() => {
+    if (!openEntityId) return;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('tasks').select('*').eq('id', openEntityId).single();
+        if (data) setSelectedTask(data);
+      } catch (err) {
+        console.error('Error loading task:', err);
+      }
+      onEntityOpened?.();
+    })();
+  }, [openEntityId, onEntityOpened]);
 
   const showToast = useCallback((msg) => {
     setToast(msg);

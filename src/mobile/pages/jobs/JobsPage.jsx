@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../../supabaseClient';
 import TodayJobs from './TodayJobs';
 import JobCalendar from './JobCalendar';
 import JobList from './JobList';
@@ -14,9 +15,24 @@ const SUB_TABS = [
   { id: 'summary', label: 'Tổng' },
 ];
 
-export default function JobsPage({ user, tenantId }) {
+export default function JobsPage({ user, tenantId, openEntityId, onEntityOpened }) {
   const [activeTab, setActiveTab] = useState('today');
   const [selectedJob, setSelectedJob] = useState(null);
+
+  // Open entity from chat attachment
+  useEffect(() => {
+    if (!openEntityId) return;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('technical_jobs').select('*').eq('id', openEntityId).single();
+        if (data) setSelectedJob(data);
+      } catch (err) {
+        console.error('Error loading job:', err);
+      }
+      onEntityOpened?.();
+    })();
+  }, [openEntityId, onEntityOpened]);
 
   const handleOpenDetail = (job) => setSelectedJob(job);
   const handleCloseDetail = () => setSelectedJob(null);
