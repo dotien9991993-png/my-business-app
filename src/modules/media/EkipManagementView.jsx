@@ -129,7 +129,7 @@ export default function EkipManagementView() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Quản lý Ekip</h1>
-          <p className="text-gray-500 text-sm mt-1">Tạo sẵn nhóm Quay & Dựng + Diễn viên để chọn nhanh khi tạo video</p>
+          <p className="text-gray-500 text-sm mt-1">Tạo sẵn nhóm Quay phim + Dựng phim + Diễn viên để chọn nhanh khi tạo video</p>
         </div>
         <button
           onClick={openCreateForm}

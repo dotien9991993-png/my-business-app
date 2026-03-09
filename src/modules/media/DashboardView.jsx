@@ -109,7 +109,7 @@ const DashboardView = ({ currentUser, visibleTasks, reportData, setSelectedTask,
       <div className="grid md:grid-cols-2 gap-4 md:gap-6">
         {crewData.length > 0 && (
           <div className="bg-white p-4 md:p-6 rounded-xl shadow">
-            <h3 className="text-base md:text-lg font-bold mb-3 md:mb-4">🎬 Video theo Quay & Dựng</h3>
+            <h3 className="text-base md:text-lg font-bold mb-3 md:mb-4">🎬 Video theo Quay / Dựng</h3>
             <div className="h-48 md:h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={crewData} layout="vertical">

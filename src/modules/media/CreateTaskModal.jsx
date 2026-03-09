@@ -23,7 +23,8 @@ const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState(currentUser.name);
   const [videoCategory, setVideoCategory] = useState('');
-  const [crew, setCrew] = useState([]);
+  const [cameramen, setCameramen] = useState([]);
+  const [editors, setEditors] = useState([]);
   const [actors, setActors] = useState([]);
 
   // Product search states
@@ -109,12 +110,12 @@ const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal
     }
   };
 
-  const toggleCrew = (name) => {
-    if (crew.includes(name)) {
-      setCrew(crew.filter(n => n !== name));
-    } else {
-      setCrew([...crew, name]);
-    }
+  const toggleCameraman = (name) => {
+    setCameramen(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
+  };
+
+  const toggleEditor = (name) => {
+    setEditors(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
   };
 
   const toggleActor = (name) => {
@@ -330,31 +331,59 @@ const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal
           <EkipSelector
             tenant={tenant}
             allUsers={allUsers}
-            onApplyEkip={({ crew: c, actors: a }) => { setCrew(c); setActors(a); }}
+            onApplyEkip={({ cameramen: c, editors: e, actors: a }) => { setCameramen(c); setEditors(e); setActors(a); }}
           />
 
-          {/* Crew selection (Quay & Dựng) */}
+          {/* Quay phim */}
           <div>
-            <label className="block text-sm font-medium mb-2">🎬 Quay & Dựng (Chọn nhiều)</label>
+            <label className="block text-sm font-medium mb-2">🎬 Quay phim (Chọn nhiều)</label>
             <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-1">
               {allUsers.map(user => (
                 <label key={user.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded">
                   <input
                     type="checkbox"
-                    checked={crew.includes(user.name)}
-                    onChange={() => toggleCrew(user.name)}
+                    checked={cameramen.includes(user.name)}
+                    onChange={() => toggleCameraman(user.name)}
                     className="w-4 h-4 text-blue-600"
                   />
                   <span className="text-sm">{user.name} <span className="text-gray-400">- {user.team}</span></span>
                 </label>
               ))}
             </div>
-            {crew.length > 0 && (
+            {cameramen.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
-                {crew.map(name => (
+                {cameramen.map(name => (
                   <span key={name} className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs flex items-center gap-1">
                     🎬 {name}
-                    <button onClick={() => toggleCrew(name)} className="hover:text-red-600">×</button>
+                    <button onClick={() => toggleCameraman(name)} className="hover:text-red-600">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dựng phim */}
+          <div>
+            <label className="block text-sm font-medium mb-2">✂️ Dựng phim (Chọn nhiều)</label>
+            <div className="border rounded-lg p-3 max-h-40 overflow-y-auto space-y-1">
+              {allUsers.map(user => (
+                <label key={user.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded">
+                  <input
+                    type="checkbox"
+                    checked={editors.includes(user.name)}
+                    onChange={() => toggleEditor(user.name)}
+                    className="w-4 h-4 text-purple-600"
+                  />
+                  <span className="text-sm">{user.name} <span className="text-gray-400">- {user.team}</span></span>
+                </label>
+              ))}
+            </div>
+            {editors.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {editors.map(name => (
+                  <span key={name} className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs flex items-center gap-1">
+                    ✂️ {name}
+                    <button onClick={() => toggleEditor(name)} className="hover:text-red-600">×</button>
                   </span>
                 ))}
               </div>
@@ -426,7 +455,7 @@ const CreateTaskModal = ({ currentUser, allUsers, tenant, setShowCreateTaskModal
                   return;
                 }
                 const productIds = selectedProducts.map(p => p.id);
-                createNewTask(title, platform.join(', '), 'Trung bình', dueDate, description, assignee, videoCategory, crew, actors, productIds);
+                createNewTask(title, platform.join(', '), 'Trung bình', dueDate, description, assignee, videoCategory, cameramen, editors, actors, productIds);
               }}
               className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
             >

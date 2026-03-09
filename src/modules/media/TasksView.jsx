@@ -536,10 +536,10 @@ const TasksView = ({
               </select>
             </div>
 
-            {/* 5. Quay & Dựng */}
+            {/* 5. Quay / Dựng */}
             {uniqueCrew.length > 0 && (
               <div>
-                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎬 Quay & Dựng</label>
+                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎬 Quay / Dựng</label>
                 <select
                   value={filterCrew}
                   onChange={(e) => setFilterCrew(e.target.value)}

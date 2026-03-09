@@ -36,11 +36,11 @@ export default function EkipSelector({ tenant, allUsers, onApplyEkip, disabled }
     const ekip = ekips.find(e => e.id === ekipId);
     if (!ekip) return;
 
-    const crewIds = [...new Set([...(ekip.camera_ids || []), ...(ekip.editor_ids || [])])];
-    const crewNames = resolveNames(crewIds);
+    const cameramenNames = resolveNames(ekip.camera_ids);
+    const editorNames = resolveNames(ekip.editor_ids);
     const actorNames = resolveNames(ekip.actor_ids);
 
-    onApplyEkip({ crew: crewNames, actors: actorNames });
+    onApplyEkip({ cameramen: cameramenNames, editors: editorNames, actors: actorNames });
   };
 
   if (loading || ekips.length === 0) return null;
@@ -64,8 +64,12 @@ export default function EkipSelector({ tenant, allUsers, onApplyEkip, disabled }
       {selectedEkip && (
         <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg text-xs space-y-1">
           <div>
-            <span className="font-semibold text-blue-700">🎬 Quay & Dựng:</span>{' '}
-            {resolveNames([...new Set([...(selectedEkip.camera_ids || []), ...(selectedEkip.editor_ids || [])])]).join(', ') || 'Chưa có'}
+            <span className="font-semibold text-blue-700">🎬 Quay phim:</span>{' '}
+            {resolveNames(selectedEkip.camera_ids).join(', ') || 'Chưa có'}
+          </div>
+          <div>
+            <span className="font-semibold text-purple-700">✂️ Dựng phim:</span>{' '}
+            {resolveNames(selectedEkip.editor_ids).join(', ') || 'Chưa có'}
           </div>
           <div>
             <span className="font-semibold text-pink-700">🎭 Diễn viên:</span>{' '}

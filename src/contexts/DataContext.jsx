@@ -441,7 +441,7 @@ export function DataProvider({ children }) {
     } catch (error) { console.error('Error updating status:', error); alert('❌ Lỗi khi cập nhật trạng thái!'); }
   }, [selectedTask]);
 
-  const createNewTask = useCallback(async (title, platform, priority, dueDate, description, assignee, category = '', crew = [], actors = [], productIds = []) => {
+  const createNewTask = useCallback(async (title, platform, priority, dueDate, description, assignee, category = '', cameramen = [], editors = [], actors = [], productIds = []) => {
     try {
       setLoading(true);
       const assignedUser = (allUsers || []).find(u => u.name === assignee);
@@ -449,7 +449,7 @@ export function DataProvider({ children }) {
       const taskData = {
         tenant_id: tenant.id, title, assignee, team: taskTeam, status: 'Nháp',
         due_date: dueDate, platform, priority, description, is_overdue: false,
-        comments: [], post_links: [], cameramen: crew, editors: [], actors,
+        comments: [], post_links: [], cameramen, editors, actors,
         product_ids: productIds.length > 0 ? productIds : []
       };
       if (category) taskData.category = category;

@@ -30,7 +30,8 @@ const TaskModal = ({
   const [editDueDate, setEditDueDate] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editCategory, setEditCategory] = useState('');
-  const [editCrew, setEditCrew] = useState([]);
+  const [editCameramen, setEditCameramen] = useState([]);
+  const [editEditors, setEditEditors] = useState([]);
   const [editActors, setEditActors] = useState([]);
 
   // Link validation + preview
@@ -379,7 +380,8 @@ const TaskModal = ({
     setEditDueDate(dd.includes('T') ? dd.slice(0, 16) : dd ? dd + 'T17:00' : '');
     setEditDescription(selectedTask.description || '');
     setEditCategory(selectedTask.category || '');
-    setEditCrew(selectedTask.crew || []);
+    setEditCameramen(selectedTask.cameramen || []);
+    setEditEditors(selectedTask.editors || []);
     setEditActors(selectedTask.actors || []);
     setEditProducts([...taskProducts]);
     setShowEditTask(true);
@@ -393,12 +395,12 @@ const TaskModal = ({
     }
   };
 
-  const toggleEditCrew = (name) => {
-    if (editCrew.includes(name)) {
-      setEditCrew(editCrew.filter(n => n !== name));
-    } else {
-      setEditCrew([...editCrew, name]);
-    }
+  const toggleEditCameraman = (name) => {
+    setEditCameramen(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
+  };
+
+  const toggleEditEditor = (name) => {
+    setEditEditors(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
   };
 
   const toggleEditActor = (name) => {
@@ -424,8 +426,8 @@ const TaskModal = ({
           due_date: editDueDate,
           description: editDescription,
           category: editCategory,
-          cameramen: editCrew,
-          editors: [],
+          cameramen: editCameramen,
+          editors: editEditors,
           actors: editActors,
           product_ids: editProductIds
         })
@@ -443,9 +445,9 @@ const TaskModal = ({
         dueDate: editDueDate,
         description: editDescription,
         category: editCategory,
-        crew: editCrew,
-        cameramen: editCrew,
-        editors: [],
+        crew: [...new Set([...editCameramen, ...editEditors])],
+        cameramen: editCameramen,
+        editors: editEditors,
         actors: editActors,
         product_ids: editProductIds
       });
@@ -524,7 +526,8 @@ const TaskModal = ({
     return deadline < today;
   };
 
-  const taskCrew = selectedTask.crew || [];
+  const taskCameramen = selectedTask.cameramen || [];
+  const taskEditors = selectedTask.editors || [];
   const taskActors = selectedTask.actors || [];
 
   return (
@@ -578,9 +581,14 @@ const TaskModal = ({
                   📱 {selectedTask.platform}
                 </span>
                 {/* Cameramen & Editors — inline with tags */}
-                {taskCrew.length > 0 && (
+                {taskCameramen.length > 0 && (
                   <span className="px-2 md:px-3 py-0.5 md:py-1 bg-blue-400/30 backdrop-blur-sm rounded-full text-xs md:text-sm">
-                    🎬 {taskCrew.join(', ')}
+                    🎬 {taskCameramen.join(', ')}
+                  </span>
+                )}
+                {taskEditors.length > 0 && (
+                  <span className="px-2 md:px-3 py-0.5 md:py-1 bg-purple-400/30 backdrop-blur-sm rounded-full text-xs md:text-sm">
+                    ✂️ {taskEditors.join(', ')}
                   </span>
                 )}
                 {taskActors.length > 0 && (
@@ -596,7 +604,7 @@ const TaskModal = ({
                 ))}
               </div>
               {/* Xem thêm tags trên mobile */}
-              {!headerExpanded && (taskCrew.length > 0 || taskActors.length > 0 || taskProducts.length > 0) && (
+              {!headerExpanded && (taskCameramen.length > 0 || taskEditors.length > 0 || taskActors.length > 0 || taskProducts.length > 0) && (
                 <button
                   onClick={() => setHeaderExpanded(true)}
                   className="text-white/70 text-xs mt-1 md:hidden"
@@ -1234,23 +1242,42 @@ const TaskModal = ({
                 <EkipSelector
                   tenant={tenant}
                   allUsers={allUsers}
-                  onApplyEkip={({ crew: c, actors: a }) => { setEditCrew(c); setEditActors(a); }}
+                  onApplyEkip={({ cameramen: c, editors: e, actors: a }) => { setEditCameramen(c); setEditEditors(e); setEditActors(a); }}
                 />
-                {/* Crew edit (Quay & Dựng) */}
+                {/* Quay phim */}
                 <div>
-                  <label className="block text-sm font-medium mb-1">🎬 Quay & Dựng</label>
+                  <label className="block text-sm font-medium mb-1">🎬 Quay phim</label>
                   <div className="border rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">
                     {allUsers.map(user => (
                       <label key={user.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded text-sm">
-                        <input type="checkbox" checked={editCrew.includes(user.name)} onChange={() => toggleEditCrew(user.name)} className="w-3 h-3" />
+                        <input type="checkbox" checked={editCameramen.includes(user.name)} onChange={() => toggleEditCameraman(user.name)} className="w-3 h-3" />
                         {user.name} <span className="text-gray-400 text-xs">- {user.team}</span>
                       </label>
                     ))}
                   </div>
-                  {editCrew.length > 0 && (
+                  {editCameramen.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
-                      {editCrew.map(n => (
+                      {editCameramen.map(n => (
                         <span key={n} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">🎬 {n}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Dựng phim */}
+                <div>
+                  <label className="block text-sm font-medium mb-1">✂️ Dựng phim</label>
+                  <div className="border rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">
+                    {allUsers.map(user => (
+                      <label key={user.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded text-sm">
+                        <input type="checkbox" checked={editEditors.includes(user.name)} onChange={() => toggleEditEditor(user.name)} className="w-3 h-3" />
+                        {user.name} <span className="text-gray-400 text-xs">- {user.team}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {editEditors.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {editEditors.map(n => (
+                        <span key={n} className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">✂️ {n}</span>
                       ))}
                     </div>
                   )}
