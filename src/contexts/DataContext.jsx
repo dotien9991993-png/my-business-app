@@ -80,6 +80,7 @@ export function DataProvider({ children }) {
   const [taskCustomStartDate, setTaskCustomStartDate] = useState('');
   const [taskCustomEndDate, setTaskCustomEndDate] = useState('');
   const [taskFilterCrew, setTaskFilterCrew] = useState('all');
+  const [taskFilterEditor, setTaskFilterEditor] = useState('all');
   const [taskFilterActor, setTaskFilterActor] = useState('all');
   const [taskFilterProduct, setTaskFilterProduct] = useState([]);
 
@@ -662,7 +663,7 @@ export function DataProvider({ children }) {
     taskFilterAssignee, setTaskFilterAssignee, taskFilterCategory, setTaskFilterCategory,
     taskDateFilter, setTaskDateFilter, taskCustomStartDate, setTaskCustomStartDate,
     taskCustomEndDate, setTaskCustomEndDate,
-    taskFilterCrew, setTaskFilterCrew, taskFilterActor, setTaskFilterActor,
+    taskFilterCrew, setTaskFilterCrew, taskFilterEditor, setTaskFilterEditor, taskFilterActor, setTaskFilterActor,
     taskFilterProduct, setTaskFilterProduct,
     // Job filters
     jobFilterCreator, setJobFilterCreator, jobFilterTechnician, setJobFilterTechnician,

@@ -50,6 +50,8 @@ const TasksView = ({
   setTaskCustomEndDate,
   taskFilterCrew,
   setTaskFilterCrew,
+  taskFilterEditor,
+  setTaskFilterEditor,
   taskFilterActor,
   setTaskFilterActor,
   taskFilterProduct,
@@ -73,6 +75,8 @@ const TasksView = ({
   const setCustomEndDate = setTaskCustomEndDate;
   const filterCrew = taskFilterCrew || 'all';
   const setFilterCrew = setTaskFilterCrew || (() => {});
+  const filterEditor = taskFilterEditor || 'all';
+  const setFilterEditor = setTaskFilterEditor || (() => {});
   const filterActor = taskFilterActor || 'all';
   const setFilterActor = setTaskFilterActor || (() => {});
   const filterProducts = taskFilterProduct || [];
@@ -195,7 +199,8 @@ const TasksView = ({
     if (filterStatus !== 'all' && t.status !== filterStatus) return false;
     if (filterAssignee !== 'all' && t.assignee !== filterAssignee) return false;
     if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-    if (filterCrew !== 'all' && !(t.crew || []).includes(filterCrew)) return false;
+    if (filterCrew !== 'all' && !(t.cameramen || []).includes(filterCrew)) return false;
+    if (filterEditor !== 'all' && !(t.editors || []).includes(filterEditor)) return false;
     if (filterActor !== 'all' && !(t.actors || []).includes(filterActor)) return false;
     if (filterProducts.length > 0 && !(t.product_ids || []).some(pid => filterProducts.includes(pid))) return false;
     if (filterLinkIssue === 'invalid' && !(t.postLinks || []).some(l =>
@@ -327,7 +332,8 @@ const TasksView = ({
     setTimeout(() => setBulkResult(null), 5000);
   };
 
-  const uniqueCrew = [...new Set(visibleTasks.flatMap(t => t.crew || []))].sort();
+  const uniqueCrew = [...new Set(visibleTasks.flatMap(t => t.cameramen || []))].sort();
+  const uniqueEditors = [...new Set(visibleTasks.flatMap(t => t.editors || []))].sort();
   const uniqueActors = [...new Set(visibleTasks.flatMap(t => t.actors || []))].sort();
   // Unique products for filter
   const uniqueProductIds = [...new Set(visibleTasks.flatMap(t => t.product_ids || []))];
@@ -340,7 +346,8 @@ const TasksView = ({
         if (filterStatus !== 'all' && t.status !== filterStatus) return false;
         if (filterAssignee !== 'all' && t.assignee !== filterAssignee) return false;
         if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-        if (filterCrew !== 'all' && !(t.crew || []).includes(filterCrew)) return false;
+        if (filterCrew !== 'all' && !(t.cameramen || []).includes(filterCrew)) return false;
+        if (filterEditor !== 'all' && !(t.editors || []).includes(filterEditor)) return false;
         if (filterActor !== 'all' && !(t.actors || []).includes(filterActor)) return false;
         if (filterProducts.length > 0 && !(t.product_ids || []).some(pid => filterProducts.includes(pid))) return false;
         if (dateFilter !== 'all') {
@@ -373,7 +380,7 @@ const TasksView = ({
     return hasLink && !hasStats;
   }).length;
 
-  const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
+  const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterEditor !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6">
@@ -536,10 +543,10 @@ const TasksView = ({
               </select>
             </div>
 
-            {/* 5. Quay / Dựng */}
+            {/* 5. Quay phim */}
             {uniqueCrew.length > 0 && (
               <div>
-                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎬 Quay / Dựng</label>
+                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎬 Quay phim</label>
                 <select
                   value={filterCrew}
                   onChange={(e) => setFilterCrew(e.target.value)}
@@ -547,6 +554,23 @@ const TasksView = ({
                 >
                   <option value="all">Tất cả</option>
                   {uniqueCrew.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* 5b. Dựng phim */}
+            {uniqueEditors.length > 0 && (
+              <div>
+                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">✂️ Dựng phim</label>
+                <select
+                  value={filterEditor}
+                  onChange={(e) => setFilterEditor(e.target.value)}
+                  className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                >
+                  <option value="all">Tất cả</option>
+                  {uniqueEditors.map(name => (
                     <option key={name} value={name}>{name}</option>
                   ))}
                 </select>
