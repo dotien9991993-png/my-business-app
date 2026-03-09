@@ -5330,6 +5330,14 @@
   box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
 }
 
+.mjob-d2-inline-actions {
+  display: flex;
+  gap: 12px;
+  padding: 0 16px;
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
 .mjob-d2-act-btn {
   padding: 14px;
   border-radius: 12px;

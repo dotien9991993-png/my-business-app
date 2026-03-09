@@ -455,11 +455,10 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
             <span>🔄 Cập nhật: {formatDateTime(job.updated_at)}</span>
           )}
         </div>
-      </div>
 
-      {/* Sticky bottom actions — Hoàn thành / Thất bại */}
-      {!isLocked && (
-        <div className="mjob-d2-sticky-actions">
+        {/* Action buttons — ở cuối nội dung */}
+        {!isLocked && (
+          <div className="mjob-d2-inline-actions">
           <button
             className="mjob-d2-act-btn mjob-btn-fail"
             onClick={() => handleStatusUpdate('Hủy')}
@@ -475,7 +474,8 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
             {statusUpdating ? '...' : '✅ Hoàn thành'}
           </button>
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
