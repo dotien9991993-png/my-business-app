@@ -9,10 +9,6 @@ const STATUS_CONFIG = {
   'Hủy': { label: 'Đã hủy', icon: '❌', gradient: 'linear-gradient(135deg, #dc2626, #b91c1c)' },
 };
 
-const STATUS_FLOW = {
-  'Chờ XN': [{ status: 'Đang làm', label: 'Bắt đầu làm', icon: '🔨', cls: 'mjob-btn-blue' }],
-  'Đang làm': [{ status: 'Hoàn thành', label: 'Hoàn thành công việc', icon: '✅', cls: 'mjob-btn-green' }],
-};
 
 // Giống desktop JobDetailModal expenseCategories
 const EXPENSE_CATEGORIES = ['Tiền xe', 'Chi phí ăn uống', 'Chi phí khác'];
@@ -51,9 +47,7 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
   const [expenseSubmitting, setExpenseSubmitting] = useState(false);
 
   const status = STATUS_CONFIG[job.status] || STATUS_CONFIG['Chờ XN'];
-  const nextActions = STATUS_FLOW[job.status] || [];
   const isLocked = job.status === 'Hoàn thành' || job.status === 'Hủy';
-  const canCancel = job.status === 'Chờ XN' || job.status === 'Đang làm';
   const expenses = job.expenses || [];
   const expenseTotal = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const profit = (job.customer_payment || 0) - expenseTotal;
@@ -253,6 +247,15 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
 
       {/* Scrollable content */}
       <div className="mjob-d2-body">
+        {/* Lock banner */}
+        {isLocked && (
+          <div className="mjob-d2-section">
+            <div className="mjob-d2-section-card" style={{ background: '#f3f4f6', textAlign: 'center', padding: '10px 16px', color: '#6b7280', fontSize: 13, fontWeight: 600 }}>
+              🔒 Công việc đã {job.status === 'Hoàn thành' ? 'hoàn thành' : 'bị hủy'} — Không thể thay đổi
+            </div>
+          </div>
+        )}
+
         {/* Customer Section */}
         <div className="mjob-d2-section">
           <h3 className="mjob-d2-section-title">👤 Khách hàng</h3>
@@ -435,33 +438,31 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
 
         {/* Meta */}
         <div className="mjob-d2-meta">
-          <span>Tạo bởi: {job.created_by || '—'}</span>
-          <span>{formatDateTime(job.created_at)}</span>
+          <span>📝 Người tạo: {job.created_by || '—'}</span>
+          <span>🕐 Tạo lúc: {formatDateTime(job.created_at)}</span>
+          {job.updated_at && job.updated_at !== job.created_at && (
+            <span>🔄 Cập nhật: {formatDateTime(job.updated_at)}</span>
+          )}
         </div>
       </div>
 
-      {/* Sticky bottom actions */}
-      {(nextActions.length > 0 || canCancel) && (
+      {/* Sticky bottom actions — Hoàn thành / Thất bại */}
+      {!isLocked && (
         <div className="mjob-d2-sticky-actions">
-          {canCancel && (
-            <button
-              className="mjob-d2-act-btn mjob-btn-cancel"
-              onClick={() => handleStatusUpdate('Hủy')}
-              disabled={statusUpdating}
-            >
-              {statusUpdating ? '...' : '❌ Hủy'}
-            </button>
-          )}
-          {nextActions.map(act => (
-            <button
-              key={act.status}
-              className={`mjob-d2-act-btn mjob-d2-act-primary ${act.cls}`}
-              onClick={() => handleStatusUpdate(act.status)}
-              disabled={statusUpdating}
-            >
-              {statusUpdating ? '...' : `${act.icon} ${act.label}`}
-            </button>
-          ))}
+          <button
+            className="mjob-d2-act-btn mjob-btn-fail"
+            onClick={() => handleStatusUpdate('Hủy')}
+            disabled={statusUpdating}
+          >
+            {statusUpdating ? '...' : '❌ Thất bại'}
+          </button>
+          <button
+            className="mjob-d2-act-btn mjob-d2-act-primary mjob-btn-green"
+            onClick={() => handleStatusUpdate('Hoàn thành')}
+            disabled={statusUpdating}
+          >
+            {statusUpdating ? '...' : '✅ Hoàn thành'}
+          </button>
         </div>
       )}
     </div>

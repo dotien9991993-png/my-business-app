@@ -4919,6 +4919,7 @@
   padding: 14px 16px 16px;
   color: white;
   flex-shrink: 0;
+  border-radius: 20px;
 }
 
 .mjob-d2-back {
@@ -5327,6 +5328,16 @@
 }
 
 .mjob-btn-cancel:active { background: #fee2e2; }
+
+.mjob-btn-fail {
+  flex: 1;
+  border: 2px solid #dc2626;
+  background: white;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.mjob-btn-fail:active { background: #fef2f2; }
 
 /* ===== Attendance Summary Table (Tổng hợp) ===== */
 .matt-summary {
