@@ -133,7 +133,7 @@
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   margin-top: calc(40px + env(safe-area-inset-top, 0px));
-  margin-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  margin-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
 }
 
 /* === Bottom Nav === */
@@ -145,7 +145,6 @@
   height: calc(52px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: #15803d;
-  border-top: 1px solid rgba(255,255,255,0.15);
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -175,17 +174,6 @@
   color: white;
 }
 
-/* Indicator line phía trên tab active */
-.mobile-nav-item.active::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 25%;
-  right: 25%;
-  height: 3px;
-  background: white;
-  border-radius: 0 0 3px 3px;
-}
 
 .mobile-nav-icon {
   font-size: 20px;
