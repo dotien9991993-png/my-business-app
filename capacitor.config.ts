@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
   ios: {
-    contentInset: 'never',
+    contentInset: 'automatic',
     preferredContentMode: 'mobile',
     scheme: 'Hoang Nam Audio',
   },
@@ -26,7 +26,7 @@ const config: CapacitorConfig = {
       backgroundColor: '#16a34a',
     },
     Keyboard: {
-      resize: 'none',
+      resize: 'body',
       resizeOnFullScreen: true,
     },
   },
