@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useMobileAuth } from './hooks/useMobileAuth';
 import { useMobileChatBadge } from './hooks/useMobileChatBadge';
+import { usePushNotifications } from './hooks/usePushNotifications';
 import MobileHeader from './components/MobileHeader';
 import MobileBottomNav from './components/MobileBottomNav';
 import MobileLoading from './components/MobileLoading';
@@ -18,6 +19,7 @@ import './styles/mobile.css';
 export default function MobileApp() {
   const { currentUser, tenant, tenantId, loading, login, logout } = useMobileAuth();
   const { totalUnread: chatUnread } = useMobileChatBadge(currentUser?.id, tenantId);
+
   const [activeTab, setActiveTab] = useState('chat');
   const [hideNav, setHideNav] = useState(false);
   const [subPage, setSubPage] = useState(null);
@@ -25,6 +27,17 @@ export default function MobileApp() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashFading, setSplashFading] = useState(false);
   const [entityToOpen, setEntityToOpen] = useState(null);
+
+  // Push notification: navigate khi tap notification
+  const handlePushNavigate = useCallback((data) => {
+    const TAB_MAP = { order: 'orders', task: 'media', technical_job: 'jobs' };
+    const tab = TAB_MAP[data.type];
+    if (tab) {
+      setActiveTab(tab);
+      setEntityToOpen({ type: data.type, id: data.id });
+    }
+  }, []);
+  usePushNotifications(currentUser, tenantId, handlePushNavigate);
 
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
