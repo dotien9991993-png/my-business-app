@@ -158,10 +158,21 @@ export default function JobDetail({ job: initialJob, onBack, user, tenantId }) {
             .eq('id', job.id);
           if (error) throw error;
 
+          let resultMsg = '✅ Hoàn thành công việc!\n\n';
+
           if (createReceipts) {
-            if (hasPayment) await createReceiptFromJob(latestJob);
-            if (hasExpenses) await createExpenseReceiptsFromJob(latestJob);
+            if (hasPayment) {
+              const okThu = await createReceiptFromJob(latestJob);
+              resultMsg += okThu ? '✓ Đã tạo phiếu thu\n' : '⚠️ Lỗi tạo phiếu thu\n';
+            }
+            if (hasExpenses) {
+              const okChi = await createExpenseReceiptsFromJob(latestJob);
+              resultMsg += okChi ? '✓ Đã tạo phiếu chi\n' : '⚠️ Lỗi tạo phiếu chi\n';
+            }
           }
+
+          resultMsg += '\n🔒 Trạng thái đã bị khóa.';
+          alert(resultMsg);
 
           setJob(prev => ({ ...prev, status: newStatus }));
           setStatusUpdating(false);
