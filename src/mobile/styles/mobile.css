@@ -138,8 +138,9 @@ html:has(.mobile-app) body {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  background-color: #f5f5f5;
   margin-top: calc(40px + env(safe-area-inset-top, 0px));
-  margin-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
 }
 
 /* === Bottom Nav === */
