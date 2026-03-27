@@ -129,7 +129,7 @@ export function useMobileMedia(userId, userName, tenantId) {
   // Update task status + create notification
   const updateTaskStatus = useCallback(async (taskId, newStatus) => {
     const now = new Date().toISOString();
-    const updateData = { status: newStatus, updated_at: now };
+    const updateData = { status: newStatus };
 
     if (newStatus === 'Đã Quay') updateData.filmed_at = now;
     if (newStatus === 'Đang Edit') updateData.edit_started_at = now;
@@ -204,12 +204,79 @@ export function useMobileMedia(userId, userName, tenantId) {
 
     const { error } = await supabase
       .from('tasks')
-      .update({ comments: updatedComments, updated_at: new Date().toISOString() })
+      .update({ comments: updatedComments })
       .eq('id', taskId);
 
     if (error) throw error;
     return updatedComments;
   }, [userName]);
+
+  // Create new task — giống hệt desktop DataContext.createNewTask
+  const createTask = useCallback(async (taskData) => {
+    // Resolve assignee's team
+    const { data: assignedUser } = await supabase
+      .from('users')
+      .select('team')
+      .eq('tenant_id', tenantId)
+      .eq('name', taskData.assignee)
+      .single();
+
+    const insertData = {
+      tenant_id: tenantId,
+      title: taskData.title,
+      assignee: taskData.assignee,
+      team: assignedUser?.team || '',
+      status: 'Nháp',
+      due_date: taskData.dueDate,
+      platform: taskData.platform,
+      priority: 'Trung bình',
+      description: taskData.description || '',
+      is_overdue: false,
+      comments: [],
+      post_links: [],
+      cameramen: taskData.cameramen || [],
+      editors: taskData.editors || [],
+      actors: taskData.actors || [],
+      product_ids: taskData.productIds?.length > 0 ? taskData.productIds : [],
+    };
+    if (taskData.category) insertData.category = taskData.category;
+
+    const { data: insertedTask, error } = await supabase
+      .from('tasks')
+      .insert([insertData])
+      .select('id')
+      .single();
+    if (error) throw error;
+
+    // Notify assignee if different from creator
+    try {
+      if (taskData.assignee !== userName) {
+        const { data: assigneeUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('name', taskData.assignee)
+          .single();
+        if (assigneeUser) {
+          await supabase.from('notifications').insert([{
+            tenant_id: tenantId,
+            user_id: assigneeUser.id,
+            type: 'task_assigned',
+            title: '📋 Video mới được giao',
+            message: `${userName} đã giao task cho bạn: "${taskData.title}"`,
+            icon: '📋',
+            reference_type: 'task',
+            reference_id: insertedTask?.id || null,
+            created_by: userId,
+            is_read: false,
+          }]);
+        }
+      }
+    } catch (_) { /* non-critical */ }
+
+    await loadTasks();
+    return insertedTask;
+  }, [tenantId, userId, userName, loadTasks]);
 
   // Update filters
   const updateFilter = useCallback((key, value) => {
@@ -225,6 +292,7 @@ export function useMobileMedia(userId, userName, tenantId) {
     updateFilter,
     updateTaskStatus,
     addComment,
+    createTask,
     refresh: loadTasks,
   };
 }

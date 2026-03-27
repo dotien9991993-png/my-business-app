@@ -83,13 +83,20 @@ export function useMobileAuth() {
     if (user.status !== 'approved') throw new Error('Tài khoản chưa được duyệt');
     if (user.is_active === false) throw new Error('Tài khoản đã bị khoá');
 
-    // Check password — support both bcrypt and plaintext
+    // Check password — bcrypt only, auto-migrate legacy plaintext
+    const bcrypt = await import('bcryptjs');
     let valid = false;
     if (user.password?.startsWith('$2')) {
-      const bcrypt = await import('bcryptjs');
       valid = await bcrypt.compare(password, user.password);
-    } else {
-      valid = user.password === password;
+    } else if (user.password) {
+      // Legacy plaintext: timing-safe comparison via bcrypt
+      const legacyHash = await bcrypt.hash(user.password, 10);
+      valid = await bcrypt.compare(password, legacyHash);
+      // Auto-migrate to bcrypt hash on successful login
+      if (valid) {
+        const hashed = await bcrypt.hash(password, 10);
+        await supabase.from('users').update({ password: hashed, password_hashed: true }).eq('id', user.id);
+      }
     }
     if (!valid) throw new Error('Sai mật khẩu');
 

@@ -6,6 +6,8 @@ import JobList from './JobList';
 import JobWages from './JobWages';
 import JobSummary from './JobSummary';
 import JobDetail from './JobDetail';
+import CreateJobPage from './CreateJobPage';
+import { useMobileJobs } from '../../hooks/useMobileJobs';
 
 const SUB_TABS = [
   { id: 'today', label: 'Hôm nay' },
@@ -18,6 +20,9 @@ const SUB_TABS = [
 export default function JobsPage({ user, tenantId, openEntityId, onEntityOpened }) {
   const [activeTab, setActiveTab] = useState('today');
   const [selectedJob, setSelectedJob] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const { permLevel, createJob } = useMobileJobs(user?.id, user?.name, tenantId);
 
   // Open entity from chat attachment
   useEffect(() => {
@@ -37,6 +42,18 @@ export default function JobsPage({ user, tenantId, openEntityId, onEntityOpened 
   const handleOpenDetail = (job) => setSelectedJob(job);
   const handleCloseDetail = () => setSelectedJob(null);
 
+  // CreateJobPage — fullscreen overlay
+  if (showCreate) {
+    return (
+      <CreateJobPage
+        user={user}
+        tenantId={tenantId}
+        onBack={() => setShowCreate(false)}
+        onSubmit={createJob}
+      />
+    );
+  }
+
   if (selectedJob) {
     return (
       <JobDetail
@@ -47,6 +64,9 @@ export default function JobsPage({ user, tenantId, openEntityId, onEntityOpened 
       />
     );
   }
+
+  // Desktop cho phép tất cả user tạo job (không check permLevel trong CreateJobModal)
+  const canCreate = permLevel >= 1;
 
   return (
     <div className="mobile-page mjob-page">
@@ -81,6 +101,13 @@ export default function JobsPage({ user, tenantId, openEntityId, onEntityOpened 
           <JobSummary user={user} tenantId={tenantId} />
         )}
       </div>
+
+      {/* FAB — create new job */}
+      {canCreate && (
+        <button className="mjob-fab" onClick={() => setShowCreate(true)}>
+          +
+        </button>
+      )}
     </div>
   );
 }

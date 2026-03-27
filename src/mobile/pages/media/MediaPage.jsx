@@ -3,6 +3,7 @@ import { supabase } from '../../../supabaseClient';
 import { useMobileMedia } from '../../hooks/useMobileMedia';
 import TaskCard from './TaskCard';
 import TaskDetail from './TaskDetail';
+import CreateTaskPage from './CreateTaskPage';
 import MediaSummary from './MediaSummary';
 import MobileSkeleton from '../../components/MobileSkeleton';
 import MobilePullRefresh from '../../components/MobilePullRefresh';
@@ -26,7 +27,7 @@ const DATE_FILTERS = [
 export default function MediaPage({ user, tenantId, openEntityId, onEntityOpened }) {
   const {
     tasks, allTasks, loading, filters, permLevel,
-    updateFilter, updateTaskStatus, addComment, refresh,
+    updateFilter, updateTaskStatus, addComment, createTask, refresh,
   } = useMobileMedia(user?.id, user?.name, tenantId);
 
   const isAdmin = permLevel >= 3;
@@ -34,6 +35,7 @@ export default function MediaPage({ user, tenantId, openEntityId, onEntityOpened
   const [selectedTask, setSelectedTask] = useState(null);
   const [toast, setToast] = useState(null);
   const [pageTab, setPageTab] = useState('tasks');
+  const [showCreate, setShowCreate] = useState(false);
 
   // Open entity from chat attachment
   useEffect(() => {
@@ -93,6 +95,18 @@ export default function MediaPage({ user, tenantId, openEntityId, onEntityOpened
       showToast('Đã copy link! 📋');
     }
   }, [showToast]);
+
+  // Show create page
+  if (showCreate) {
+    return (
+      <CreateTaskPage
+        user={user}
+        tenantId={tenantId}
+        onBack={() => setShowCreate(false)}
+        onSubmit={createTask}
+      />
+    );
+  }
 
   // Show detail view
   if (selectedTask) {
@@ -210,6 +224,11 @@ export default function MediaPage({ user, tenantId, openEntityId, onEntityOpened
 
       {/* Toast */}
       {toast && <div className="mmed-toast">{toast}</div>}
+
+      {/* FAB — create new task */}
+      <button className="mmed-fab" onClick={() => setShowCreate(true)}>
+        +
+      </button>
     </div>
     </MobilePullRefresh>
   );

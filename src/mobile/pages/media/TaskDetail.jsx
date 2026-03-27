@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { supabase } from '../../../supabaseClient';
 import { formatMoney } from '../../utils/formatters';
+import { haptic } from '../../utils/haptics';
 
 const STATUS_CONFIG = {
   'Nháp': { label: 'Nháp', icon: '📝', gradient: 'linear-gradient(135deg, #9ca3af, #6b7280)' },
@@ -108,18 +110,93 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
 
   const nextAction = getNextStatusAction();
 
-  // Timeline steps
-  const timelineSteps = [
-    { label: 'Tạo', icon: '📝', done: true, time: task.created_at },
-    { label: 'Quay xong', icon: '🎥', done: !!task.filmed_at, time: task.filmed_at, action: 'Đã Quay' },
-    { label: 'Dựng xong', icon: '✂️', done: !!task.edited_at, time: task.edited_at, action: 'Đang Edit' },
-    { label: 'Hoàn thành', icon: '✅', done: task.status === 'Hoàn Thành', time: task.completed_at, action: 'Hoàn Thành' },
+  // Timeline steps — giống hệt desktop TaskModal.jsx (lines 664-735)
+  // Mỗi step khi bấm sẽ cascading fill tất cả field trước nó
+  const TIMELINE_STEPS = [
+    { label: 'Tạo', icon: '📝', fills: [], status: null },
+    { label: 'Quay xong', icon: '🎥', fills: ['filmed_at'], status: 'Đã Quay' },
+    { label: 'Dựng xong', icon: '✂️', fills: ['filmed_at', 'edited_at'], status: 'Đang Edit' },
+    { label: 'Hoàn thành', icon: '✅', fills: ['filmed_at', 'edited_at', 'completed_at'], status: 'Hoàn Thành' },
   ];
 
-  const handleTimelineAction = async (step) => {
-    if (step === 1 && !task.filmed_at) await handleStatusUpdate('Đã Quay');
-    if (step === 2 && !task.edited_at && task.filmed_at) await handleStatusUpdate('Đang Edit');
-    if (step === 3 && task.filmed_at) await handleStatusUpdate('Hoàn Thành');
+  const timelineSteps = TIMELINE_STEPS.map((step, i) => {
+    if (i === 0) return { ...step, done: true, time: task.created_at };
+    const lastFill = step.fills[step.fills.length - 1];
+    const done = i === 3 ? task.status === 'Hoàn Thành' : !!task[lastFill];
+    return { ...step, done, time: task[lastFill] || (done && i === 3 ? task.completed_at : null) };
+  });
+
+  // Bước tiếp theo cần làm = bước đầu tiên chưa done (bỏ qua step 0 "Tạo")
+  const nextStepIndex = timelineSteps.findIndex((s, i) => i > 0 && !s.done);
+
+  const [timelineUpdating, setTimelineUpdating] = useState(false);
+
+  // Link validation — giống hệt desktop TaskModal.jsx + socialStatsService.js
+  const validateFacebookUrl = (url) => url && /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.com|m\.facebook\.com)\//i.test(url);
+  const validateTikTokUrl = (url) => url && /^https?:\/\/(www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+/.test(url);
+  const validateLinkForPlatform = (url, plat) => {
+    if (plat === 'Facebook') return validateFacebookUrl(url);
+    if (plat === 'TikTok') return validateTikTokUrl(url);
+    return true; // Các platform khác chỉ cần có link
+  };
+
+  const [showLinkWarning, setShowLinkWarning] = useState(false);
+  const [missingLinks, setMissingLinks] = useState([]);
+
+  const handleTimelineAction = async (stepIndex) => {
+    const step = TIMELINE_STEPS[stepIndex];
+    if (!step || !step.status) return;
+
+    // Kiểm tra link khi bấm Hoàn thành — giống hệt desktop TaskModal.jsx lines 676-696
+    if (step.status === 'Hoàn Thành') {
+      const taskPlatforms = (task.platform || '').split(', ').filter(Boolean);
+      const existingLinks = postLinks;
+      if (taskPlatforms.length > 0) {
+        const missing = taskPlatforms.filter(plat => !existingLinks.find(l => l.type === plat));
+        const invalid = taskPlatforms.filter(plat => {
+          const link = existingLinks.find(l => l.type === plat);
+          return link && !validateLinkForPlatform(link.url, plat);
+        });
+        if (missing.length > 0 || invalid.length > 0) {
+          setMissingLinks(taskPlatforms.map(plat => {
+            const link = existingLinks.find(l => l.type === plat);
+            const isValid = link ? validateLinkForPlatform(link.url, plat) : false;
+            return { platform: plat, hasLink: !!link, isValid };
+          }));
+          setShowLinkWarning(true);
+          return;
+        }
+      }
+    }
+
+    if (!window.confirm(`Xác nhận đánh dấu "${step.label}"?`)) return;
+
+    setTimelineUpdating(true);
+    try {
+      const now = new Date().toISOString();
+      const updateData = { status: step.status };
+
+      // Cascading fill — chỉ set field chưa có (giống desktop)
+      step.fills.forEach(field => {
+        if (!task[field]) updateData[field] = now;
+      });
+
+      const { error } = await supabase
+        .from('tasks')
+        .update(updateData)
+        .eq('id', task.id);
+      if (error) throw error;
+
+      await haptic();
+
+      // Optimistic update — cập nhật task local để UI phản ánh ngay
+      Object.assign(task, updateData);
+    } catch (err) {
+      console.error('Error updating timeline:', err, err?.message, err?.details, err?.code);
+      alert('Lỗi cập nhật tiến trình: ' + (err?.message || ''));
+    } finally {
+      setTimelineUpdating(false);
+    }
   };
 
   // Aggregate stats
@@ -211,18 +288,32 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
         <div className="mmed-d2-section">
           <h3 className="mmed-d2-section-title">📊 Tiến trình sản xuất</h3>
           <div className="mmed-progress-grid">
-            {timelineSteps.map((step, i) => (
-              <button
-                key={i}
-                className={`mmed-progress-item ${step.done ? 'mmed-step-done' : 'mmed-step-pending'}`}
-                onClick={() => { if (!step.done && i > 0) handleTimelineAction(i); }}
-                disabled={statusUpdating || step.done || (i > 1 && !timelineSteps[i - 1].done)}
-              >
-                <span className="mmed-step-icon">{step.icon}</span>
-                <span className="mmed-step-label">{step.label}</span>
-                {step.time && <span className="mmed-step-time">{formatDateTime(step.time)}</span>}
-              </button>
-            ))}
+            {timelineSteps.map((step, i) => {
+              const isNext = i === nextStepIndex;
+              const isFuture = i > 0 && !step.done && !isNext;
+              const canTap = isNext && !timelineUpdating;
+
+              return (
+                <button
+                  key={i}
+                  className={[
+                    'mmed-progress-item',
+                    step.done ? 'mmed-step-done' : '',
+                    isNext ? 'mmed-step-next' : '',
+                    isFuture ? 'mmed-step-future' : '',
+                    !step.done && i === 0 ? 'mmed-step-done' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => canTap && handleTimelineAction(i)}
+                  disabled={!canTap}
+                >
+                  <span className="mmed-step-icon">{step.icon}</span>
+                  <span className="mmed-step-label">{step.label}</span>
+                  {step.time && <span className="mmed-step-time">{formatDateTime(step.time)}</span>}
+                  {isNext && !timelineUpdating && <span className="mmed-step-tap">Bấm để cập nhật</span>}
+                  {isNext && timelineUpdating && <span className="mmed-step-tap">Đang cập nhật...</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -375,6 +466,42 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
           >
             {statusUpdating ? 'Đang cập nhật...' : `${nextAction.icon} Chuyển → ${nextAction.label}`}
           </button>
+        </div>
+      )}
+
+      {/* Link warning modal — giống desktop TaskModal.jsx */}
+      {showLinkWarning && (
+        <div className="mmed-link-warning-overlay">
+          <div className="mmed-link-warning-modal">
+            <div className="mmed-link-warning-header">
+              <h3>Chưa thể hoàn thành!</h3>
+              <p>
+                {missingLinks.some(i => !i.hasLink) && missingLinks.some(i => i.hasLink && !i.isValid)
+                  ? 'Có platform chưa điền link và link sai định dạng:'
+                  : missingLinks.some(i => !i.hasLink)
+                    ? 'Vui lòng điền đủ link cho các platform đã chọn:'
+                    : 'Link không đúng định dạng. Vui lòng sửa lại:'}
+              </p>
+            </div>
+            <div className="mmed-link-warning-list">
+              {missingLinks.map(item => (
+                <div key={item.platform} className={`mmed-link-warning-item ${
+                  item.hasLink && item.isValid ? 'ok' : item.hasLink ? 'warn' : 'miss'
+                }`}>
+                  <span>{item.hasLink && item.isValid ? '✅' : item.hasLink ? '⚠️' : '❌'}</span>
+                  <span className="mmed-link-warning-plat">{item.platform}</span>
+                  <span className="mmed-link-warning-status">
+                    {item.hasLink && item.isValid ? 'Đã có link' : item.hasLink ? 'Link sai định dạng' : 'Chưa có link'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mmed-link-warning-actions">
+              <button className="mmed-link-warning-close" onClick={() => setShowLinkWarning(false)}>
+                Đóng
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

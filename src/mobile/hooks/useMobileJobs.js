@@ -184,6 +184,57 @@ export function useMobileJobs(userId, userName, tenantId) {
     return updated;
   }, [userName]);
 
+  // Create new technical job — giống hệt desktop DataContext.createTechnicalJob
+  const createJob = useCallback(async (jobData) => {
+    const { data: insertedJob, error } = await supabase.from('technical_jobs').insert([{
+      tenant_id: tenantId,
+      title: jobData.title,
+      type: jobData.type,
+      customer_name: jobData.customerName,
+      customer_phone: jobData.customerPhone,
+      address: jobData.address,
+      equipment: jobData.equipment,
+      technicians: jobData.technicians,
+      scheduled_date: jobData.scheduledDate,
+      scheduled_time: jobData.scheduledTime,
+      customer_payment: jobData.customerPayment,
+      created_by: jobData.createdBy || userName,
+      status: 'Chờ XN',
+    }]).select('id').single();
+    if (error) throw error;
+
+    // Notify assigned technicians (except creator) — giống desktop
+    try {
+      const { data: allUsersData } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+
+      for (const techName of jobData.technicians) {
+        if (techName === userName) continue;
+        const techUser = (allUsersData || []).find(u => u.name === techName);
+        if (techUser) {
+          await supabase.from('notifications').insert([{
+            tenant_id: tenantId,
+            user_id: techUser.id,
+            type: 'job_assigned',
+            title: '🔧 Công việc kỹ thuật mới',
+            message: `${userName} đã giao: "${jobData.title}" tại ${jobData.address || 'N/A'}`,
+            icon: '🔧',
+            reference_type: 'job',
+            reference_id: insertedJob?.id || null,
+            created_by: userId,
+            is_read: false,
+          }]);
+        }
+      }
+    } catch (_) { /* non-critical */ }
+
+    await loadJobs();
+    return insertedJob;
+  }, [tenantId, userId, userName, loadJobs]);
+
   // Update filters
   const updateFilter = useCallback((key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -191,12 +242,14 @@ export function useMobileJobs(userId, userName, tenantId) {
 
   return {
     jobs,
+    allJobs,
     loading,
     filters,
     permLevel,
     updateFilter,
     updateJobStatus,
     addExpense,
+    createJob,
     refresh: loadJobs,
   };
 }
