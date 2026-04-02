@@ -8,9 +8,11 @@ import QRCode from 'qrcode';
 import AddressPicker from '../../components/shared/AddressPicker';
 import QRScanner from '../../components/shared/QRScanner';
 import * as vtpApi from '../../utils/viettelpostApi';
+import { setVtpTenantId } from '../../utils/viettelpostApi';
 import HaravanImportModal from './HaravanImportModal';
 import { logActivity } from '../../lib/activityLog';
 import { sendOrderConfirmation, sendShippingNotification } from '../../utils/zaloAutomation';
+import { isAdmin } from '../../utils/permissionUtils';
 
 export default function SalesOrdersView({ tenant, currentUser, orders, customers, products, customerAddresses, loadSalesData, loadWarehouseData, loadFinanceData, createTechnicalJob: _createTechnicalJob, warehouses, warehouseStock, dynamicShippingProviders, shippingConfigs, getSettingValue, comboItems, productVariants, hasPermission, canEdit: _canEditSales, getPermissionLevel, filterByPermission: _filterByPermission }) {
   const { pendingOpenRecord, setPendingOpenRecord, allUsers } = useApp();
@@ -18,6 +20,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const _effectiveShippingProviders = dynamicShippingProviders || shippingProviders;
   const vtpConfig = (shippingConfigs || []).find(c => c.provider === 'viettel_post' && c.is_active && c.api_token);
   const vtpToken = vtpConfig?.api_token;
+  if (tenant?.id) setVtpTenantId(tenant.id);
   // ---- View state ----
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterOrderStatus, setFilterOrderStatus] = useState('all');
@@ -453,7 +456,7 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
     if (!meta.province_id) return alert('Đơn hàng chưa có thông tin địa chỉ VTP');
     setSendingVtp(true);
     try {
-      const totalWeight = orderItems.reduce((sum, i) => sum + (i.quantity || 1) * 500, 0);
+      const totalWeight = orderItems.reduce((sum, i) => sum + (i.quantity || 1) * (i.weight || 500), 0);
       const codAmount = selectedOrder.payment_status === 'paid' ? 0 : (selectedOrder.total_amount - (selectedOrder.paid_amount || 0));
       const svcCode = selectedOrder.shipping_service || 'VCN';
       const result = await vtpApi.createOrder(vtpToken, {
@@ -842,6 +845,18 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
       showToast('Tạo đơn thành công! ' + orderNumber);
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'create', entityType: 'order', entityId: orderNumber, entityName: orderNumber, description: 'Tạo đơn ' + orderNumber + ', KH: ' + (customerName || 'Khách lẻ') + ', ' + formatMoney(totalAmount) });
 
+      // Notification: order_new → admin/manager
+      try {
+        const adminIds = (allUsers || []).filter(u => (isAdmin(u) || u.role === 'Manager') && u.id !== currentUser.id).map(u => u.id);
+        if (adminIds.length > 0) {
+          await supabase.from('notifications').insert(adminIds.map(uid => ({
+            tenant_id: tenant.id, user_id: uid, type: 'order_new',
+            title: '🛒 Đơn hàng mới', message: `Đơn #${orderNumber} - ${customerName || 'Khách lẻ'} - ${formatMoney(totalAmount)}`,
+            icon: '🛒', reference_type: 'order', reference_id: order.id, created_by: currentUser.id, is_read: false,
+          })));
+        }
+      } catch (_) { /* non-critical */ }
+
       // Zalo OA: Queue xác nhận đơn hàng
       if (customerPhone?.trim()) {
         sendOrderConfirmation(tenant.id, {
@@ -1144,6 +1159,34 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
         logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'update', entityType: 'order', entityId: order.order_number, entityName: order.order_number, description: 'Cập nhật trạng thái đơn ' + order.order_number + ': ' + statusLabel });
       }
 
+      // Notification: order status change → admin/manager + creator
+      try {
+        const statusNotifMap = {
+          confirmed: { icon: '✅', title: 'Đơn hàng đã xác nhận' },
+          completed: { icon: '🎉', title: 'Đơn hàng hoàn thành' },
+          cancelled: { icon: '❌', title: 'Đơn hàng bị hủy' },
+          returned: { icon: '🔄', title: 'Đơn hàng trả hàng' },
+          shipping: { icon: '🚚', title: 'Đơn hàng đang giao' },
+        };
+        const notifInfo = statusNotifMap[newStatus];
+        if (notifInfo) {
+          const recipients = new Set();
+          (allUsers || []).filter(u => (isAdmin(u) || u.role === 'Manager') && u.id !== currentUser.id).forEach(u => recipients.add(u.id));
+          // Notify order creator if different from current user
+          const creator = (allUsers || []).find(u => u.name === order.created_by);
+          if (creator && creator.id !== currentUser.id) recipients.add(creator.id);
+          if (recipients.size > 0) {
+            await supabase.from('notifications').insert([...recipients].map(uid => ({
+              tenant_id: tenant.id, user_id: uid, type: 'order_' + newStatus,
+              title: notifInfo.icon + ' ' + notifInfo.title,
+              message: `Đơn #${order.order_number} - ${currentUser.name} ${statusLabel}`,
+              icon: notifInfo.icon, reference_type: 'order', reference_id: orderId,
+              created_by: currentUser.id, is_read: false,
+            })));
+          }
+        }
+      } catch (_) { /* non-critical */ }
+
       // Zalo OA: Gửi thông báo giao hàng
       if (newStatus === 'shipping' && order.customer_phone) {
         sendShippingNotification(tenant.id, {
@@ -1370,6 +1413,20 @@ ${selectedOrder.note ? `<p style="font-size:12px;margin:6px 0"><b>Ghi chú:</b> 
       }]).then(() => {}).catch(() => {});
       showToast(`Đã ghi nhận thanh toán ${formatMoney(amount)}!`);
       logActivity({ tenantId: tenant.id, userId: currentUser.id, userName: currentUser.name, module: 'sales', action: 'payment', entityType: 'order', entityId: selectedOrder.order_number, entityName: selectedOrder.order_number, description: `Thanh toán ${formatMoney(amount)} (${ptttLabel}) cho đơn ${selectedOrder.order_number} (${newStatus === 'paid' ? 'Đã thanh toán đủ' : 'Thanh toán 1 phần'})` });
+
+      // Notification: order_payment → admin/manager
+      try {
+        const adminIds = (allUsers || []).filter(u => (isAdmin(u) || u.role === 'Manager') && u.id !== currentUser.id).map(u => u.id);
+        if (adminIds.length > 0) {
+          await supabase.from('notifications').insert(adminIds.map(uid => ({
+            tenant_id: tenant.id, user_id: uid, type: 'order_payment',
+            title: '💳 Thanh toán đơn hàng',
+            message: `Đơn #${selectedOrder.order_number} thanh toán ${formatMoney(amount)} (${newStatus === 'paid' ? 'Đủ' : 'Một phần'})`,
+            icon: '💳', reference_type: 'order', reference_id: selectedOrder.id,
+            created_by: currentUser.id, is_read: false,
+          })));
+        }
+      } catch (_) { /* non-critical */ }
       setSelectedOrder(prev => ({ ...prev, paid_amount: newPaid, payment_status: newStatus }));
       setPaymentAmount(''); setPaymentMethodInput('cash'); setPaymentNoteInput(''); setShowPaymentInput(false);
       await Promise.all([loadSalesData(), loadFinanceData(), loadPagedOrders(), loadPaymentHistory(selectedOrder.id)]);
@@ -2091,13 +2148,16 @@ table.summary td{padding:3px 6px;font-size:12px}
     setBulkVtpProgress({ current: 0, total: valid.length, results: [] });
 
     for (let i = 0; i < valid.length; i++) {
+      // Delay 2s giữa mỗi đơn để tránh rate limit VTP
+      if (i > 0) await new Promise(r => setTimeout(r, 2000));
+
       const o = valid[i];
       const meta = o.shipping_metadata || {};
       try {
         // Load items for this order
         const { data: items } = await supabase.from('order_items').select('*').eq('order_id', o.id);
         const oItems = items || [];
-        const totalW = oItems.reduce((sum, it) => sum + (it.quantity || 1) * 500, 0);
+        const totalW = oItems.reduce((sum, it) => sum + (it.quantity || 1) * (it.weight || 500), 0);
         const isCod = bulkVtpCod === 'cod';
         const codAmt = isCod ? (o.total_amount - (o.paid_amount || 0)) : 0;
 

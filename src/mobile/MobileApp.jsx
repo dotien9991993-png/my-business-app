@@ -11,14 +11,40 @@ import OrdersPage from './pages/orders/OrdersPage';
 import MediaPage from './pages/media/MediaPage';
 import JobsPage from './pages/jobs/JobsPage';
 import MorePage from './pages/more/MorePage';
+import NotificationsPage from './pages/more/NotificationsPage';
+import ChangePasswordPage from './pages/more/ChangePasswordPage';
 import AttendancePage from './pages/attendance/AttendancePage';
 import ProfilePage from './pages/profile/ProfilePage';
+import { supabase } from '../supabaseClient';
 import splashLogo from './assets/logo-splash.png';
 import './styles/mobile.css';
 
 export default function MobileApp() {
   const { currentUser, tenant, tenantId, loading, login, logout } = useMobileAuth();
   const { totalUnread: chatUnread } = useMobileChatBadge(currentUser?.id, tenantId);
+  const [notifUnread, setNotifUnread] = useState(0);
+
+  // Load notification unread count
+  useEffect(() => {
+    if (!currentUser?.id || !tenantId) return;
+    const loadCount = async () => {
+      const { count } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('user_id', currentUser.id)
+        .eq('is_read', false);
+      setNotifUnread(count || 0);
+    };
+    loadCount();
+    const ch = supabase.channel(`mobile-notif-badge-${currentUser.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'notifications',
+        filter: `user_id=eq.${currentUser.id}`,
+      }, () => loadCount())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [currentUser?.id, tenantId]);
 
   const [activeTab, setActiveTab] = useState('chat');
   const [hideNav, setHideNav] = useState(false);
@@ -183,6 +209,10 @@ export default function MobileApp() {
           return <MobileErrorBoundary><ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="salary" onBack={handleSubPageBack} /></MobileErrorBoundary>;
         case 'profile':
           return <MobileErrorBoundary><ProfilePage user={currentUser} tenantId={tenantId} onLogout={logout} initialView="info" onBack={handleSubPageBack} /></MobileErrorBoundary>;
+        case 'notifications':
+          return <MobileErrorBoundary><NotificationsPage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} onNavigateEntity={handleEntityNavigate} /></MobileErrorBoundary>;
+        case 'password':
+          return <MobileErrorBoundary><ChangePasswordPage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} /></MobileErrorBoundary>;
         default:
           break;
       }
@@ -198,7 +228,7 @@ export default function MobileApp() {
       case 'jobs':
         return <MobileErrorBoundary><JobsPage user={currentUser} tenantId={tenantId} openEntityId={entityToOpen?.type === 'technical_job' ? entityToOpen.id : null} onEntityOpened={handleEntityOpened} /></MobileErrorBoundary>;
       case 'more':
-        return <MobileErrorBoundary><MorePage user={currentUser} tenantId={tenantId} onNavigate={handleMoreNavigate} onLogout={logout} /></MobileErrorBoundary>;
+        return <MobileErrorBoundary><MorePage user={currentUser} tenantId={tenantId} onNavigate={handleMoreNavigate} onLogout={logout} unreadNotifCount={notifUnread} /></MobileErrorBoundary>;
       default:
         return null;
     }
@@ -224,7 +254,7 @@ export default function MobileApp() {
         <MobileBottomNav
           activeTab={activeTab}
           onTabChange={handleTabChange}
-          badges={{ chat: chatUnread }}
+          badges={{ chat: chatUnread, more: notifUnread }}
         />
       )}
     </div>

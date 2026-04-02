@@ -79,6 +79,12 @@ export default function ShippingSettings({ tenant, currentUser, shippingConfigs,
           tenant_id: tenant.id, provider: 'viettel_post',
           api_token: token, is_active: true, updated_at: new Date().toISOString()
         }, { onConflict: 'tenant_id,provider' });
+        // Lưu credentials để server auto-refresh token khi hết hạn
+        await supabase.from('system_settings').upsert({
+          tenant_id: tenant.id, category: 'shipping', key: 'vtp_credentials',
+          value: { username: vtpUsername.trim(), password: vtpPassword.trim() },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'tenant_id,category,key' });
         await loadSettingsData();
         showToast('Đăng nhập Viettel Post thành công!');
         setVtpPassword('');

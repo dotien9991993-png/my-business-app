@@ -8,7 +8,7 @@
     },
     {
       "path": "/api/cron/check-shipping",
-      "schedule": "0 16 * * *"
+      "schedule": "0 */4 * * *"
     }
   ],
   "rewrites": [

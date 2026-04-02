@@ -10,12 +10,16 @@ let provincesCache = null;
 const districtsCache = new Map();
 const wardsCache = new Map();
 
+// tenantId is set by the app to enable auto-refresh on server
+let _tenantId = null;
+export function setVtpTenantId(id) { _tenantId = id; }
+
 async function vtpProxy(action, token, params = {}) {
   try {
     const resp = await fetch(PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, token, ...params })
+      body: JSON.stringify({ action, token, tenantId: _tenantId, ...params })
     });
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');

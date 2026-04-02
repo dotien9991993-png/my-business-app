@@ -6,6 +6,8 @@
  * Body: { action, token, ...params }
  */
 
+import { createClient } from '@supabase/supabase-js';
+
 const BASE_URL = 'https://partner.viettelpost.vn/v2';
 
 const ALLOWED_ORIGINS = [
@@ -14,10 +16,10 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5173'
 ];
 
-// Rate limiting đơn giản (Map-based, 30 req/min/IP)
+// Rate limiting (60 req/min/IP for bulk push support)
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60 * 1000;
-const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_MAX = 60;
 
 function checkRateLimit(ip) {
   const now = Date.now();
@@ -41,6 +43,69 @@ function getCorsOrigin(req) {
   return ALLOWED_ORIGINS[0];
 }
 
+// Auto-refresh VTP token khi hết hạn
+async function refreshVtpToken(tenantId, oldToken) {
+  try {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseKey) return null;
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Tìm VTP credentials trong system_settings
+    const { data: cred } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('category', 'shipping')
+      .eq('key', 'vtp_credentials')
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (!cred?.value?.username || !cred?.value?.password) {
+      console.log('[VTP] No stored credentials for tenant:', tenantId);
+      return null;
+    }
+
+    // Login VTP
+    const loginResp = await fetch(BASE_URL + '/user/Login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ USERNAME: cred.value.username, PASSWORD: cred.value.password }),
+    });
+    const loginData = await loginResp.json();
+
+    if (!loginData?.data?.token) {
+      console.error('[VTP] Auto-refresh login failed:', loginData?.message);
+      return null;
+    }
+
+    const newToken = loginData.data.token;
+    console.log('[VTP] Token refreshed successfully for tenant:', tenantId);
+
+    // Update token in shipping_configs
+    await supabase.from('shipping_configs').update({
+      api_token: newToken,
+      updated_at: new Date().toISOString(),
+    }).eq('tenant_id', tenantId).eq('provider', 'viettel_post');
+
+    return newToken;
+  } catch (err) {
+    console.error('[VTP] Token refresh error:', err.message);
+    return null;
+  }
+}
+
+// Detect token expired from VTP response
+function isTokenExpired(rawText, httpStatus) {
+  if (!rawText || rawText.trim() === '') return true;
+  try {
+    const json = JSON.parse(rawText);
+    if (json.status === -108 || json.status === 401) return true;
+    if (json.error === true && /token|auth|unauthorized|hết hạn|expired/i.test(json.message || '')) return true;
+  } catch (_) { /* not json */ }
+  return httpStatus === 401;
+}
+
 export default async function handler(req, res) {
   const corsOrigin = getCorsOrigin(req);
   res.setHeader('Access-Control-Allow-Origin', corsOrigin);
@@ -51,19 +116,17 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Rate limit check
   const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
   if (!checkRateLimit(clientIp)) {
     return res.status(429).json({ error: 'Quá nhiều yêu cầu. Vui lòng thử lại sau.' });
   }
 
-  // Validate request body
   if (!req.body || typeof req.body !== 'object') {
     return res.status(400).json({ error: 'Invalid request body' });
   }
 
   try {
-    const { action, token, ...params } = req.body;
+    const { action, token, tenantId, ...params } = req.body;
 
     if (!action) {
       return res.status(400).json({ error: 'Missing action' });
@@ -98,41 +161,61 @@ export default async function handler(req, res) {
       }
 
       const vtpUrl = BASE_URL + '/order/createOrder';
-      console.log('[VTP createOrder] Sending to VTP:', vtpUrl, 'Token length:', token?.length, 'Body keys:', Object.keys(orderBody).join(','));
+      console.log('[VTP createOrder] Token length:', token?.length, 'Body keys:', Object.keys(orderBody).join(','));
 
-      try {
-        const vtpResp = await fetch(vtpUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Token': token },
-          body: JSON.stringify(orderBody)
-        });
-
-        const rawText = await vtpResp.text();
-        console.log('[VTP createOrder] VTP HTTP status:', vtpResp.status, 'Response length:', rawText?.length, 'Response:', rawText?.substring(0, 1000));
-
-        if (!rawText || rawText.trim() === '') {
-          return res.status(200).json({
-            error: true,
-            status: vtpResp.status,
-            message: `VTP trả về response rỗng (HTTP ${vtpResp.status}). Token có thể hết hạn.`
-          });
-        }
-
+      // Attempt createOrder with retry on token expiry
+      let currentToken = token;
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const data = JSON.parse(rawText);
-          // Log parsed data for debugging
-          console.log('[VTP createOrder] Parsed response:', JSON.stringify(data).substring(0, 500));
-          return res.status(200).json(data);
-        } catch (_e) {
-          return res.status(200).json({
-            error: true,
-            message: 'VTP response không phải JSON: ' + rawText.substring(0, 500)
+          const vtpResp = await fetch(vtpUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Token': currentToken },
+            body: JSON.stringify(orderBody)
           });
+
+          const rawText = await vtpResp.text();
+          console.log('[VTP createOrder] Attempt', attempt + 1, 'HTTP:', vtpResp.status, 'Len:', rawText?.length);
+
+          if (isTokenExpired(rawText, vtpResp.status) && attempt === 0 && tenantId) {
+            console.log('[VTP createOrder] Token expired, attempting refresh...');
+            const newToken = await refreshVtpToken(tenantId, currentToken);
+            if (newToken) {
+              currentToken = newToken;
+              continue; // retry with new token
+            }
+            return res.status(200).json({
+              error: true,
+              token_expired: true,
+              message: 'Token VTP hết hạn. Vui lòng đăng nhập lại trong Cài đặt > Vận chuyển.',
+            });
+          }
+
+          if (!rawText || rawText.trim() === '') {
+            return res.status(200).json({
+              error: true,
+              token_expired: true,
+              message: `VTP trả về response rỗng (HTTP ${vtpResp.status}). Token có thể hết hạn.`
+            });
+          }
+
+          try {
+            const data = JSON.parse(rawText);
+            // Return refreshed token to frontend if we refreshed
+            if (attempt === 1) data._refreshed_token = currentToken;
+            return res.status(200).json(data);
+          } catch (_e) {
+            return res.status(200).json({
+              error: true,
+              message: 'VTP response không phải JSON: ' + rawText.substring(0, 500)
+            });
+          }
+        } catch (fetchErr) {
+          console.error('[VTP createOrder] Fetch error:', fetchErr);
+          return res.status(200).json({ error: true, message: 'Lỗi kết nối VTP: ' + fetchErr.message });
         }
-      } catch (fetchErr) {
-        console.error('[VTP createOrder] Fetch error:', fetchErr);
-        return res.status(200).json({ error: true, message: 'Lỗi kết nối VTP: ' + fetchErr.message });
       }
+
+      return res.status(200).json({ error: true, message: 'VTP request failed after retry' });
     } else if (action === 'getTracking' || action === 'get_order_detail') {
       const id = params.orderNumber || params.orderId;
       url = BASE_URL + '/order/getTracking?ORDER_NUMBER=' + id;

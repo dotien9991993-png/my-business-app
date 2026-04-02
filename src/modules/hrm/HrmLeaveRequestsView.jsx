@@ -250,6 +250,23 @@ export default function HrmLeaveRequestsView({
         description: `Tạo đơn nghỉ phép ${code}: ${LEAVE_TYPES[formType]?.label || formType}, ${days} ngày`
       });
 
+      // Notification: leave_request_new → admin/manager
+      try {
+        const empName = employees.find(e => e.id === formEmployeeId)?.name || currentUser?.name;
+        const typeName = LEAVE_TYPES[formType]?.label || formType;
+        const { data: admins } = await supabase.from('users').select('id').eq('tenant_id', tenant.id)
+          .in('role', ['Admin', 'admin', 'Manager']).neq('id', currentUser?.id);
+        if (admins?.length > 0) {
+          await supabase.from('notifications').insert(admins.map(u => ({
+            tenant_id: tenant.id, user_id: u.id, type: 'leave_request_new',
+            title: '📝 Đơn nghỉ phép mới',
+            message: `${empName} xin nghỉ ${typeName} từ ${formStartDate} đến ${formEndDate} (${days} ngày)`,
+            icon: '📝', reference_type: 'leave_request', reference_id: null,
+            created_by: currentUser?.id, is_read: false,
+          })));
+        }
+      } catch (_) { /* non-critical */ }
+
       setShowCreateModal(false);
       if (loadHrmData) await loadHrmData();
       alert('Tạo đơn nghỉ phép thành công!');
@@ -295,6 +312,22 @@ export default function HrmLeaveRequestsView({
         entityId: request.id, entityName: request.code,
         description: `Duyệt đơn nghỉ phép ${request.code} của ${empName}`
       });
+
+      // Notification: leave_request_approved → employee
+      try {
+        if (request.employee_id && request.employee_id !== currentUser?.id) {
+          // Find user_id for this employee
+          const emp = employees.find(e => e.id === request.employee_id);
+          const targetUserId = emp?.user_id || request.employee_id;
+          await supabase.from('notifications').insert([{
+            tenant_id: tenant.id, user_id: targetUserId, type: 'leave_request_approved',
+            title: '✅ Đơn nghỉ phép đã duyệt',
+            message: `Đơn nghỉ ${typeName} từ ${formatDate(request.start_date)} đến ${formatDate(request.end_date)} đã được duyệt`,
+            icon: '✅', reference_type: 'leave_request', reference_id: request.id,
+            created_by: currentUser?.id, is_read: false,
+          }]);
+        }
+      } catch (_) { /* non-critical */ }
 
       // Cập nhật chấm công cho những ngày nghỉ
       const attendanceStatus = request.type === 'sick_leave' ? 'sick' : 'annual_leave';
@@ -375,6 +408,22 @@ export default function HrmLeaveRequestsView({
         entityId: rejectingRequest.id, entityName: rejectingRequest.code,
         description: `Từ chối đơn nghỉ phép ${rejectingRequest.code}: ${rejectReason.trim()}`
       });
+
+      // Notification: leave_request_rejected → employee
+      try {
+        if (rejectingRequest.employee_id && rejectingRequest.employee_id !== currentUser?.id) {
+          const emp = employees.find(e => e.id === rejectingRequest.employee_id);
+          const targetUserId = emp?.user_id || rejectingRequest.employee_id;
+          const typeName = LEAVE_TYPES[rejectingRequest.type]?.label || rejectingRequest.type;
+          await supabase.from('notifications').insert([{
+            tenant_id: tenant.id, user_id: targetUserId, type: 'leave_request_rejected',
+            title: '❌ Đơn nghỉ phép bị từ chối',
+            message: `Đơn nghỉ ${typeName} từ ${formatDate(rejectingRequest.start_date)} đến ${formatDate(rejectingRequest.end_date)} bị từ chối. Lý do: ${rejectReason.trim()}`,
+            icon: '❌', reference_type: 'leave_request', reference_id: rejectingRequest.id,
+            created_by: currentUser?.id, is_read: false,
+          }]);
+        }
+      } catch (_) { /* non-critical */ }
 
       setShowRejectModal(false);
       setRejectingRequest(null);
