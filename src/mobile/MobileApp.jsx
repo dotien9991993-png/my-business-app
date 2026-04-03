@@ -15,6 +15,9 @@ import NotificationsPage from './pages/more/NotificationsPage';
 import ChangePasswordPage from './pages/more/ChangePasswordPage';
 import AttendancePage from './pages/attendance/AttendancePage';
 import ProfilePage from './pages/profile/ProfilePage';
+import LeaveRequestsPage from './pages/leave/LeaveRequestsPage';
+import LeaveDetailPage from './pages/leave/LeaveDetailPage';
+import CreateLeavePage from './pages/leave/CreateLeavePage';
 import { supabase } from '../supabaseClient';
 import splashLogo from './assets/logo-splash.png';
 import './styles/mobile.css';
@@ -49,6 +52,8 @@ export default function MobileApp() {
   const [activeTab, setActiveTab] = useState('chat');
   const [hideNav, setHideNav] = useState(false);
   const [subPage, setSubPage] = useState(null);
+  const [leaveDetail, setLeaveDetail] = useState(null); // leave_request object for detail page
+  const [leaveView, setLeaveView] = useState('list'); // 'list' | 'detail' | 'create'
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showSplash, setShowSplash] = useState(true);
   const [splashFading, setSplashFading] = useState(false);
@@ -212,7 +217,20 @@ export default function MobileApp() {
         case 'notifications':
           return <MobileErrorBoundary><NotificationsPage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} onNavigateEntity={handleEntityNavigate} /></MobileErrorBoundary>;
         case 'password':
-          return <MobileErrorBoundary><ChangePasswordPage user={currentUser} tenantId={tenantId} onBack={handleSubPageBack} /></MobileErrorBoundary>;
+          return <MobileErrorBoundary><ChangePasswordPage user={currentUser} onBack={handleSubPageBack} /></MobileErrorBoundary>;
+        case 'leave':
+          if (leaveView === 'create') {
+            return <MobileErrorBoundary><CreateLeavePage user={currentUser} tenantId={tenantId} onBack={() => setLeaveView('list')} /></MobileErrorBoundary>;
+          }
+          if (leaveView === 'detail' && leaveDetail) {
+            return <MobileErrorBoundary><LeaveDetailPage request={leaveDetail} user={currentUser} tenantId={tenantId} onBack={() => { setLeaveView('list'); setLeaveDetail(null); }} /></MobileErrorBoundary>;
+          }
+          return <MobileErrorBoundary><LeaveRequestsPage
+            user={currentUser} tenantId={tenantId}
+            onBack={() => { handleSubPageBack(); setLeaveView('list'); }}
+            onOpenDetail={(req) => { setLeaveDetail(req); setLeaveView('detail'); }}
+            onOpenCreate={() => setLeaveView('create')}
+          /></MobileErrorBoundary>;
         default:
           break;
       }

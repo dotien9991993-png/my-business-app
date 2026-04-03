@@ -77,7 +77,7 @@ export default function HrmModule() {
       )}
       {activeTab === 'leaves' && canAccessTab('hrm', 'leaves') && (
         <HrmLeaveRequestsView
-          employees={hrmEmployees} leaveRequests={hrmLeaveRequests}
+          employees={hrmEmployees} leaveRequests={hrmLeaveRequests} leaveBalances={hrmLeaveBalances}
           attendances={hrmAttendances} loadHrmData={loadHrmData} tenant={tenant} currentUser={currentUser}
           hasPermission={hasPermission} canEdit={canEdit} getPermissionLevel={getPermissionLevel} filterByPermission={filterByPermission}
         />

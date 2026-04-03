@@ -70,6 +70,7 @@ const getTypeBadgeClass = (type) => {
 export default function HrmLeaveRequestsView({
   employees,
   leaveRequests,
+  leaveBalances,
   loadHrmData,
   tenant,
   currentUser,
@@ -94,6 +95,9 @@ export default function HrmLeaveRequestsView({
   const [formEndDate, setFormEndDate] = useState(getTodayVN());
   const [formIsHalfDay, setFormIsHalfDay] = useState(false);
   const [formReason, setFormReason] = useState('');
+
+  // Chi tiết đơn
+  const [selectedRequest, setSelectedRequest] = useState(null);
 
   // Xác nhận từ chối
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -228,7 +232,7 @@ export default function HrmLeaveRequestsView({
     setSaving(true);
     try {
       const code = generateLeaveCode();
-      const { error } = await supabase.from('leave_requests').insert({
+      const { data: insertedLeave, error } = await supabase.from('leave_requests').insert({
         tenant_id: tenant.id,
         code,
         employee_id: formEmployeeId,
@@ -239,7 +243,7 @@ export default function HrmLeaveRequestsView({
         reason: formReason.trim(),
         status: 'pending',
         created_at: getNowISOVN()
-      });
+      }).select('id').single();
 
       if (error) throw error;
 
@@ -261,7 +265,7 @@ export default function HrmLeaveRequestsView({
             tenant_id: tenant.id, user_id: u.id, type: 'leave_request_new',
             title: '📝 Đơn nghỉ phép mới',
             message: `${empName} xin nghỉ ${typeName} từ ${formStartDate} đến ${formEndDate} (${days} ngày)`,
-            icon: '📝', reference_type: 'leave_request', reference_id: null,
+            icon: '📝', reference_type: 'leave_request', reference_id: insertedLeave?.id || null,
             created_by: currentUser?.id, is_read: false,
           })));
         }
@@ -602,7 +606,7 @@ export default function HrmLeaveRequestsView({
                 const canCancel = (isOwner || userIsAdmin) && req.status === 'pending';
 
                 return (
-                  <tr key={req.id} className="border-t hover:bg-gray-50 transition">
+                  <tr key={req.id} className="border-t hover:bg-gray-50 transition cursor-pointer" onClick={() => setSelectedRequest(req)}>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">
                       {req.code || '-'}
                     </td>
@@ -637,7 +641,7 @@ export default function HrmLeaveRequestsView({
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
                         {canApprove && (
                           <>
@@ -667,7 +671,12 @@ export default function HrmLeaveRequestsView({
                           </button>
                         )}
                         {!canApprove && !canCancel && (
-                          <span className="text-xs text-gray-400">-</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedRequest(req); }}
+                            className="px-2.5 py-1 text-xs bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
+                          >
+                            Xem
+                          </button>
                         )}
                       </div>
                     </td>
@@ -700,7 +709,7 @@ export default function HrmLeaveRequestsView({
             const canCancel = (isOwner || userIsAdmin) && req.status === 'pending';
 
             return (
-              <div key={req.id} className="p-4 hover:bg-gray-50">
+              <div key={req.id} className="p-4 hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedRequest(req)}>
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div>
                     <p className="font-medium text-gray-800 text-sm">
@@ -915,6 +924,172 @@ export default function HrmLeaveRequestsView({
           </div>
         </div>
       )}
+
+      {/* ============ MODAL CHI TIẾT ĐƠN ============ */}
+      {selectedRequest && (() => {
+        const req = selectedRequest;
+        const emp = (employees || []).find(e => e.id === req.employee_id);
+        const typeInfo = LEAVE_TYPES[req.type] || { label: req.type, icon: '📋' };
+        const statusInfo = LEAVE_REQUEST_STATUSES[req.status] || { label: req.status };
+        const balance = (leaveBalances || []).find(b => b.employee_id === req.employee_id && b.year === new Date().getFullYear());
+        const approver = req.approved_by ? (employees || []).find(e => e.user_id === req.approved_by) : null;
+        const _isOwner = currentEmployee && req.employee_id === currentEmployee.id;
+        const canAct = (userIsAdmin || permLevel >= 2) && req.status === 'pending';
+        const canCancelIt = (_isOwner || userIsAdmin) && req.status === 'pending';
+
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setSelectedRequest(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className={`px-6 py-4 border-b sticky top-0 z-10 rounded-t-2xl ${
+                req.status === 'approved' ? 'bg-green-50' : req.status === 'rejected' ? 'bg-red-50' : req.status === 'cancelled' ? 'bg-gray-50' : 'bg-yellow-50'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-mono text-xs text-gray-500">{req.code}</p>
+                    <h3 className="text-lg font-bold text-gray-800 mt-0.5">{typeInfo.icon} {typeInfo.label}</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${getStatusBadgeClass(req.status)}`}>
+                      {statusInfo.label}
+                    </span>
+                    <button onClick={() => setSelectedRequest(null)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/10 text-gray-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Nhân viên */}
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Nhân viên</h4>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-bold text-sm">
+                      {emp?.full_name?.charAt(0) || '?'}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800">{emp?.full_name || 'Không rõ'}</p>
+                      <p className="text-xs text-gray-500">{emp?.position || emp?.department || ''} {emp?.department ? `· ${emp.department}` : ''}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chi tiết đơn */}
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Chi tiết đơn nghỉ</h4>
+                  <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Loại đơn</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getTypeBadgeClass(req.type)}`}>
+                        {typeInfo.icon} {typeInfo.label}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Từ ngày</span>
+                      <span className="font-medium text-gray-800">📅 {formatDate(req.start_date)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Đến ngày</span>
+                      <span className="font-medium text-gray-800">📅 {formatDate(req.end_date)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Số ngày</span>
+                      <span className="font-bold text-green-700 text-base">
+                        {req.days || 0} ngày
+                        {req.days % 1 !== 0 && <span className="text-xs text-gray-400 ml-1">(nửa ngày)</span>}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Ngày tạo</span>
+                      <span className="text-gray-600">{req.created_at ? new Date(req.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lý do */}
+                {req.reason && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Lý do</h4>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{req.reason}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Thông tin phép năm */}
+                {balance && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Phép năm {new Date().getFullYear()}</h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                        <p className="text-xs text-blue-600 font-medium">Tổng phép</p>
+                        <p className="text-xl font-bold text-blue-700 mt-0.5">{balance.total_days || 0}</p>
+                      </div>
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
+                        <p className="text-xs text-orange-600 font-medium">Đã dùng</p>
+                        <p className="text-xl font-bold text-orange-700 mt-0.5">{balance.used_days || 0}</p>
+                      </div>
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                        <p className="text-xs text-green-600 font-medium">Còn lại</p>
+                        <p className="text-xl font-bold text-green-700 mt-0.5">{(balance.total_days || 0) - (balance.used_days || 0)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lịch sử duyệt */}
+                {(req.status === 'approved' || req.status === 'rejected') && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Lịch sử duyệt</h4>
+                    <div className={`rounded-xl p-4 ${req.status === 'approved' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm">{req.status === 'approved' ? '✅' : '❌'}</span>
+                        <span className="font-medium text-sm text-gray-800">
+                          {approver?.full_name || 'Admin'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {req.approved_at ? new Date(req.approved_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}
+                      </p>
+                      {req.reject_reason && (
+                        <div className="mt-2 pt-2 border-t border-red-200">
+                          <p className="text-xs font-medium text-red-700">Lý do từ chối:</p>
+                          <p className="text-sm text-red-600 mt-0.5">{req.reject_reason}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions — duyệt/từ chối */}
+              {(canAct || canCancelIt) && (
+                <div className="px-6 py-4 border-t bg-gray-50 rounded-b-2xl sticky bottom-0 flex gap-2">
+                  {canCancelIt && (
+                    <button onClick={() => { setSelectedRequest(null); handleCancel(req); }} disabled={saving}
+                      className="flex-1 py-2.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 transition font-medium">
+                      Hủy đơn
+                    </button>
+                  )}
+                  {canAct && (
+                    <>
+                      <button onClick={() => { setSelectedRequest(null); handleOpenReject(req); }} disabled={saving}
+                        className="flex-1 py-2.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 transition font-medium">
+                        Từ chối
+                      </button>
+                      <button onClick={() => { setSelectedRequest(null); handleApprove(req); }} disabled={saving}
+                        className="flex-1 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition font-medium">
+                        Duyệt
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ============ MODAL TỪ CHỐI ============ */}
       {showRejectModal && rejectingRequest && (
