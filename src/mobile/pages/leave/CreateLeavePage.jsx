@@ -103,21 +103,37 @@ export default function CreateLeavePage({ user, tenantId, onBack }) {
       }).select('id').single();
       if (error) throw error;
 
-      // Notification admin — giống desktop line 258-272
+      // Notification admin — giống desktop + finance pattern
       try {
         const typeName = LEAVE_TYPES[type]?.label || type;
-        const { data: admins } = await supabase.from('users').select('id').eq('tenant_id', tenantId)
-          .in('role', ['Admin', 'admin', 'Manager']).neq('id', user.id);
-        if (admins?.length > 0) {
-          await supabase.from('notifications').insert(admins.map(u => ({
-            tenant_id: tenantId, user_id: u.id, type: 'leave_request_new',
+        const { data: admins, error: adminErr } = await supabase.from('users').select('id, role')
+          .eq('tenant_id', tenantId).eq('is_active', true);
+        console.log('[Leave] Admin query result:', admins?.length, 'users, error:', adminErr);
+
+        const adminList = (admins || []).filter(u =>
+          (u.role === 'Admin' || u.role === 'admin' || u.role === 'Manager') && u.id !== user.id
+        );
+        console.log('[Leave] Filtered admins to notify:', adminList.length);
+
+        if (adminList.length > 0) {
+          const notifs = adminList.map(u => ({
+            tenant_id: tenantId,
+            user_id: u.id,
+            type: 'leave_request_new',
             title: '📝 Đơn nghỉ phép mới',
             message: `${employee.full_name || user.name} xin nghỉ ${typeName} từ ${startDate} đến ${endDate} (${d} ngày)`,
-            icon: '📝', reference_type: 'leave_request', reference_id: insertedLeave?.id || null,
-            created_by: user.id, is_read: false,
-          })));
+            icon: '📝',
+            reference_type: 'leave_request',
+            reference_id: insertedLeave?.id || null,
+            created_by: user.id,
+            is_read: false,
+          }));
+          const { error: notifErr } = await supabase.from('notifications').insert(notifs);
+          console.log('[Leave] Notification insert result:', notifErr ? 'ERROR: ' + notifErr.message : 'OK');
         }
-      } catch (_e) { /* non-critical */ }
+      } catch (notifError) {
+        console.error('[Leave] Notification error:', notifError);
+      }
 
       await haptic('heavy');
       alert('Tạo đơn nghỉ phép thành công!');
