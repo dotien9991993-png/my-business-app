@@ -188,8 +188,13 @@ export default function HrmSettingsView({ departments, positions, workShifts, em
     if (cnt > 0) return alert(`Không thể xóa chức vụ đang có ${cnt} nhân viên!`);
     if (!window.confirm(`Xóa chức vụ "${p.name}"?`)) return;
     try {
-      const { error } = await supabase.from('positions').delete().eq('id', p.id);
-      if (error) throw error;
+      // Soft delete: ẩn chức vụ thay vì xóa cứng (tránh orphan data)
+      const { error } = await supabase.from('positions').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', p.id);
+      if (error) {
+        // Fallback hard delete nếu bảng chưa có column is_active
+        const { error: delErr } = await supabase.from('positions').delete().eq('id', p.id);
+        if (delErr) throw delErr;
+      }
       logActivity({ tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name, module: 'hrm', action: 'delete', entityType: 'position', entityId: p.id, entityName: p.name, description: `Xóa chức vụ: ${p.name}` });
       await loadHrmData(); showToast('Đã xóa chức vụ');
     } catch (err) { alert('Lỗi: ' + err.message); }

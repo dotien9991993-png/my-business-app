@@ -291,6 +291,23 @@ export default function HrmLeaveRequestsView({
 
     const empName = getEmployeeName(request.employee_id);
     const typeName = LEAVE_TYPES[request.type]?.label || request.type;
+
+    // Check leave balance cho nghỉ phép năm
+    if (request.type === 'annual_leave') {
+      const balance = (leaveBalances || []).find(b =>
+        b.employee_id === request.employee_id && b.year === new Date().getFullYear()
+      );
+      if (balance) {
+        const remaining = (balance.total_days || 0) - (balance.used_days || 0);
+        const requestDays = parseFloat(request.days || 0);
+        if (remaining < requestDays) {
+          if (!confirm(`⚠️ ${empName} chỉ còn ${remaining} ngày phép nhưng xin ${requestDays} ngày.\nBạn vẫn muốn duyệt?`)) {
+            return;
+          }
+        }
+      }
+    }
+
     if (!confirm(`Duyệt đơn ${typeName} của ${empName}?\nTừ ${formatDate(request.start_date)} đến ${formatDate(request.end_date)} (${request.days} ngày)`)) {
       return;
     }
@@ -360,6 +377,21 @@ export default function HrmLeaveRequestsView({
             onConflict: 'employee_id,date'
           });
         if (attError) console.error('Lỗi cập nhật chấm công:', attError);
+      }
+
+      // Auto-update leave balance cho nghỉ phép năm
+      if (request.type === 'annual_leave') {
+        try {
+          const currentYear = new Date().getFullYear();
+          const { data: bal } = await supabase.from('leave_balances')
+            .select('id, used_days').eq('employee_id', request.employee_id).eq('year', currentYear)
+            .eq('tenant_id', tenant.id).single();
+          if (bal) {
+            await supabase.from('leave_balances').update({
+              used_days: (bal.used_days || 0) + parseFloat(request.days || 0),
+            }).eq('id', bal.id);
+          }
+        } catch (_) { /* non-critical */ }
       }
 
       if (loadHrmData) await loadHrmData();

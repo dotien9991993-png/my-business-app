@@ -68,11 +68,11 @@ export const KPI_RATINGS = {
   D: { label: 'Yếu', minScore: 0, color: 'red', bonus: 0 }
 };
 
-// Tính rating từ score
+// Tính rating từ score — dùng KPI_RATINGS.minScore
 export const getRatingFromScore = (score) => {
-  if (score >= 90) return 'A';
-  if (score >= 75) return 'B';
-  if (score >= 60) return 'C';
+  if (score >= KPI_RATINGS.A.minScore) return 'A';
+  if (score >= KPI_RATINGS.B.minScore) return 'B';
+  if (score >= KPI_RATINGS.C.minScore) return 'C';
   return 'D';
 };
 

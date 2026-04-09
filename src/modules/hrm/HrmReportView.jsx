@@ -3,7 +3,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { ATTENDANCE_STATUSES, KPI_RATINGS } from '../../constants/hrmConstants';
+import { ATTENDANCE_STATUSES, KPI_RATINGS, getRatingFromScore } from '../../constants/hrmConstants';
 import { getVietnamDate } from '../../utils/dateUtils';
 
 // Bảng màu xanh lá
@@ -226,10 +226,8 @@ export default function HrmReportView({
     const dist = { A: 0, B: 0, C: 0, D: 0 };
     filteredKpis.forEach(k => {
       const score = parseFloat(k.total_score || k.score || 0);
-      if (score >= 90) dist.A++;
-      else if (score >= 75) dist.B++;
-      else if (score >= 60) dist.C++;
-      else dist.D++;
+      const grade = getRatingFromScore(score);
+      dist[grade]++;
     });
     return Object.entries(dist).map(([key, value]) => ({
       name: `${key} - ${KPI_RATINGS[key]?.label || key}`,
@@ -774,10 +772,7 @@ export default function HrmReportView({
             {Object.entries(KPI_RATINGS).map(([key, rating]) => {
               const count = filteredKpis.filter(k => {
                 const score = parseFloat(k.total_score || k.score || 0);
-                if (key === 'A') return score >= 90;
-                if (key === 'B') return score >= 75 && score < 90;
-                if (key === 'C') return score >= 60 && score < 75;
-                return score < 60;
+                return getRatingFromScore(score) === key;
               }).length;
               const bgColor = key === 'A' ? 'bg-green-50 border-green-200' :
                 key === 'B' ? 'bg-blue-50 border-blue-200' :
@@ -864,7 +859,7 @@ export default function HrmReportView({
                   </thead>
                   <tbody>
                     {topKpiEmployees.map((emp, idx) => {
-                      const rating = emp.score >= 90 ? 'A' : emp.score >= 75 ? 'B' : emp.score >= 60 ? 'C' : 'D';
+                      const rating = getRatingFromScore(emp.score);
                       const ratingColor = rating === 'A' ? 'bg-green-100 text-green-700' :
                         rating === 'B' ? 'bg-blue-100 text-blue-700' :
                         rating === 'C' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';

@@ -181,7 +181,20 @@ export default function HrmEmployeesView({
       }));
 
       const { error } = await supabase.from('employees').insert(inserts);
-      if (error) throw error;
+      if (error) {
+        // Retry with timestamp suffix nếu trùng employee_code
+        if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
+          const ts = Date.now().toString().slice(-4);
+          const retryInserts = inserts.map((ins, i) => ({
+            ...ins,
+            employee_code: 'NV-' + String(nextNum + i).padStart(3, '0') + '-' + ts,
+          }));
+          const { error: retryErr } = await supabase.from('employees').insert(retryInserts);
+          if (retryErr) throw retryErr;
+        } else {
+          throw error;
+        }
+      }
 
       logActivity({
         tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,

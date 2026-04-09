@@ -29,6 +29,61 @@ function getTaskStatsByPlatform(task) {
   return Object.keys(byPlatform).length > 0 ? byPlatform : null;
 }
 
+// Reusable multi-select dropdown with checkboxes
+function MultiSelectFilter({ label, options, selected, onChange, icon }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const toggle = (val) => {
+    onChange(selected.includes(val) ? selected.filter(v => v !== val) : [...selected, val]);
+  };
+  const active = selected.length > 0;
+  return (
+    <div ref={ref} className="relative">
+      <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">{icon ? `${icon} ` : ''}{label}</label>
+      <button type="button" onClick={() => setOpen(!open)}
+        className={`w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-left flex items-center justify-between gap-1 text-xs sm:text-sm transition-colors ${active ? 'border-blue-400 bg-blue-50' : 'bg-white'}`}>
+        <span className="truncate">{active ? `${selected.length} đã chọn` : 'Tất cả'}</span>
+        <span className="text-gray-400 text-xs shrink-0">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full min-w-[180px] bg-white border rounded-lg shadow-lg overflow-hidden">
+          {active && (
+            <button type="button" onClick={() => { onChange([]); }} className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 border-b font-medium">✕ Bỏ chọn tất cả</button>
+          )}
+          <div className="max-h-48 overflow-y-auto">
+            {options.map(opt => {
+              const val = typeof opt === 'string' ? opt : opt.value;
+              const lbl = typeof opt === 'string' ? opt : opt.label;
+              return (
+                <label key={val} className="flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs sm:text-sm border-b last:border-b-0">
+                  <input type="checkbox" checked={selected.includes(val)} onChange={() => toggle(val)} className="w-3.5 h-3.5 text-blue-600 rounded" />
+                  <span className="truncate">{lbl}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {active && (
+        <div className="flex gap-1 flex-wrap mt-1">
+          {selected.map(v => {
+            const opt = options.find(o => (typeof o === 'string' ? o : o.value) === v);
+            const lbl = opt ? (typeof opt === 'string' ? opt : opt.label) : v;
+            return <span key={v} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-medium">
+              {lbl}<button type="button" onClick={() => toggle(v)} className="text-blue-500 hover:text-red-500 ml-0.5">×</button>
+            </span>;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TasksView = ({
   visibleTasks,
   setSelectedTask,
@@ -56,16 +111,21 @@ const TasksView = ({
   setTaskFilterActor,
   taskFilterProduct,
   setTaskFilterProduct,
+  taskFilterParticipant,
+  setTaskFilterParticipant,
+  taskSortBy,
+  setTaskSortBy,
   tenant,
+  currentUser,
 }) => {
-  // Dùng filter state từ App (không bị reset khi đóng modal)
-  const filterTeam = taskFilterTeam;
+  // Filter state — multi-select filters are arrays, empty = "all"
+  const filterTeam = taskFilterTeam || [];
   const setFilterTeam = setTaskFilterTeam;
-  const filterStatus = taskFilterStatus;
+  const filterStatus = taskFilterStatus || [];
   const setFilterStatus = setTaskFilterStatus;
-  const filterAssignee = taskFilterAssignee;
+  const filterAssignee = taskFilterAssignee || [];
   const setFilterAssignee = setTaskFilterAssignee;
-  const filterCategory = taskFilterCategory;
+  const filterCategory = taskFilterCategory || [];
   const setFilterCategory = setTaskFilterCategory;
   const dateFilter = taskDateFilter;
   const setDateFilter = setTaskDateFilter;
@@ -73,14 +133,50 @@ const TasksView = ({
   const setCustomStartDate = setTaskCustomStartDate;
   const customEndDate = taskCustomEndDate;
   const setCustomEndDate = setTaskCustomEndDate;
-  const filterCrew = taskFilterCrew || 'all';
+  const filterCrew = taskFilterCrew || [];
   const setFilterCrew = setTaskFilterCrew || (() => {});
-  const filterEditor = taskFilterEditor || 'all';
+  const filterEditor = taskFilterEditor || [];
   const setFilterEditor = setTaskFilterEditor || (() => {});
-  const filterActor = taskFilterActor || 'all';
+  const filterActor = taskFilterActor || [];
   const setFilterActor = setTaskFilterActor || (() => {});
   const filterProducts = taskFilterProduct || [];
   const setFilterProducts = setTaskFilterProduct || (() => {});
+  const filterParticipant = taskFilterParticipant || 'all';
+  const setFilterParticipant = setTaskFilterParticipant || (() => {});
+  const sortBy = taskSortBy || 'newest';
+  const setSortBy = setTaskSortBy || (() => {});
+  const [activePreset, setActivePreset] = useState(null);
+
+  // Quick presets
+  const PRESETS = [
+    { id: 'my_today', label: '🔥 Của tôi hôm nay', apply: () => {
+      clearFilters();
+      setFilterParticipant(currentUser?.name || 'all');
+      setDateFilter('today');
+      setFilterStatus(['Nháp', 'Chưa Quay', 'Đã Quay', 'Đang Edit']);
+    }},
+    { id: 'overdue', label: '⚠️ Quá hạn chưa xong', apply: () => {
+      clearFilters();
+      setDateFilter('overdue');
+      setFilterStatus(['Nháp', 'Chưa Quay', 'Đã Quay', 'Đang Edit']);
+    }},
+    { id: 'this_month', label: '📅 Tháng này', apply: () => { clearFilters(); setDateFilter('month'); }},
+    { id: 'missing_links', label: '❌ Thiếu link', apply: () => {
+      clearFilters();
+      setFilterStatus(['Hoàn Thành']);
+      setFilterLinkIssue('missing');
+    }},
+    { id: 'no_stats', label: '📊 Lỗi stats', apply: () => { clearFilters(); setFilterLinkIssue('no_stats'); }},
+    { id: 'done_week', label: '✅ Xong tuần này', apply: () => {
+      clearFilters();
+      setDateFilter('week');
+      setFilterStatus(['Hoàn Thành']);
+    }},
+  ];
+  const applyPreset = (preset) => {
+    preset.apply();
+    setActivePreset(preset.id);
+  };
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [showProductFilter, setShowProductFilter] = useState(false);
   const [filterLinkIssue, setFilterLinkIssue] = useState('all');
@@ -195,13 +291,17 @@ const TasksView = ({
   };
 
   const filteredTasks = visibleTasks.filter(t => {
-    if (filterTeam !== 'all' && t.team !== filterTeam) return false;
-    if (filterStatus !== 'all' && t.status !== filterStatus) return false;
-    if (filterAssignee !== 'all' && t.assignee !== filterAssignee) return false;
-    if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-    if (filterCrew !== 'all' && !(t.cameramen || []).includes(filterCrew)) return false;
-    if (filterEditor !== 'all' && !(t.editors || []).includes(filterEditor)) return false;
-    if (filterActor !== 'all' && !(t.actors || []).includes(filterActor)) return false;
+    if (filterTeam.length > 0 && !filterTeam.includes(t.team)) return false;
+    if (filterStatus.length > 0 && !filterStatus.includes(t.status)) return false;
+    if (filterAssignee.length > 0 && !filterAssignee.includes(t.assignee)) return false;
+    if (filterCategory.length > 0 && !filterCategory.includes(t.category)) return false;
+    if (filterCrew.length > 0 && !(t.cameramen || []).some(c => filterCrew.includes(c))) return false;
+    if (filterEditor.length > 0 && !(t.editors || []).some(e => filterEditor.includes(e))) return false;
+    if (filterActor.length > 0 && !(t.actors || []).some(a => filterActor.includes(a))) return false;
+    if (filterParticipant !== 'all') {
+      const p = filterParticipant;
+      if (t.assignee !== p && !(t.cameramen || []).includes(p) && !(t.editors || []).includes(p) && !(t.actors || []).includes(p)) return false;
+    }
     if (filterProducts.length > 0 && !(t.product_ids || []).some(pid => filterProducts.includes(pid))) return false;
     if (filterLinkIssue === 'invalid' && !(t.postLinks || []).some(l =>
       (l.type === 'Facebook' && !validateFacebookUrl(l.url)) ||
@@ -241,6 +341,31 @@ const TasksView = ({
     return true;
   });
 
+  // Participant stats — tính từ filteredTasks (đã áp dụng TẤT CẢ filter kể cả deadline)
+  const participantStats = filterParticipant !== 'all' ? (() => {
+    const p = filterParticipant;
+    const tasks = filteredTasks;
+    return {
+      total: tasks.length,
+      asContent: tasks.filter(t => t.assignee === p).length,
+      asCrew: tasks.filter(t => (t.cameramen || []).includes(p)).length,
+      asEditor: tasks.filter(t => (t.editors || []).includes(p)).length,
+      asActor: tasks.filter(t => (t.actors || []).includes(p)).length,
+    };
+  })() : null;
+
+  // Helper: get participant roles for a task
+  const getParticipantRoles = (task) => {
+    if (filterParticipant === 'all') return [];
+    const p = filterParticipant;
+    const roles = [];
+    if (task.assignee === p) roles.push('📝 Content');
+    if ((task.cameramen || []).includes(p)) roles.push('🎥 Quay');
+    if ((task.editors || []).includes(p)) roles.push('✂️ Dựng');
+    if ((task.actors || []).includes(p)) roles.push('🎭 Diễn');
+    return roles;
+  };
+
   const handleDateFilterChange = (value) => {
     setDateFilter(value);
     setShowCustomDate(value === 'custom');
@@ -251,18 +376,22 @@ const TasksView = ({
   };
 
   const clearFilters = () => {
-    setFilterTeam('all');
-    setFilterStatus('all');
-    setFilterAssignee('all');
-    setFilterCategory('all');
-    setFilterCrew('all');
-    setFilterActor('all');
+    setFilterTeam([]);
+    setFilterStatus([]);
+    setFilterAssignee([]);
+    setFilterCategory([]);
+    setFilterCrew([]);
+    setFilterEditor([]);
+    setFilterActor([]);
+    setFilterParticipant('all');
     setFilterProducts([]);
     setFilterLinkIssue('all');
     setDateFilter('all');
     setCustomStartDate('');
     setCustomEndDate('');
     setShowCustomDate(false);
+    setSortBy('newest');
+    setActivePreset(null);
   };
 
   // Bulk update stats cho tất cả task đang hiển thị
@@ -335,6 +464,12 @@ const TasksView = ({
   const uniqueCrew = [...new Set(visibleTasks.flatMap(t => t.cameramen || []))].sort();
   const uniqueEditors = [...new Set(visibleTasks.flatMap(t => t.editors || []))].sort();
   const uniqueActors = [...new Set(visibleTasks.flatMap(t => t.actors || []))].sort();
+  const uniqueParticipants = [...new Set([
+    ...visibleTasks.map(t => t.assignee),
+    ...visibleTasks.flatMap(t => t.cameramen || []),
+    ...visibleTasks.flatMap(t => t.editors || []),
+    ...visibleTasks.flatMap(t => t.actors || []),
+  ].filter(Boolean))].sort();
   // Unique products for filter
   const uniqueProductIds = [...new Set(visibleTasks.flatMap(t => t.product_ids || []))];
 
@@ -342,13 +477,13 @@ const TasksView = ({
   const tasksForLinkBadge = filteredTasks.length !== visibleTasks.length && filterLinkIssue === 'all'
     ? filteredTasks
     : visibleTasks.filter(t => {
-        if (filterTeam !== 'all' && t.team !== filterTeam) return false;
-        if (filterStatus !== 'all' && t.status !== filterStatus) return false;
-        if (filterAssignee !== 'all' && t.assignee !== filterAssignee) return false;
-        if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-        if (filterCrew !== 'all' && !(t.cameramen || []).includes(filterCrew)) return false;
-        if (filterEditor !== 'all' && !(t.editors || []).includes(filterEditor)) return false;
-        if (filterActor !== 'all' && !(t.actors || []).includes(filterActor)) return false;
+        if (filterTeam.length > 0 && !filterTeam.includes(t.team)) return false;
+        if (filterStatus.length > 0 && !filterStatus.includes(t.status)) return false;
+        if (filterAssignee.length > 0 && !filterAssignee.includes(t.assignee)) return false;
+        if (filterCategory.length > 0 && !filterCategory.includes(t.category)) return false;
+        if (filterCrew.length > 0 && !(t.cameramen || []).some(c => filterCrew.includes(c))) return false;
+        if (filterEditor.length > 0 && !(t.editors || []).some(e => filterEditor.includes(e))) return false;
+        if (filterActor.length > 0 && !(t.actors || []).some(a => filterActor.includes(a))) return false;
         if (filterProducts.length > 0 && !(t.product_ids || []).some(pid => filterProducts.includes(pid))) return false;
         if (dateFilter !== 'all') {
           const range = getDateRange();
@@ -380,38 +515,152 @@ const TasksView = ({
     return hasLink && !hasStats;
   }).length;
 
-  const hasActiveFilters = filterTeam !== 'all' || filterStatus !== 'all' || filterAssignee !== 'all' || filterCategory !== 'all' || filterCrew !== 'all' || filterEditor !== 'all' || filterActor !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
+  // Sort filtered tasks
+  const getTotalStats = (task) => {
+    const links = task.postLinks || [];
+    return links.reduce((acc, l) => {
+      if (l.stats) { acc.views += l.stats.views || 0; acc.likes += l.stats.likes || 0; }
+      return acc;
+    }, { views: 0, likes: 0 });
+  };
+
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    switch (sortBy) {
+      case 'oldest': return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+      case 'deadline_asc': return (a.dueDate || '9999') < (b.dueDate || '9999') ? -1 : 1;
+      case 'deadline_desc': return (b.dueDate || '') < (a.dueDate || '') ? -1 : 1;
+      case 'views': return getTotalStats(b).views - getTotalStats(a).views;
+      case 'likes': return getTotalStats(b).likes - getTotalStats(a).likes;
+      case 'title_az': return (a.title || '').localeCompare(b.title || '');
+      case 'title_za': return (b.title || '').localeCompare(a.title || '');
+      default: return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    }
+  });
+
+  const hasActiveFilters = filterTeam.length > 0 || filterStatus.length > 0 || filterAssignee.length > 0 || filterCategory.length > 0 || filterCrew.length > 0 || filterEditor.length > 0 || filterActor.length > 0 || filterParticipant !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
+
+  // Export Excel
+  const handleExportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const catMap = { video_dan: 'Video dàn', video_hangngay: 'Hàng ngày', video_huongdan: 'Hướng dẫn', video_quangcao: 'Quảng cáo', video_review: 'Review' };
+      const fmtD = (d) => d ? d.split('-').reverse().join('/') : '';
+      const rows = sortedTasks.map((t, i) => {
+        const links = t.postLinks || [];
+        const fb = links.find(l => l.type === 'Facebook');
+        const tt = links.find(l => l.type === 'TikTok');
+        const yt = links.find(l => l.type === 'YouTube');
+        const stats = getTotalStats(t);
+        return {
+          'STT': i + 1,
+          'Tiêu đề': t.title || '',
+          'Danh mục': catMap[t.category] || t.category || '',
+          'Content': t.assignee || '',
+          'Quay': (t.cameramen || []).join(', '),
+          'Dựng': (t.editors || []).join(', '),
+          'Diễn': (t.actors || []).join(', '),
+          'Team': t.team || '',
+          'Trạng thái': t.status || '',
+          'Deadline': fmtD(t.dueDate),
+          'Ngày tạo': fmtD(t.created_at?.substring(0, 10)),
+          'Ngày HT': fmtD(t.completed_at?.substring(0, 10)),
+          'Nền tảng': t.platform || '',
+          'Link Facebook': fb?.url || '',
+          'Link TikTok': tt?.url || '',
+          'Link YouTube': yt?.url || '',
+          'Views': stats.views || 0,
+          'Likes': stats.likes || 0,
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 5 }, { wch: 35 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
+        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 },
+        { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 10 }, { wch: 10 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Video');
+
+      const today = new Date().toISOString().split('T')[0];
+      const namePart = filterParticipant !== 'all'
+        ? '-' + filterParticipant.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, '-')
+        : '';
+      XLSX.writeFile(wb, `quan-ly-video${namePart}-${today}.xlsx`);
+    } catch (err) {
+      alert('Lỗi xuất Excel: ' + err.message);
+    }
+  };
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6">
-      <div className="flex justify-between items-center mb-3 md:mb-6">
+      <div className="flex justify-between items-center mb-3 md:mb-6 gap-2 flex-wrap">
         <h2 className="text-lg md:text-2xl font-bold">📋 Quản Lý Video</h2>
-        <button
-          onClick={() => setShowCreateTaskModal(true)}
-          className="px-3 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm md:text-base"
-        >
-          ➕ Tạo Mới
-        </button>
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={handleExportExcel}
+            className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm hidden md:inline-flex items-center gap-1"
+          >
+            📊 Xuất Excel
+          </button>
+          <button
+            onClick={() => setShowCreateTaskModal(true)}
+            className="px-3 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm md:text-base"
+          >
+            ➕ Tạo Mới
+          </button>
+        </div>
       </div>
 
       {/* Unified Responsive Filters */}
       <div className="bg-white rounded-xl shadow mb-3 md:mb-6 overflow-hidden">
         {/* Stats Bar */}
-        <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-50 border-b">
-          <span className="text-xs md:text-sm text-gray-600">
+        <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-50 border-b gap-2">
+          <span className="text-xs md:text-sm text-gray-600 shrink-0">
             <span className="font-bold text-blue-600">{filteredTasks.length}</span>/{visibleTasks.length} video
           </span>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+            className="px-2 py-1 border rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+          >
+            <option value="newest">Mới nhất</option>
+            <option value="oldest">Cũ nhất</option>
+            <option value="deadline_asc">Deadline gần</option>
+            <option value="deadline_desc">Deadline xa</option>
+            <option value="views">Views cao</option>
+            <option value="likes">Likes cao</option>
+            <option value="title_az">Tên A-Z</option>
+            <option value="title_za">Tên Z-A</option>
+          </select>
           <div className="flex gap-1 flex-wrap justify-end">
             {filterProducts.length > 0 && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] md:text-xs rounded-full">{filterProducts.length} SP</span>}
-            {filterStatus !== 'all' && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] md:text-xs rounded-full">{filterStatus}</span>}
-            {filterAssignee !== 'all' && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] md:text-xs rounded-full">{filterAssignee.split(' ').pop()}</span>}
-            {filterTeam !== 'all' && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] md:text-xs rounded-full">{filterTeam}</span>}
+            {filterStatus.length > 0 && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] md:text-xs rounded-full">{filterStatus.length} TT</span>}
+            {filterAssignee.length > 0 && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] md:text-xs rounded-full">{filterAssignee.length} NV</span>}
+            {filterTeam.length > 0 && <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] md:text-xs rounded-full">{filterTeam.join(', ')}</span>}
+            {filterParticipant !== 'all' && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] md:text-xs rounded-full">👤 {filterParticipant.split(' ').pop()}</span>}
             {dateFilter !== 'all' && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] md:text-xs rounded-full">{dateFilter === 'today' ? 'Hôm nay' : dateFilter === 'week' ? 'Tuần' : dateFilter === 'month' ? 'Tháng' : dateFilter === 'overdue' ? 'Quá hạn' : 'Tùy chỉnh'}</span>}
           </div>
         </div>
 
         <div className="p-2 md:p-4">
-          {/* Filter Grid: Row 1 = Product, Status, Assignee, Category | Row 2 = Crew, Actor, Team */}
+          {/* Quick Presets */}
+          <div className="flex gap-1.5 flex-wrap mb-3 pb-3 border-b">
+            {PRESETS.map(p => (
+              <button key={p.id} type="button"
+                onClick={() => activePreset === p.id ? clearFilters() : applyPreset(p)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                  activePreset === p.id
+                    ? 'bg-green-600 text-white border border-green-600'
+                    : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filter Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 md:gap-3">
             {/* 1. Product - first, full width on mobile */}
             {uniqueProductIds.length > 0 ? (
@@ -496,120 +745,79 @@ const TasksView = ({
               </div>
             ) : null}
 
-            {/* 2. Trạng thái */}
-            <div>
-              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Trạng thái</label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="all">Tất cả</option>
-                <option value="Nháp">Nháp</option>
-                <option value="Chưa Quay">Chưa Quay</option>
-                <option value="Đã Quay">Đã Quay</option>
-                <option value="Đang Edit">Đang Edit</option>
-                <option value="Hoàn Thành">Hoàn Thành</option>
-              </select>
-            </div>
+            {/* 2. Trạng thái (multi) */}
+            <MultiSelectFilter label="Trạng thái" selected={filterStatus} onChange={setFilterStatus}
+              options={['Nháp', 'Chưa Quay', 'Đã Quay', 'Đang Edit', 'Hoàn Thành']} />
 
-            {/* 3. Nhân viên */}
-            <div>
-              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Nhân viên</label>
-              <select
-                value={filterAssignee}
-                onChange={(e) => setFilterAssignee(e.target.value)}
-                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="all">Tất cả</option>
-                {Array.from(new Set(visibleTasks.map(t => t.assignee))).sort().map(assignee => (
-                  <option key={assignee} value={assignee}>{assignee}</option>
-                ))}
-              </select>
-            </div>
+            {/* 3. Nhân viên (multi) */}
+            <MultiSelectFilter label="Nhân viên" selected={filterAssignee} onChange={setFilterAssignee}
+              options={Array.from(new Set(visibleTasks.map(t => t.assignee).filter(Boolean))).sort()} />
 
-            {/* 4. Danh mục */}
-            <div>
-              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Danh mục</label>
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="all">Tất cả</option>
-                {videoCategories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
+            {/* 4. Danh mục (multi) */}
+            <MultiSelectFilter label="Danh mục" selected={filterCategory} onChange={setFilterCategory}
+              options={videoCategories.map(c => ({ value: c.id, label: c.name }))} />
 
-            {/* 5. Quay phim */}
+            {/* 5. Quay phim (multi) */}
             {uniqueCrew.length > 0 && (
-              <div>
-                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎬 Quay phim</label>
-                <select
-                  value={filterCrew}
-                  onChange={(e) => setFilterCrew(e.target.value)}
-                  className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="all">Tất cả</option>
-                  {uniqueCrew.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
+              <MultiSelectFilter label="Quay phim" icon="🎬" selected={filterCrew} onChange={setFilterCrew} options={uniqueCrew} />
             )}
 
-            {/* 5b. Dựng phim */}
+            {/* 5b. Dựng phim (multi) */}
             {uniqueEditors.length > 0 && (
-              <div>
-                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">✂️ Dựng phim</label>
-                <select
-                  value={filterEditor}
-                  onChange={(e) => setFilterEditor(e.target.value)}
-                  className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
-                >
-                  <option value="all">Tất cả</option>
-                  {uniqueEditors.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
+              <MultiSelectFilter label="Dựng phim" icon="✂️" selected={filterEditor} onChange={setFilterEditor} options={uniqueEditors} />
             )}
 
-            {/* 6. Diễn viên */}
+            {/* 6. Diễn viên (multi) */}
             {uniqueActors.length > 0 && (
-              <div>
-                <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">🎭 Diễn viên</label>
-                <select
-                  value={filterActor}
-                  onChange={(e) => setFilterActor(e.target.value)}
-                  className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="all">Tất cả</option>
-                  {uniqueActors.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
+              <MultiSelectFilter label="Diễn viên" icon="🎭" selected={filterActor} onChange={setFilterActor} options={uniqueActors} />
             )}
 
-            {/* 7. Team - cuối cùng */}
-            <div>
-              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">Team</label>
+            {/* 7. Team (multi) */}
+            <MultiSelectFilter label="Team" selected={filterTeam} onChange={setFilterTeam}
+              options={['Content', 'Edit Video', 'Livestream', 'Kho']} />
+
+            {/* 8. Nhân viên tham gia — filter tổng hợp */}
+            <div className="col-span-2 sm:col-span-1">
+              <label className="text-xs sm:text-sm font-medium mb-1 md:mb-2 block">👤 NV tham gia</label>
               <select
-                value={filterTeam}
-                onChange={(e) => setFilterTeam(e.target.value)}
-                className="w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                value={filterParticipant}
+                onChange={(e) => setFilterParticipant(e.target.value)}
+                className={`w-full px-2 md:px-3 py-1.5 md:py-2 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white ${filterParticipant !== 'all' ? 'border-indigo-400 bg-indigo-50' : ''}`}
               >
                 <option value="all">Tất cả</option>
-                <option value="Content">Content</option>
-                <option value="Edit Video">Edit Video</option>
-                <option value="Livestream">Livestream</option>
-                <option value="Kho">Kho</option>
+                {uniqueParticipants.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
             </div>
           </div>
+
+          {/* Participant Stats Panel */}
+          {participantStats && (
+            <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t">
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <span className="text-xs sm:text-sm font-bold text-indigo-700">📊 {filterParticipant}</span>
+                <span className="text-xs text-gray-500">
+                  — {dateFilter === 'all' ? 'toàn bộ thời gian' : dateFilter === 'today' ? 'hôm nay' : dateFilter === 'week' ? 'tuần này' : dateFilter === 'month' ? 'tháng này' : dateFilter === 'overdue' ? 'quá hạn' : dateFilter === 'custom' && customStartDate && customEndDate ? `từ ${customStartDate} đến ${customEndDate}` : ''}
+                  {' '}— tham gia <strong>{participantStats.total}</strong> task
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {participantStats.asContent > 0 && (
+                  <span className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-medium">📝 Content: {participantStats.asContent}</span>
+                )}
+                {participantStats.asCrew > 0 && (
+                  <span className="px-2 py-1 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-lg text-xs font-medium">🎥 Quay: {participantStats.asCrew}</span>
+                )}
+                {participantStats.asEditor > 0 && (
+                  <span className="px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs font-medium">✂️ Dựng: {participantStats.asEditor}</span>
+                )}
+                {participantStats.asActor > 0 && (
+                  <span className="px-2 py-1 bg-pink-50 text-pink-700 border border-pink-200 rounded-lg text-xs font-medium">🎭 Diễn: {participantStats.asActor}</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Date Filter */}
           <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t">
@@ -756,7 +964,7 @@ const TasksView = ({
       </div>
 
       <div className="grid gap-1 md:gap-4">
-        {filteredTasks.map(task => {
+        {sortedTasks.map(task => {
           const platformStats = getTaskStatsByPlatform(task);
           const totalPrice = (task.product_ids || []).reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
 
@@ -874,6 +1082,12 @@ const TasksView = ({
               <span className="px-1.5 md:px-3 py-0.5 md:py-1 bg-gray-100 rounded-full text-[10px] md:text-sm text-gray-500 md:text-gray-700">
                 📅 {task.dueDate}
               </span>
+              {/* Participant role badges — highlight khi filter active */}
+              {filterParticipant !== 'all' && getParticipantRoles(task).map(role => (
+                <span key={role} className="px-1.5 md:px-3 py-0.5 md:py-1 bg-indigo-100 text-indigo-700 border border-indigo-300 rounded-full text-[10px] md:text-sm font-bold">
+                  {role}
+                </span>
+              ))}
             </div>
             {/* Product chips */}
             {(task.product_ids || []).length > 0 && (

@@ -71,18 +71,35 @@ export function DataProvider({ children }) {
   const [showJobModal, setShowJobModal] = useState(false);
   const [showAttendancePopup, setShowAttendancePopup] = useState(false);
 
-  // ---- Task filters ----
-  const [taskFilterTeam, setTaskFilterTeam] = useState('all');
-  const [taskFilterStatus, setTaskFilterStatus] = useState('all');
-  const [taskFilterAssignee, setTaskFilterAssignee] = useState('all');
-  const [taskFilterCategory, setTaskFilterCategory] = useState('all');
-  const [taskDateFilter, setTaskDateFilter] = useState('all');
-  const [taskCustomStartDate, setTaskCustomStartDate] = useState('');
-  const [taskCustomEndDate, setTaskCustomEndDate] = useState('');
-  const [taskFilterCrew, setTaskFilterCrew] = useState('all');
-  const [taskFilterEditor, setTaskFilterEditor] = useState('all');
-  const [taskFilterActor, setTaskFilterActor] = useState('all');
-  const [taskFilterProduct, setTaskFilterProduct] = useState([]);
+  // ---- Task filters (persist to localStorage) ----
+  // Multi-select filters use arrays, single-select use strings
+  const _sf = (() => { try { return JSON.parse(localStorage.getItem('media_filters') || '{}'); } catch (_) { return {}; } })();
+  const _toArr = (v) => Array.isArray(v) ? v : (v && v !== 'all' ? [v] : []); // migrate old string→array
+  const [taskFilterTeam, setTaskFilterTeam] = useState(_toArr(_sf.team));
+  const [taskFilterStatus, setTaskFilterStatus] = useState(_toArr(_sf.status));
+  const [taskFilterAssignee, setTaskFilterAssignee] = useState(_toArr(_sf.assignee));
+  const [taskFilterCategory, setTaskFilterCategory] = useState(_toArr(_sf.category));
+  const [taskDateFilter, setTaskDateFilter] = useState(_sf.dateFilter || 'all');
+  const [taskCustomStartDate, setTaskCustomStartDate] = useState(_sf.customStart || '');
+  const [taskCustomEndDate, setTaskCustomEndDate] = useState(_sf.customEnd || '');
+  const [taskFilterCrew, setTaskFilterCrew] = useState(_toArr(_sf.crew));
+  const [taskFilterEditor, setTaskFilterEditor] = useState(_toArr(_sf.editor));
+  const [taskFilterActor, setTaskFilterActor] = useState(_toArr(_sf.actor));
+  const [taskFilterProduct, setTaskFilterProduct] = useState(_sf.products || []);
+  const [taskFilterParticipant, setTaskFilterParticipant] = useState(_sf.participant || 'all');
+  const [taskSortBy, setTaskSortBy] = useState(_sf.sortBy || 'newest');
+
+  // Auto-save filters to localStorage
+  useEffect(() => {
+    const data = {
+      team: taskFilterTeam, status: taskFilterStatus, assignee: taskFilterAssignee,
+      category: taskFilterCategory, dateFilter: taskDateFilter,
+      customStart: taskCustomStartDate, customEnd: taskCustomEndDate,
+      crew: taskFilterCrew, editor: taskFilterEditor, actor: taskFilterActor,
+      products: taskFilterProduct, participant: taskFilterParticipant, sortBy: taskSortBy,
+    };
+    localStorage.setItem('media_filters', JSON.stringify(data));
+  }, [taskFilterTeam, taskFilterStatus, taskFilterAssignee, taskFilterCategory, taskDateFilter, taskCustomStartDate, taskCustomEndDate, taskFilterCrew, taskFilterEditor, taskFilterActor, taskFilterProduct, taskFilterParticipant, taskSortBy]);
 
   // ---- Job filters ----
   const [jobFilterCreator, setJobFilterCreator] = useState('all');
@@ -663,7 +680,7 @@ export function DataProvider({ children }) {
     taskFilterAssignee, setTaskFilterAssignee, taskFilterCategory, setTaskFilterCategory,
     taskDateFilter, setTaskDateFilter, taskCustomStartDate, setTaskCustomStartDate,
     taskCustomEndDate, setTaskCustomEndDate,
-    taskFilterCrew, setTaskFilterCrew, taskFilterEditor, setTaskFilterEditor, taskFilterActor, setTaskFilterActor,
+    taskFilterCrew, setTaskFilterCrew, taskFilterEditor, setTaskFilterEditor, taskFilterActor, setTaskFilterActor, taskFilterParticipant, setTaskFilterParticipant, taskSortBy, setTaskSortBy,
     taskFilterProduct, setTaskFilterProduct,
     // Job filters
     jobFilterCreator, setJobFilterCreator, jobFilterTechnician, setJobFilterTechnician,

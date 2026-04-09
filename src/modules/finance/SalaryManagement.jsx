@@ -5,6 +5,49 @@ import { formatMoney } from '../../utils/formatUtils';
 import { getVietnamDate } from '../../utils/dateUtils';
 import { isAdmin as checkIsAdmin } from '../../utils/permissionUtils';
 
+// Hiển thị breakdown media theo công đoạn — tính on-the-fly từ tasks data
+function MediaBreakdown({ employeeName, tasks: allTasks, month, crewCount, actorCount }) {
+  if (!allTasks || !employeeName || !month) {
+    // Fallback khi không có task data
+    if ((crewCount || 0) > 0 || (actorCount || 0) > 0) {
+      return <div className="text-xs text-gray-400">{crewCount || 0} Q&D{(actorCount || 0) > 0 && ` + ${actorCount} diễn`}</div>;
+    }
+    return null;
+  }
+  // Filter completed tasks trong kỳ lương — giống calculateSalaries
+  const [y, m] = month.split('-').map(Number);
+  const start = `${y}-${String(m).padStart(2, '0')}-01`;
+  const nm = m === 12 ? 1 : m + 1;
+  const ny = m === 12 ? y + 1 : y;
+  const end = `${ny}-${String(nm).padStart(2, '0')}-01`;
+
+  const monthTasks = allTasks.filter(t => {
+    if (t.status !== 'Hoàn Thành') return false;
+    const d = t.completed_at || t.updated_at || '';
+    return d >= start && d < end;
+  });
+
+  const content = monthTasks.filter(t => t.assignee === employeeName).length;
+  const cam = monthTasks.filter(t => (t.cameramen || []).includes(employeeName)).length;
+  const edit = monthTasks.filter(t => (t.editors || []).includes(employeeName)).length;
+  const actor = monthTasks.filter(t => (t.actors || []).includes(employeeName)).length;
+
+  if (content > 0 || cam > 0 || edit > 0 || actor > 0) {
+    return (
+      <div className="text-[10px] text-gray-400 flex flex-wrap gap-x-1.5">
+        {content > 0 && <span title="Content">📝{content}</span>}
+        {cam > 0 && <span title="Quay phim">🎥{cam}</span>}
+        {edit > 0 && <span title="Dựng phim">✂️{edit}</span>}
+        {actor > 0 && <span title="Diễn viên">🎭{actor}</span>}
+      </div>
+    );
+  }
+  if ((crewCount || 0) > 0 || (actorCount || 0) > 0) {
+    return <div className="text-xs text-gray-400">{crewCount || 0} Q&D{(actorCount || 0) > 0 && ` + ${actorCount} diễn`}</div>;
+  }
+  return null;
+}
+
 function SalaryManagement({ tenant, currentUser, allUsers, tasks, technicalJobs, loadFinanceData }) {
   const isAdmin = checkIsAdmin(currentUser);
   const getCurrentMonth = () => {
@@ -101,17 +144,48 @@ function SalaryManagement({ tenant, currentUser, allUsers, tasks, technicalJobs,
 
       const userMap = {};
       (allUsers || []).forEach(u => {
-        userMap[u.name] = { userId: u.id, userName: u.name, crewTasks: [], actorTasks: [], techJobs: [] };
+        userMap[u.name] = { userId: u.id, userName: u.name, crewTasks: [], cameramenTasks: [], editorTasks: [], contentTasks: [], actorTasks: [], techJobs: [] };
       });
 
       completedTasks.forEach(t => {
+        // Content (assignee)
+        if (t.assignee && userMap[t.assignee]) userMap[t.assignee].contentTasks.push(t.id);
+        // Cameramen
+        (t.cameramen || []).forEach(name => { if (userMap[name]) userMap[name].cameramenTasks.push(t.id); });
+        // Editors
+        (t.editors || []).forEach(name => { if (userMap[name]) userMap[name].editorTasks.push(t.id); });
+        // Crew (cameramen + editors combined — giữ backward compat)
         const crew = t.crew || [...new Set([...(t.cameramen || []), ...(t.editors || [])])];
         crew.forEach(name => { if (userMap[name]) userMap[name].crewTasks.push(t.id); });
+        // Actors
         (t.actors || []).forEach(name => { if (userMap[name]) userMap[name].actorTasks.push(t.id); });
       });
 
       completedJobs.forEach(j => {
         (j.technicians || []).forEach(name => { if (userMap[name]) userMap[name].techJobs.push(j.id); });
+      });
+
+      // Load employees.base_salary để auto-fill lương cơ bản
+      const { data: empData } = await supabase.from('employees')
+        .select('user_id, base_salary, id').eq('tenant_id', tenant.id);
+      const empBaseSalaryMap = {};
+      const empIdByUserId = {};
+      (empData || []).forEach(e => {
+        if (e.user_id && e.base_salary) empBaseSalaryMap[e.user_id] = parseFloat(e.base_salary);
+        if (e.user_id) empIdByUserId[e.user_id] = e.id;
+      });
+
+      // Load attendance data cho kỳ lương → tính work_days tự động
+      const { data: attData } = await supabase.from('hrm_attendances')
+        .select('employee_id, date, status')
+        .eq('tenant_id', tenant.id)
+        .gte('date', startDate)
+        .lt('date', endDate)
+        .in('status', ['present', 'late', 'early_leave', 'half_day']);
+      const workDaysByEmpId = {};
+      (attData || []).forEach(a => {
+        if (!workDaysByEmpId[a.employee_id]) workDaysByEmpId[a.employee_id] = new Set();
+        workDaysByEmpId[a.employee_id].add(a.date);
       });
 
       let count = 0;
@@ -125,8 +199,15 @@ function SalaryManagement({ tenant, currentUser, allUsers, tasks, technicalJobs,
           if (existing && existing.status !== 'draft') continue;
 
           const prev = existing || {};
-          const basicPerDay = parseFloat(prev.basic_per_day) || (prev.basic_salary ? Math.round(parseFloat(prev.basic_salary) / 26) : 0);
-          const workDays = parseFloat(prev.work_days || 26);
+          // Ưu tiên: 1) prev.basic_per_day → 2) prev.basic_salary/26 → 3) employees.base_salary/26
+          const empBase = empBaseSalaryMap[u.userId] || 0;
+          const basicPerDay = parseFloat(prev.basic_per_day)
+            || (prev.basic_salary ? Math.round(parseFloat(prev.basic_salary) / 26) : 0)
+            || (empBase ? Math.round(empBase / 26) : 0);
+          // Ưu tiên: 1) prev edited → 2) attendance count → 3) default 26
+          const empId = empIdByUserId[u.userId];
+          const attWorkDays = empId && workDaysByEmpId[empId] ? workDaysByEmpId[empId].size : 0;
+          const workDays = parseFloat(prev.work_days) || (attWorkDays > 0 ? attWorkDays : 26);
           const actualBasic = basicPerDay * workDays;
           const basicSalary = basicPerDay * 26;
 
@@ -176,7 +257,10 @@ function SalaryManagement({ tenant, currentUser, allUsers, tasks, technicalJobs,
           data.media_actor_count = mediaActorCount;
           data.media_actor_per_video = mediaActorPerVideo;
           data.media_actor_total = mediaActorTotal;
-          data.detail = { crewTasks: u.crewTasks, actorTasks: u.actorTasks, techJobs: u.techJobs };
+          data.detail = {
+            crewTasks: u.crewTasks, actorTasks: u.actorTasks, techJobs: u.techJobs,
+            contentTasks: u.contentTasks, cameramenTasks: u.cameramenTasks, editorTasks: u.editorTasks,
+          };
           data.custom_items = prev.custom_items || [];
 
           const prevCustomTotal = getCustomItemsTotal(data.custom_items);
@@ -264,10 +348,19 @@ function SalaryManagement({ tenant, currentUser, allUsers, tasks, technicalJobs,
   // ---- Save detail ----
   const saveDetail = async () => {
     if (!selectedSalary) return;
+    const workDaysVal = parseFloat(editValues.work_days) || 0;
+    if (workDaysVal > 31) {
+      alert('Ngày công không được vượt quá 31 ngày');
+      return;
+    }
+    if (workDaysVal < 0) {
+      alert('Ngày công không được âm');
+      return;
+    }
     setSaving(true);
     try {
       const basicPerDay = parseFloat(editValues.basic_per_day) || 0;
-      const workDays = parseFloat(editValues.work_days) || 0;
+      const workDays = workDaysVal;
       const actualBasic = basicPerDay * workDays;
       const basicSalary = basicPerDay * 26;
       const livestreamRev = parseFloat(editValues.livestream_revenue) || 0;
@@ -866,9 +959,9 @@ function SalaryManagement({ tenant, currentUser, allUsers, tasks, technicalJobs,
                         <td className="px-3 py-3 text-right">
                           {mediaPay > 0 ? (<div>
                             <div className="font-medium text-blue-600">{formatMoney(mediaPay)}</div>
-                            <div className="text-xs text-gray-400">{s.media_videos || 0} Q&D{(s.media_actor_count || 0) > 0 && ` + ${s.media_actor_count} diễn`}</div>
-                          </div>) : (s.media_videos || 0) > 0 ? (
-                            <div className="text-xs text-gray-400">{s.media_videos} Q&D{(s.media_actor_count || 0) > 0 && ` + ${s.media_actor_count} diễn`}</div>
+                            <MediaBreakdown employeeName={s.employee_name} tasks={tasks} month={selectedMonth} crewCount={s.media_videos} actorCount={s.media_actor_count} />
+                          </div>) : (s.media_videos || 0) > 0 || (s.media_actor_count || 0) > 0 ? (
+                            <MediaBreakdown employeeName={s.employee_name} tasks={tasks} month={selectedMonth} crewCount={s.media_videos} actorCount={s.media_actor_count} />
                           ) : <span className="text-gray-300">-</span>}
                         </td>
                         <td className="px-3 py-3 text-right">
@@ -1007,7 +1100,10 @@ function SalaryManagement({ tenant, currentUser, allUsers, tasks, technicalJobs,
 
                     {/* Media - Quay & Dung */}
                     <tr>
-                      <td className="border border-gray-200 px-3 py-2 font-medium">Quay & Dựng</td>
+                      <td className="border border-gray-200 px-3 py-2 font-medium">
+                        <div>Quay & Dựng</div>
+                        <MediaBreakdown employeeName={selectedSalary.employee_name} tasks={tasks} month={selectedMonth} crewCount={0} actorCount={0} />
+                      </td>
                       <td className="border border-gray-200 px-3 py-2 text-center">
                         <button onClick={() => { const d = selectedSalary.detail || {}; setTaskListModal({ title: `Quay & Dựng - ${selectedSalary.employee_name}`, items: getTaskTitles(d.crewTasks) }); }}
                           className="text-blue-600 hover:underline font-medium">{selectedSalary.media_videos || 0} video</button>

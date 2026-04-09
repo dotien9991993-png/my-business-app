@@ -115,6 +115,8 @@ export default function HrmPayrollView({
   positions,
   attendances,
   kpiEvaluations,
+  tasks: allTasks,
+  allUsers,
   loadHrmData,
   tenant,
   currentUser,
@@ -177,9 +179,35 @@ export default function HrmPayrollView({
 
   // ---- Tạo bảng lương ----
   const handleGeneratePayroll = useCallback(() => {
+    if (!activeEmployees || activeEmployees.length === 0) {
+      alert('Không có nhân viên active để tính lương. Kiểm tra tab Nhân viên.');
+      return;
+    }
     setLoading(true);
     try {
       const config = DEFAULT_PAYROLL_CONFIG;
+
+      // Tính media tasks — giống logic "NV tham gia" ở Quản Lý Video
+      const completedTasks = (allTasks || []).filter(t => {
+        if (t.status !== 'Hoàn Thành') return false;
+        const d = t.completed_at || t.updated_at || '';
+        return d >= monthFrom && d < monthTo;
+      });
+
+      // Build media count per employee name
+      const mediaByName = {};
+      completedTasks.forEach(t => {
+        const addCount = (name, role) => {
+          if (!name) return;
+          if (!mediaByName[name]) mediaByName[name] = { content: 0, cam: 0, edit: 0, actor: 0 };
+          mediaByName[name][role]++;
+        };
+        addCount(t.assignee, 'content');
+        (t.cameramen || []).forEach(n => addCount(n, 'cam'));
+        (t.editors || []).forEach(n => addCount(n, 'edit'));
+        (t.actors || []).forEach(n => addCount(n, 'actor'));
+      });
+
       const rows = activeEmployees.map((emp) => {
         const baseSalary = parseFloat(emp.base_salary) || 0;
         const dailyRate = baseSalary / config.workingDaysPerMonth;
@@ -206,6 +234,11 @@ export default function HrmPayrollView({
         const totalDeduction = socialInsurance + extraDeduction;
         const netPay = basicPay + overtimePay + kpiBonus + allowances - totalDeduction;
 
+        // Media breakdown — match by user name (allUsers name == tasks assignee/cameramen)
+        const matchedUser = (allUsers || []).find(u => u.id === emp.user_id);
+        const userName = matchedUser?.name || emp.full_name;
+        const media = mediaByName[userName] || { content: 0, cam: 0, edit: 0, actor: 0 };
+
         return {
           employee_id: emp.id,
           employee_code: emp.employee_code || '',
@@ -225,6 +258,10 @@ export default function HrmPayrollView({
           total_deduction: totalDeduction,
           basic_pay: basicPay,
           net_pay: netPay,
+          media_content: media.content,
+          media_cam: media.cam,
+          media_edit: media.edit,
+          media_actor: media.actor,
         };
       });
 
@@ -232,11 +269,11 @@ export default function HrmPayrollView({
       setPayrollStatus('calculated');
     } catch (err) {
       console.error('Lỗi tạo bảng lương:', err);
-      alert('Có lỗi xảy ra khi tạo bảng lương');
+      alert('Có lỗi xảy ra khi tạo bảng lương: ' + err.message);
     } finally {
       setLoading(false);
     }
-  }, [activeEmployees, attendances, kpiEvaluations, monthFrom, monthTo, monthYear, monthNum]);
+  }, [activeEmployees, attendances, kpiEvaluations, allTasks, allUsers, monthFrom, monthTo, monthYear, monthNum]);
 
   // ---- Recalculate single row ----
   const recalcRow = (row) => {
@@ -1006,6 +1043,9 @@ export default function HrmPayrollView({
                   <th className="text-center px-3 py-3 font-semibold text-green-800 text-xs whitespace-nowrap">
                     Tăng ca (h)
                   </th>
+                  <th className="text-center px-3 py-3 font-semibold text-green-800 text-xs whitespace-nowrap">
+                    Media
+                  </th>
                   <th className="text-right px-3 py-3 font-semibold text-green-800 text-xs whitespace-nowrap">
                     Lương thực
                   </th>
@@ -1064,6 +1104,16 @@ export default function HrmPayrollView({
                       ) : (
                         <span className="text-gray-400">0</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {(row.media_content || row.media_cam || row.media_edit || row.media_actor) ? (
+                        <div className="text-[10px] text-gray-500 flex flex-wrap gap-x-1 justify-center">
+                          {row.media_content > 0 && <span title="Content">📝{row.media_content}</span>}
+                          {row.media_cam > 0 && <span title="Quay">🎥{row.media_cam}</span>}
+                          {row.media_edit > 0 && <span title="Dựng">✂️{row.media_edit}</span>}
+                          {row.media_actor > 0 && <span title="Diễn">🎭{row.media_actor}</span>}
+                        </div>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs font-medium text-gray-800">
                       {fmt(row.basic_pay)}
