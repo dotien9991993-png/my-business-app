@@ -71,7 +71,9 @@ export default function HrmModule() {
         <HrmPayrollView
           employees={hrmEmployees} departments={hrmDepartments} positions={hrmPositions}
           attendances={hrmAttendances} kpiEvaluations={hrmKpiEvaluations}
+          leaveRequests={hrmLeaveRequests}
           tasks={tasks} allUsers={allUsers}
+          getSettingValue={getSettingValue}
           loadHrmData={loadHrmData} tenant={tenant} currentUser={currentUser}
           hasPermission={hasPermission} canEdit={canEdit}
         />

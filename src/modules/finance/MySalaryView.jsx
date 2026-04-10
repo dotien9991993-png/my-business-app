@@ -172,6 +172,46 @@ export default function MySalaryView() {
             </div>
             {getStatusBadge(currentSalary.status)}
           </div>
+
+          {/* Media Breakdown — chi tiết công đoạn */}
+          {currentSalary.detail && (
+            (currentSalary.detail.media_content_count > 0 ||
+             currentSalary.detail.media_film_count > 0 ||
+             currentSalary.detail.media_edit_count > 0 ||
+             currentSalary.detail.media_actor_count > 0) && (
+              <div className="p-4 border-b bg-gray-50">
+                <h4 className="font-semibold text-sm text-gray-700 mb-3">📊 Công việc Media tháng này</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                    <div className="text-2xl mb-1">📝</div>
+                    <div className="text-2xl font-bold text-blue-700">{currentSalary.detail.media_content_count || 0}</div>
+                    <div className="text-xs text-gray-600">Content</div>
+                  </div>
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                    <div className="text-2xl mb-1">🎥</div>
+                    <div className="text-2xl font-bold text-purple-700">{currentSalary.detail.media_film_count || 0}</div>
+                    <div className="text-xs text-gray-600">Quay phim</div>
+                  </div>
+                  <div className="bg-pink-50 border border-pink-200 rounded-lg p-3 text-center">
+                    <div className="text-2xl mb-1">✂️</div>
+                    <div className="text-2xl font-bold text-pink-700">{currentSalary.detail.media_edit_count || 0}</div>
+                    <div className="text-xs text-gray-600">Dựng phim</div>
+                  </div>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                    <div className="text-2xl mb-1">🎭</div>
+                    <div className="text-2xl font-bold text-yellow-700">{currentSalary.detail.media_actor_count || 0}</div>
+                    <div className="text-xs text-gray-600">Diễn viên</div>
+                  </div>
+                </div>
+                {currentSalary.detail.work_days_actual !== undefined && (
+                  <div className="text-xs text-gray-500 mt-3 text-center">
+                    Ngày công thực tế: <strong>{currentSalary.detail.work_days_actual}</strong> / {currentSalary.detail.work_days_standard || 26} ngày
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
           <div className="p-4 overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>

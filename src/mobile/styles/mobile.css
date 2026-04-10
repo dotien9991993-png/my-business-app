@@ -4304,6 +4304,33 @@ html:has(.mobile-app) body {
   letter-spacing: 0.5px;
 }
 
+/* Media breakdown grid 2x2 */
+.mprof-media-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.mprof-media-cell {
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+  border: 1px solid;
+}
+.mprof-media-content { background: #EFF6FF; border-color: #BFDBFE; }
+.mprof-media-film { background: #F3E8FF; border-color: #C4B5FD; }
+.mprof-media-edit { background: #FCE7F3; border-color: #F9A8D4; }
+.mprof-media-actor { background: #FEF9C3; border-color: #FDE68A; }
+.mprof-media-icon { font-size: 22px; margin-bottom: 4px; }
+.mprof-media-num {
+  font-size: 22px; font-weight: 700;
+  line-height: 1.1;
+}
+.mprof-media-content .mprof-media-num { color: #1D4ED8; }
+.mprof-media-film .mprof-media-num { color: #6B21A8; }
+.mprof-media-edit .mprof-media-num { color: #9D174D; }
+.mprof-media-actor .mprof-media-num { color: #854D0E; }
+.mprof-media-lbl { font-size: 11px; color: #6B7280; font-weight: 500; margin-top: 2px; }
+
 .mprof-sal-row {
   display: flex;
   justify-content: space-between;

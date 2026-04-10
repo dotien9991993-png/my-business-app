@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { KPI_RATINGS, DEFAULT_PAYROLL_CONFIG } from '../../constants/hrmConstants';
 import { getVietnamDate, getNowISOVN } from '../../utils/dateUtils';
+import { isAdmin as checkIsAdmin } from '../../utils/permissionUtils';
 import { logActivity } from '../../lib/activityLog';
 
 // ============ CONSTANTS ============
@@ -109,6 +110,16 @@ const getKpiBonus = (rating) => {
 
 // ============ MAIN COMPONENT ============
 
+// Default đơn giá lương (đồng)
+const DEFAULT_SALARY_RATES = {
+  rate_content: 50000,
+  rate_film: 30000,
+  rate_edit: 30000,
+  rate_actor: 20000,
+  rate_tech_job: 200000,
+  rate_overtime: 0,
+};
+
 export default function HrmPayrollView({
   employees,
   departments,
@@ -117,6 +128,8 @@ export default function HrmPayrollView({
   kpiEvaluations,
   tasks: allTasks,
   allUsers,
+  leaveRequests,
+  getSettingValue,
   loadHrmData,
   tenant,
   currentUser,
@@ -127,6 +140,7 @@ export default function HrmPayrollView({
   const currentMonth = `${vn.getFullYear()}-${pad(vn.getMonth() + 1)}`;
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [filterDepartment, setFilterDepartment] = useState('all');
+  const [filterStatusTab, setFilterStatusTab] = useState('all'); // all | draft | approved | paid
   const [payrollData, setPayrollData] = useState([]);
   const [payrollStatus, setPayrollStatus] = useState('draft'); // draft, calculated, approved, paid
   const [loading, setLoading] = useState(false);
@@ -143,9 +157,49 @@ export default function HrmPayrollView({
     [selectedMonth]
   );
 
+  // ---- Phân quyền: admin xem tất cả, non-admin chỉ xem mình ----
+  const isAdmin = checkIsAdmin(currentUser);
+
+  // ---- Load đơn giá lương từ system_settings ----
+  const salaryRates = useMemo(() => {
+    const stored = getSettingValue ? getSettingValue('hrm', 'salary_rates', null) : null;
+    return stored ? { ...DEFAULT_SALARY_RATES, ...stored } : DEFAULT_SALARY_RATES;
+  }, [getSettingValue]);
+
+  const [showRatesModal, setShowRatesModal] = useState(false);
+  const [ratesForm, setRatesForm] = useState(salaryRates);
+  const [savingRates, setSavingRates] = useState(false);
+  React.useEffect(() => { setRatesForm(salaryRates); }, [salaryRates]);
+
+  const saveSalaryRates = async () => {
+    setSavingRates(true);
+    try {
+      const { error } = await supabase.from('system_settings').upsert({
+        tenant_id: tenant.id,
+        category: 'hrm',
+        key: 'salary_rates',
+        value: ratesForm,
+        updated_by: currentUser?.name,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'tenant_id,category,key' });
+      if (error) throw error;
+      if (loadHrmData) await loadHrmData();
+      setShowRatesModal(false);
+      alert('Đã lưu đơn giá lương!');
+    } catch (err) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setSavingRates(false);
+    }
+  };
+
   // ---- Lọc nhân viên active ----
   const activeEmployees = useMemo(() => {
     let list = (employees || []).filter((e) => e.status === 'active');
+    // Non-admin: chỉ thấy lương của mình
+    if (!isAdmin) {
+      list = list.filter((e) => e.user_id === currentUser?.id || e.email === currentUser?.email);
+    }
     if (filterDepartment !== 'all') {
       list = list.filter((e) => e.department_id === filterDepartment);
     }
@@ -158,7 +212,7 @@ export default function HrmPayrollView({
       );
     }
     return list;
-  }, [employees, filterDepartment, searchText]);
+  }, [employees, filterDepartment, searchText, isAdmin, currentUser]);
 
   // ---- Tên phòng ban / chức vụ ----
   const getDeptName = useCallback(
@@ -178,7 +232,11 @@ export default function HrmPayrollView({
   );
 
   // ---- Tạo bảng lương ----
-  const handleGeneratePayroll = useCallback(() => {
+  const handleGeneratePayroll = useCallback(async () => {
+    if (!isAdmin) {
+      alert('Chỉ admin mới được tính bảng lương');
+      return;
+    }
     if (!activeEmployees || activeEmployees.length === 0) {
       alert('Không có nhân viên active để tính lương. Kiểm tra tab Nhân viên.');
       return;
@@ -225,19 +283,28 @@ export default function HrmPayrollView({
         const kpiRating = getKpiRating(kpiEvaluations, emp.id, monthYear, monthNum);
         const kpiBonus = getKpiBonus(kpiRating);
 
-        // Tính lương
-        const basicPay = dailyRate * workingDays;
-        const overtimePay = overtimeHours * hourlyRate * config.overtimeRate;
-        const allowances = 0; // Mặc định 0, admin có thể chỉnh
-        const socialInsurance = baseSalary * config.socialInsuranceRate;
-        const extraDeduction = 0; // Khấu trừ thêm (admin chỉnh)
-        const totalDeduction = socialInsurance + extraDeduction;
-        const netPay = basicPay + overtimePay + kpiBonus + allowances - totalDeduction;
-
         // Media breakdown — match by user name (allUsers name == tasks assignee/cameramen)
         const matchedUser = (allUsers || []).find(u => u.id === emp.user_id);
         const userName = matchedUser?.name || emp.full_name;
         const media = mediaByName[userName] || { content: 0, cam: 0, edit: 0, actor: 0 };
+
+        // Tự động tính tiền media dựa trên đơn giá tenant
+        const moneyContent = media.content * (salaryRates.rate_content || 0);
+        const moneyFilm = media.cam * (salaryRates.rate_film || 0);
+        const moneyEdit = media.edit * (salaryRates.rate_edit || 0);
+        const moneyActorPay = media.actor * (salaryRates.rate_actor || 0);
+        const mediaPay = moneyContent + moneyFilm + moneyEdit + moneyActorPay;
+
+        // Tính lương
+        const basicPay = dailyRate * workingDays;
+        const overtimePay = (salaryRates.rate_overtime > 0)
+          ? overtimeHours * salaryRates.rate_overtime
+          : overtimeHours * hourlyRate * config.overtimeRate;
+        const allowances = 0; // Mặc định 0, admin có thể chỉnh
+        const socialInsurance = baseSalary * config.socialInsuranceRate;
+        const extraDeduction = 0; // Khấu trừ thêm (admin chỉnh)
+        const totalDeduction = socialInsurance + extraDeduction;
+        const netPay = basicPay + overtimePay + mediaPay + kpiBonus + allowances - totalDeduction;
 
         return {
           employee_id: emp.id,
@@ -258,6 +325,11 @@ export default function HrmPayrollView({
           total_deduction: totalDeduction,
           basic_pay: basicPay,
           net_pay: netPay,
+          media_pay: mediaPay,
+          media_pay_content: moneyContent,
+          media_pay_film: moneyFilm,
+          media_pay_edit: moneyEdit,
+          media_pay_actor: moneyActorPay,
           media_content: media.content,
           media_cam: media.cam,
           media_edit: media.edit,
@@ -267,13 +339,104 @@ export default function HrmPayrollView({
 
       setPayrollData(rows);
       setPayrollStatus('calculated');
+
+      // Auto-sync to `salaries` table — để mobile + MySalaryView đọc được
+      try {
+        for (const row of rows) {
+          if (!row.employee_id) continue;
+          // Match user_id từ employee
+          const emp = activeEmployees.find(e => e.id === row.employee_id);
+          if (!emp?.user_id) continue;
+
+          // Check existing salary record cho tháng này
+          const { data: existing } = await supabase.from('salaries')
+            .select('id, status').eq('tenant_id', tenant.id)
+            .eq('user_id', emp.user_id).eq('month', selectedMonth).maybeSingle();
+
+          // Không override nếu đã approved/paid
+          if (existing && existing.status !== 'draft') continue;
+
+          const salaryData = {
+            tenant_id: tenant.id,
+            user_id: emp.user_id,
+            employee_name: row.employee_name,
+            month: selectedMonth,
+            basic_salary: Math.round(row.base_salary || 0),
+            basic_per_day: Math.round((row.base_salary || 0) / DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth),
+            work_days: row.working_days || 0,
+            actual_basic: Math.round(row.basic_pay || 0),
+            media_videos: (row.media_cam || 0) + (row.media_edit || 0),
+            media_actor_count: row.media_actor || 0,
+            media_total: Math.round(row.media_pay || 0),
+            kythuat_jobs: 0,
+            bonus: row.kpi_bonus || 0,
+            deduction: Math.round(row.total_deduction || 0),
+            total_salary: Math.round(row.net_pay || 0),
+            status: 'draft',
+            created_by: currentUser?.id || null,
+            // Detail JSONB — breakdown chi tiết cho mobile/desktop hiển thị
+            detail: {
+              media_content_count: row.media_content || 0,
+              media_film_count: row.media_cam || 0,
+              media_edit_count: row.media_edit || 0,
+              media_actor_count: row.media_actor || 0,
+              media_pay_content: Math.round(row.media_pay_content || 0),
+              media_pay_film: Math.round(row.media_pay_film || 0),
+              media_pay_edit: Math.round(row.media_pay_edit || 0),
+              media_pay_actor: Math.round(row.media_pay_actor || 0),
+              media_pay_total: Math.round(row.media_pay || 0),
+              work_days_actual: row.working_days || 0,
+              work_days_standard: DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth,
+              overtime_hours: row.overtime_hours || 0,
+              overtime_pay: Math.round(row.overtime_pay || 0),
+              kpi_rating: row.kpi_rating || null,
+              kpi_bonus: row.kpi_bonus || 0,
+              social_insurance: Math.round(row.social_insurance || 0),
+              extra_deduction: Math.round(row.extra_deduction || 0),
+              rates_used: salaryRates,
+            },
+          };
+
+          // Insert/update với fallback nếu column 'detail' chưa tồn tại
+          const upsertSalary = async (dataObj) => {
+            if (existing) {
+              const { error } = await supabase.from('salaries').update(dataObj).eq('id', existing.id);
+              if (error) {
+                // Fallback: thử lại không có 'detail'
+                if (error.message?.includes('detail') || error.code === '42703') {
+                  const fallbackData = { ...dataObj };
+                  delete fallbackData.detail;
+                  await supabase.from('salaries').update(fallbackData).eq('id', existing.id);
+                } else {
+                  throw error;
+                }
+              }
+            } else {
+              dataObj.created_at = new Date().toISOString();
+              const { error } = await supabase.from('salaries').insert(dataObj);
+              if (error) {
+                if (error.message?.includes('detail') || error.code === '42703') {
+                  const fallbackData = { ...dataObj };
+                  delete fallbackData.detail;
+                  await supabase.from('salaries').insert(fallbackData);
+                } else {
+                  throw error;
+                }
+              }
+            }
+          };
+          await upsertSalary(salaryData);
+        }
+      } catch (syncErr) {
+        console.warn('Sync to salaries table failed:', syncErr);
+      }
     } catch (err) {
       console.error('Lỗi tạo bảng lương:', err);
       alert('Có lỗi xảy ra khi tạo bảng lương: ' + err.message);
     } finally {
       setLoading(false);
     }
-  }, [activeEmployees, attendances, kpiEvaluations, allTasks, allUsers, monthFrom, monthTo, monthYear, monthNum]);
+  }, [isAdmin, activeEmployees, attendances, kpiEvaluations, allTasks, allUsers, salaryRates, monthFrom, monthTo, monthYear, monthNum, selectedMonth, tenant, currentUser]);
 
   // ---- Recalculate single row ----
   const recalcRow = (row) => {
@@ -404,6 +567,42 @@ export default function HrmPayrollView({
 
       setPayrollStatus('approved');
 
+      // Sync status='approved' vào bảng salaries để mobile/MySalaryView thấy
+      try {
+        const userIds = payrollData.map(r => {
+          const emp = activeEmployees.find(e => e.id === r.employee_id);
+          return emp?.user_id;
+        }).filter(Boolean);
+        if (userIds.length > 0) {
+          await supabase.from('salaries').update({
+            status: 'approved',
+            approved_by: currentUser?.id,
+            approved_at: getNowISOVN(),
+          }).eq('tenant_id', tenant.id).eq('month', selectedMonth).in('user_id', userIds);
+
+          // Notification cho từng nhân viên
+          const notifs = payrollData.map(r => {
+            const emp = activeEmployees.find(e => e.id === r.employee_id);
+            if (!emp?.user_id) return null;
+            return {
+              tenant_id: tenant.id,
+              user_id: emp.user_id,
+              type: 'salary_approved',
+              title: '💰 Lương đã được duyệt',
+              message: `Lương tháng ${selectedMonth}: ${fmt(r.net_pay)}`,
+              icon: '💰',
+              reference_type: 'salary',
+              reference_id: null,
+              created_by: currentUser?.id,
+              is_read: false,
+            };
+          }).filter(Boolean);
+          if (notifs.length > 0) {
+            await supabase.from('notifications').insert(notifs);
+          }
+        }
+      } catch (_e) { /* non-critical */ }
+
       logActivity({
         tenantId: tenant.id, userId: currentUser?.id, userName: currentUser?.name,
         module: 'hrm', action: 'approve', entityType: 'payroll',
@@ -422,61 +621,282 @@ export default function HrmPayrollView({
   };
 
   // ---- Export CSV ----
-  const handleExportCSV = useCallback(() => {
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportExcel = useCallback(async () => {
     if (!payrollData.length) return;
+    setExporting(true);
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
 
-    const headers = [
-      'Mã NV',
-      'Họ tên',
-      'Phòng ban',
-      'Chức vụ',
-      'Lương CB',
-      'Ngày công',
-      'Tăng ca (h)',
-      'Lương cơ bản',
-      'Tăng ca',
-      'KPI Rating',
-      'Thưởng KPI',
-      'Phụ cấp',
-      'BHXH',
-      'Khấu trừ khác',
-      'Tổng khấu trừ',
-      'Thực nhận',
-    ];
+      // ========== SHEET 1: Bảng lương ==========
+      const salaryRows = payrollData.map((row, i) => ({
+        'STT': i + 1,
+        'Mã NV': row.employee_code || '',
+        'Họ tên': row.employee_name || '',
+        'Phòng ban': getDeptName(row.department_id),
+        'Chức vụ': getPositionName(row.position_id),
+        'Lương CB': Math.round(row.base_salary || 0),
+        'Ngày công': row.working_days || 0,
+        'Lương thực': Math.round(row.basic_pay || 0),
+        'Content (SL)': row.media_content || 0,
+        'Content (Tiền)': Math.round(row.media_pay_content || 0),
+        'Quay (SL)': row.media_cam || 0,
+        'Quay (Tiền)': Math.round(row.media_pay_film || 0),
+        'Dựng (SL)': row.media_edit || 0,
+        'Dựng (Tiền)': Math.round(row.media_pay_edit || 0),
+        'Diễn (SL)': row.media_actor || 0,
+        'Diễn (Tiền)': Math.round(row.media_pay_actor || 0),
+        'Tổng Media': Math.round(row.media_pay || 0),
+        'Tăng ca (h)': row.overtime_hours || 0,
+        'Tiền TC': Math.round(row.overtime_pay || 0),
+        'KPI': row.kpi_rating || '—',
+        'Thưởng KPI': Math.round(row.kpi_bonus || 0),
+        'Phụ cấp': Math.round(row.allowances || 0),
+        'Khấu trừ': Math.round(row.total_deduction || 0),
+        'Thực nhận': Math.round(row.net_pay || 0),
+      }));
 
-    const rows = payrollData.map((row) => [
-      row.employee_code,
-      row.employee_name,
-      getDeptName(row.department_id),
-      getPositionName(row.position_id),
-      Math.round(row.base_salary),
-      row.working_days,
-      row.overtime_hours,
-      Math.round(row.basic_pay),
-      Math.round(row.overtime_pay),
-      row.kpi_rating || '—',
-      Math.round(row.kpi_bonus),
-      Math.round(row.allowances),
-      Math.round(row.social_insurance),
-      Math.round(row.extra_deduction),
-      Math.round(row.total_deduction),
-      Math.round(row.net_pay),
-    ]);
+      // Dòng tổng cộng
+      const totalRow = { 'STT': '', 'Mã NV': '', 'Họ tên': 'TỔNG CỘNG', 'Phòng ban': '', 'Chức vụ': '' };
+      ['Lương CB', 'Lương thực', 'Content (Tiền)', 'Quay (Tiền)', 'Dựng (Tiền)', 'Diễn (Tiền)', 'Tổng Media', 'Tiền TC', 'Thưởng KPI', 'Phụ cấp', 'Khấu trừ', 'Thực nhận'].forEach(key => {
+        totalRow[key] = salaryRows.reduce((s, r) => s + (r[key] || 0), 0);
+      });
+      salaryRows.push(totalRow);
 
-    // BOM for UTF-8
-    const bom = '\uFEFF';
-    const csvContent =
-      bom +
-      [headers.join(','), ...rows.map((r) => r.map((c) => `"${c}"`).join(','))].join('\n');
+      const ws1 = XLSX.utils.json_to_sheet(salaryRows);
+      ws1['!cols'] = [
+        { wch: 4 }, { wch: 8 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 12 },
+        { wch: 6 }, { wch: 12 }, { wch: 6 }, { wch: 12 }, { wch: 6 }, { wch: 12 }, { wch: 6 }, { wch: 12 },
+        { wch: 12 }, { wch: 6 }, { wch: 10 }, { wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws1, 'Bảng lương');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Bang_luong_${selectedMonth}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [payrollData, selectedMonth, getDeptName, getPositionName]);
+      // ========== SHEET 2: Chấm công (giờ vào-ra + đơn nghỉ phép) ==========
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+      const monthStart = `${y}-${pad(m)}-01`;
+      const monthEnd = `${y}-${pad(m)}-${daysInMonth}`;
+
+      // Build leave map: { empId: { '01': { type, days } } }
+      const lvMap = {};
+      const LEAVE_LABELS = { annual_leave: 'NP', sick_leave: 'NỐ', business_trip: 'CT', work_from_home: 'WFH', unpaid_leave: 'KL', overtime: 'TC' };
+      (leaveRequests || []).forEach(lr => {
+        if (lr.status !== 'approved') return;
+        if (!lr.employee_id || !lr.start_date || !lr.end_date) return;
+        if (lr.end_date < monthStart || lr.start_date > monthEnd) return;
+        if (!lvMap[lr.employee_id]) lvMap[lr.employee_id] = {};
+        const s = new Date(lr.start_date + 'T00:00:00+07:00');
+        const e = new Date(lr.end_date + 'T00:00:00+07:00');
+        for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+          const ds = pad(d.getDate());
+          const dm = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+          if (dm === selectedMonth) {
+            lvMap[lr.employee_id][ds] = { type: lr.type, label: LEAVE_LABELS[lr.type] || 'NP', days: lr.days };
+          }
+        }
+      });
+
+      // Build attendance map: { empId: { '01': [{ status, check_in, check_out, shift }, ...], ... } }
+      const attMap = {};
+      (attendances || []).forEach(a => {
+        if (!a.date || !a.employee_id) return;
+        const d = a.date.substring(0, 10);
+        if (!d.startsWith(selectedMonth)) return;
+        const day = d.substring(8, 10);
+        if (!attMap[a.employee_id]) attMap[a.employee_id] = {};
+        if (!attMap[a.employee_id][day]) attMap[a.employee_id][day] = [];
+        attMap[a.employee_id][day].push({
+          status: a.status,
+          check_in: a.check_in || null,
+          check_out: a.check_out || null,
+          shift: a.shift_number || 1,
+        });
+      });
+      // Sort mỗi ngày theo shift_number
+      Object.values(attMap).forEach(empDays => {
+        Object.keys(empDays).forEach(day => {
+          empDays[day].sort((a, b) => a.shift - b.shift);
+        });
+      });
+
+      // Format giờ từ ISO timestamp
+      const fmtTime = (iso) => {
+        if (!iso) return '';
+        try {
+          const d = new Date(iso);
+          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        } catch (_) { return ''; }
+      };
+
+      // cellValue nhận array records + leave info cho 1 ngày
+      const cellValue = (recs, leave) => {
+        // Nếu có đơn nghỉ phép đã duyệt
+        if (leave) {
+          const lbl = leave.label;
+          // Nếu nửa ngày (days=0.5 trong request) + có ca chấm công → hiện cả 2
+          if (leave.days && leave.days % 1 !== 0 && recs && recs.length > 0) {
+            const shifts = recs.map(rec => {
+              const ci = fmtTime(rec.check_in);
+              const co = fmtTime(rec.check_out);
+              return ci ? (co ? `${ci}-${co}` : `${ci}-?`) : '';
+            }).filter(Boolean).join('\n');
+            return shifts ? `${shifts}\n${lbl}` : lbl;
+          }
+          return lbl;
+        }
+        if (!recs || recs.length === 0) return '';
+        const first = recs[0];
+        if (first.status === 'annual_leave' || first.status === 'sick') return 'NP';
+        if (first.status === 'absent') return 'A';
+        return recs.map(rec => {
+          const ci = fmtTime(rec.check_in);
+          const co = fmtTime(rec.check_out);
+          if (ci && co) return `${ci}-${co}`;
+          if (ci) return `${ci}-?`;
+          return '';
+        }).filter(Boolean).join('\n');
+      };
+
+      // Tính giờ làm từ check_in/check_out (giờ, 1 decimal)
+      const calcHours = (ci, co) => {
+        if (!ci || !co) return 0;
+        try {
+          const diff = (new Date(co).getTime() - new Date(ci).getTime()) / 3600000;
+          return diff > 0 ? Math.round(diff * 10) / 10 : 0;
+        } catch (_) { return 0; }
+      };
+
+      const stdHoursPerDay = DEFAULT_PAYROLL_CONFIG.hoursPerDay || 8;
+      const stdDaysPerMonth = DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth || 26;
+
+      const attRows = activeEmployees.map((emp, i) => {
+        const empAtt = attMap[emp.id] || {};
+        const empLv = lvMap[emp.id] || {};
+        const row2 = { 'STT': i + 1, 'Mã NV': emp.employee_code || '', 'Họ tên': emp.full_name || '' };
+        let total = 0, totalHours = 0, lateCount = 0, earlyCount = 0, absentCount = 0;
+        let lvNP = 0, lvSick = 0, lvCT = 0, lvKL = 0, lvWFH = 0;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dayStr = String(d).padStart(2, '0');
+          const dt = new Date(y, m - 1, d);
+          const header = `${dayStr}\n${dayNames[dt.getDay()]}`;
+          const recs = empAtt[dayStr] || [];
+          const leave = empLv[dayStr] || null;
+          row2[header] = cellValue(recs, leave);
+
+          if (leave) {
+            // Đếm theo loại nghỉ
+            const halfDay = leave.days && leave.days % 1 !== 0;
+            const inc = halfDay ? 0.5 : 1;
+            if (leave.type === 'annual_leave') lvNP += inc;
+            else if (leave.type === 'sick_leave') lvSick += inc;
+            else if (leave.type === 'business_trip') lvCT += inc;
+            else if (leave.type === 'unpaid_leave') lvKL += inc;
+            else if (leave.type === 'work_from_home') lvWFH += inc;
+            else lvNP += inc;
+            // Nửa ngày nghỉ + có ca chấm công → tính 0.5 ngày công
+            if (halfDay && recs.length > 0) total += 0.5;
+          } else if (recs.length > 0) {
+            const st = recs[0].status;
+            if (['present', 'late', 'early_leave'].includes(st)) total++;
+            if (st === 'half_day') total += 0.5;
+            if (st === 'late') lateCount++;
+            if (st === 'early_leave') earlyCount++;
+            if (st === 'absent') absentCount++;
+            if (st === 'annual_leave' || st === 'sick') lvNP++;
+          }
+          // Tổng giờ = sum TẤT CẢ ca
+          recs.forEach(rec => { totalHours += calcHours(rec.check_in, rec.check_out); });
+        }
+
+        const ot = (attendances || []).filter(a =>
+          a.employee_id === emp.id && a.date?.startsWith(selectedMonth) && parseFloat(a.overtime_hours) > 0
+        ).reduce((s, a) => s + parseFloat(a.overtime_hours || 0), 0);
+
+        // Giờ chuẩn trừ ngày nghỉ phép (NP + ốm + CT được phép nghỉ)
+        const paidLeave = lvNP + lvSick + lvCT;
+        const adjStdHours = (stdDaysPerMonth - paidLeave) * stdHoursPerDay;
+        const diff = totalHours - adjStdHours;
+
+        row2['Tổng ngày'] = total;
+        row2['Tổng giờ'] = totalHours > 0 ? totalHours.toFixed(1) + 'h' : '0h';
+        row2['Giờ chuẩn'] = adjStdHours + 'h';
+        row2['Chênh lệch'] = diff > 0 ? '+' + diff.toFixed(1) + 'h' : diff < 0 ? diff.toFixed(1) + 'h' : '0h';
+        row2['Muộn'] = lateCount;
+        row2['Sớm'] = earlyCount;
+        row2['Vắng'] = absentCount;
+        row2['NP'] = lvNP || '';
+        row2['NỐ'] = lvSick || '';
+        row2['CT'] = lvCT || '';
+        row2['WFH'] = lvWFH || '';
+        row2['KL'] = lvKL || '';
+        row2['TC(h)'] = ot > 0 ? ot.toFixed(1) : 0;
+        return row2;
+      });
+
+      // Dòng tổng/trung bình cuối bảng
+      if (attRows.length > 0) {
+        const summaryRow = { 'STT': '', 'Mã NV': '', 'Họ tên': 'TỔNG / TRUNG BÌNH' };
+        // Đếm tổng người đi làm mỗi ngày
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dayStr = String(d).padStart(2, '0');
+          const dt = new Date(y, m - 1, d);
+          const header = `${dayStr}\n${dayNames[dt.getDay()]}`;
+          const count = activeEmployees.filter(emp => {
+            const recs = attMap[emp.id]?.[dayStr];
+            return recs && recs.length > 0 && ['present', 'late', 'early_leave', 'half_day'].includes(recs[0].status);
+          }).length;
+          summaryRow[header] = count > 0 ? count : '';
+        }
+        const avgDays = attRows.reduce((s, r) => s + (r['Tổng ngày'] || 0), 0) / attRows.length;
+        summaryRow['Tổng ngày'] = avgDays.toFixed(1);
+        summaryRow['Tổng giờ'] = '';
+        summaryRow['Giờ chuẩn'] = '';
+        summaryRow['Chênh lệch'] = '';
+        summaryRow['Muộn'] = attRows.reduce((s, r) => s + (r['Muộn'] || 0), 0);
+        summaryRow['Sớm'] = attRows.reduce((s, r) => s + (r['Sớm'] || 0), 0);
+        summaryRow['Vắng'] = attRows.reduce((s, r) => s + (r['Vắng'] || 0), 0);
+        summaryRow['NP'] = attRows.reduce((s, r) => s + (parseFloat(r['NP']) || 0), 0) || '';
+        summaryRow['NỐ'] = attRows.reduce((s, r) => s + (parseFloat(r['NỐ']) || 0), 0) || '';
+        summaryRow['CT'] = attRows.reduce((s, r) => s + (parseFloat(r['CT']) || 0), 0) || '';
+        summaryRow['WFH'] = attRows.reduce((s, r) => s + (parseFloat(r['WFH']) || 0), 0) || '';
+        summaryRow['KL'] = attRows.reduce((s, r) => s + (parseFloat(r['KL']) || 0), 0) || '';
+        summaryRow['TC(h)'] = '';
+        attRows.push(summaryRow);
+
+        // Dòng chú thích
+        const legendRow = { 'STT': '', 'Mã NV': '', 'Họ tên': 'Chú thích: NP=Nghỉ phép | NỐ=Nghỉ ốm | CT=Công tác | WFH=Làm từ xa | KL=Không lương | ?=Chưa check-out' };
+        attRows.push(legendRow);
+      }
+
+      const ws2 = XLSX.utils.json_to_sheet(attRows);
+      const attCols = [{ wch: 4 }, { wch: 8 }, { wch: 18 }];
+      for (let d = 0; d < daysInMonth; d++) attCols.push({ wch: 12 });
+      // Tổng ngày | Tổng giờ | Giờ chuẩn | Chênh lệch | Muộn | Sớm | Vắng | NP | NỐ | CT | WFH | KL | TC(h)
+      attCols.push({ wch: 7 }, { wch: 8 }, { wch: 8 }, { wch: 9 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 4 }, { wch: 4 }, { wch: 4 }, { wch: 5 }, { wch: 4 }, { wch: 5 });
+      ws2['!cols'] = attCols;
+      // Row height tự adapt: 30pt cho 1 ca, 45pt cho 2+ ca
+      ws2['!rows'] = attRows.map((_, i) => {
+        if (i >= activeEmployees.length) return { hpt: 25 }; // summary row
+        const emp = activeEmployees[i];
+        const empDays = attMap[emp.id] || {};
+        const maxShifts = Math.max(1, ...Object.values(empDays).map(recs => recs.length));
+        return { hpt: maxShifts > 1 ? 40 : 28 };
+      });
+      XLSX.utils.book_append_sheet(wb, ws2, 'Chấm công');
+
+      // Download
+      XLSX.writeFile(wb, `Bang-luong-thang-${pad(m)}-${y}.xlsx`);
+    } catch (err) {
+      console.error('Lỗi xuất Excel:', err);
+      alert('Lỗi xuất file: ' + err.message);
+    } finally {
+      setExporting(false);
+    }
+  }, [payrollData, activeEmployees, attendances, leaveRequests, selectedMonth, getDeptName, getPositionName]);
 
   // ---- Summary totals ----
   const summary = useMemo(() => {
@@ -502,6 +922,15 @@ export default function HrmPayrollView({
     const totalNetPay = payrollData.reduce((s, r) => s + r.net_pay, 0);
     const totalOvertimeHours = payrollData.reduce((s, r) => s + r.overtime_hours, 0);
 
+    // Status counts (toàn bộ bảng dùng cùng 1 status)
+    const total = payrollData.length;
+    const isApproved = payrollStatus === 'approved' || payrollStatus === 'paid';
+    const isPaid = payrollStatus === 'paid';
+    const isDraft = payrollStatus === 'draft' || payrollStatus === 'calculated';
+    const approvedCount = isApproved ? total : 0;
+    const paidCount = isPaid ? total : 0;
+    const draftCount = isDraft ? total : 0;
+
     return {
       totalBasicPay,
       totalOvertimePay,
@@ -512,8 +941,11 @@ export default function HrmPayrollView({
       totalOvertimeHours,
       avgNetPay: totalNetPay / payrollData.length,
       count: payrollData.length,
+      approvedCount,
+      paidCount,
+      draftCount,
     };
-  }, [payrollData]);
+  }, [payrollData, payrollStatus]);
 
   // === PERMISSION GUARD: Chỉ level 3 / Admin mới xem được bảng lương ===
   if (canEdit && !canEdit('hrm')) {
@@ -679,6 +1111,41 @@ export default function HrmPayrollView({
                 <span className="font-medium text-purple-700">{fmt(row.kpi_bonus)}</span>
               </div>
 
+              {/* Section Media — chỉ hiển thị nếu có ít nhất 1 công đoạn > 0 */}
+              {(row.media_content > 0 || row.media_cam > 0 || row.media_edit > 0 || row.media_actor > 0) && (
+                <>
+                  <div className="font-medium text-sm text-gray-700 mt-3 mb-1">Media</div>
+                  {row.media_content > 0 && (
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-gray-600">📝 Content × {row.media_content}</span>
+                      <span className="text-blue-600 font-medium">{(row.media_pay_content || 0).toLocaleString('vi-VN')}đ</span>
+                    </div>
+                  )}
+                  {row.media_cam > 0 && (
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-gray-600">🎥 Quay × {row.media_cam}</span>
+                      <span className="text-blue-600 font-medium">{(row.media_pay_film || 0).toLocaleString('vi-VN')}đ</span>
+                    </div>
+                  )}
+                  {row.media_edit > 0 && (
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-gray-600">✂️ Dựng × {row.media_edit}</span>
+                      <span className="text-blue-600 font-medium">{(row.media_pay_edit || 0).toLocaleString('vi-VN')}đ</span>
+                    </div>
+                  )}
+                  {row.media_actor > 0 && (
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-gray-600">🎭 Diễn × {row.media_actor}</span>
+                      <span className="text-blue-600 font-medium">{(row.media_pay_actor || 0).toLocaleString('vi-VN')}đ</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm py-1 border-t border-gray-200 mt-1 pt-2">
+                    <span className="font-medium text-gray-700">Tổng Media</span>
+                    <span className="text-blue-700 font-medium">{(row.media_pay || 0).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                </>
+              )}
+
               {/* Phụ cấp chi tiết */}
               <div className="flex justify-between">
                 <span className="text-gray-600">Phụ cấp tổng</span>
@@ -782,32 +1249,65 @@ export default function HrmPayrollView({
   // ============ RENDER ============
   return (
     <div className="space-y-4">
-      {/* ---- Stats Cards ---- */}
+      {/* ---- Page Header ---- */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">{isAdmin ? 'Quản lý lương' : 'Lương của tôi'}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Kỳ lương tháng {monthNum}/{monthYear} • {summary.count} {summary.count === 1 ? 'phiếu' : 'phiếu lương'}
+          </p>
+        </div>
+      </div>
+
+      {/* ---- 4 Metric Cards ---- */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border p-4 shadow-sm">
-          <div className="text-xs text-gray-500 mb-1">Tổng quỹ lương tháng</div>
-          <div className="text-xl font-bold text-green-700">{fmt(summary.totalNetPay)}</div>
-          <div className="text-xs text-gray-400 mt-1">{summary.count} nhân viên</div>
-        </div>
-        <div className="bg-white rounded-xl border p-4 shadow-sm">
-          <div className="text-xs text-gray-500 mb-1">Trung bình lương thực nhận</div>
-          <div className="text-xl font-bold text-blue-700">{fmt(summary.avgNetPay)}</div>
-          <div className="text-xs text-gray-400 mt-1">/ nhân viên</div>
-        </div>
-        <div className="bg-white rounded-xl border p-4 shadow-sm">
-          <div className="text-xs text-gray-500 mb-1">Tổng giờ tăng ca</div>
-          <div className="text-xl font-bold text-orange-600">
-            {summary.totalOvertimeHours.toFixed(1)}h
+        {/* Card 1: Tổng quỹ lương — green */}
+        <button
+          onClick={() => setFilterStatusTab('all')}
+          className={`text-left rounded-xl p-4 border-2 transition-all ${filterStatusTab === 'all' ? 'ring-2 ring-green-400' : ''}`}
+          style={{ background: '#E1F5EE', borderColor: '#5DCAA5' }}
+        >
+          <div className="text-xs font-medium text-green-900 mb-1">Tổng quỹ lương tháng</div>
+          <div className="text-2xl font-bold" style={{ color: '#085041' }}>{fmt(summary.totalNetPay)}</div>
+          <div className="text-xs mt-1" style={{ color: '#0A6A52' }}>{summary.count} nhân viên</div>
+        </button>
+
+        {/* Card 2: Đã duyệt — blue */}
+        <button
+          onClick={() => setFilterStatusTab('approved')}
+          className={`text-left rounded-xl p-4 border-2 transition-all ${filterStatusTab === 'approved' ? 'ring-2 ring-blue-400' : ''}`}
+          style={{ background: '#E6F1FB', borderColor: '#85B7EB' }}
+        >
+          <div className="text-xs font-medium mb-1" style={{ color: '#0C447C' }}>Đã duyệt</div>
+          <div className="text-2xl font-bold" style={{ color: '#185FA5' }}>{summary.approvedCount}/{summary.count}</div>
+          <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: '#C5DDF5' }}>
+            <div className="h-full" style={{ width: `${summary.count > 0 ? (summary.approvedCount / summary.count * 100) : 0}%`, background: '#185FA5' }} />
           </div>
-          <div className="text-xs text-gray-400 mt-1">{fmt(summary.totalOvertimePay)}</div>
-        </div>
-        <div className="bg-white rounded-xl border p-4 shadow-sm">
-          <div className="text-xs text-gray-500 mb-1">Tổng thưởng KPI</div>
-          <div className="text-xl font-bold text-purple-700">{fmt(summary.totalKpiBonus)}</div>
-          <div className="text-xs text-gray-400 mt-1">
-            {payrollData.filter((r) => r.kpi_rating).length}/{summary.count} có KPI
+        </button>
+
+        {/* Card 3: Đã trả — purple */}
+        <button
+          onClick={() => setFilterStatusTab('paid')}
+          className={`text-left rounded-xl p-4 border-2 transition-all ${filterStatusTab === 'paid' ? 'ring-2 ring-purple-400' : ''}`}
+          style={{ background: '#EEEDFE', borderColor: '#AFA9EC' }}
+        >
+          <div className="text-xs font-medium mb-1" style={{ color: '#3C3489' }}>Đã trả</div>
+          <div className="text-2xl font-bold" style={{ color: '#534AB7' }}>{summary.paidCount}/{summary.count}</div>
+          <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: '#D9D6F8' }}>
+            <div className="h-full" style={{ width: `${summary.count > 0 ? (summary.paidCount / summary.count * 100) : 0}%`, background: '#534AB7' }} />
           </div>
-        </div>
+        </button>
+
+        {/* Card 4: Cần xử lý — red */}
+        <button
+          onClick={() => setFilterStatusTab('draft')}
+          className={`text-left rounded-xl p-4 border-2 transition-all ${filterStatusTab === 'draft' ? 'ring-2 ring-red-400' : ''}`}
+          style={{ background: '#FCEBEB', borderColor: '#F09595' }}
+        >
+          <div className="text-xs font-medium mb-1" style={{ color: '#7A1D1D' }}>Cần xử lý</div>
+          <div className="text-2xl font-bold" style={{ color: '#A32D2D' }}>{summary.draftCount}</div>
+          <div className="text-xs mt-1" style={{ color: '#A32D2D' }}>Chờ duyệt</div>
+        </button>
       </div>
 
       {/* ---- Toolbar ---- */}
@@ -850,6 +1350,28 @@ export default function HrmPayrollView({
             </select>
           </div>
 
+          {/* Status tabs */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+            {[
+              { id: 'all', label: 'Tất cả' },
+              { id: 'draft', label: 'Nháp' },
+              { id: 'approved', label: 'Đã duyệt' },
+              { id: 'paid', label: 'Đã trả' },
+            ].map(t => (
+              <button
+                key={t.id}
+                onClick={() => setFilterStatusTab(t.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  filterStatusTab === t.id
+                    ? 'bg-white text-green-700 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
           {/* Tìm kiếm */}
           <div className="flex items-center gap-2 flex-1 min-w-[200px]">
             <div className="relative flex-1">
@@ -886,8 +1408,17 @@ export default function HrmPayrollView({
           )}
         </div>
 
-        {/* Action buttons */}
+        {/* Action buttons — admin only */}
         <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t">
+          {isAdmin && (
+            <button
+              onClick={() => setShowRatesModal(true)}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium flex items-center gap-2"
+            >
+              ⚙️ Đơn giá
+            </button>
+          )}
+          {isAdmin && (
           <button
             onClick={handleGeneratePayroll}
             disabled={loading || payrollStatus === 'approved'}
@@ -926,8 +1457,9 @@ export default function HrmPayrollView({
               </>
             )}
           </button>
+          )}
 
-          {payrollData.length > 0 && payrollStatus === 'calculated' && (
+          {isAdmin && payrollData.length > 0 && payrollStatus === 'calculated' && (
             <button
               onClick={handleApprovePayroll}
               disabled={approving}
@@ -970,8 +1502,9 @@ export default function HrmPayrollView({
 
           {payrollData.length > 0 && (
             <button
-              onClick={handleExportCSV}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium flex items-center gap-2 transition-colors"
+              onClick={handleExportExcel}
+              disabled={exporting}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 text-sm font-medium flex items-center gap-2 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -981,7 +1514,7 @@ export default function HrmPayrollView({
                   d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              Xuất CSV
+              {exporting ? 'Đang xuất...' : '📊 Xuất Excel'}
             </button>
           )}
 
@@ -991,6 +1524,17 @@ export default function HrmPayrollView({
           </div>
         </div>
       </div>
+
+      {/* ---- Empty state khi filter status không khớp ---- */}
+      {payrollData.length > 0 && filterStatusTab !== 'all' && (
+        (filterStatusTab === 'draft' && payrollStatus !== 'draft' && payrollStatus !== 'calculated') ||
+        (filterStatusTab === 'approved' && payrollStatus !== 'approved' && payrollStatus !== 'paid') ||
+        (filterStatusTab === 'paid' && payrollStatus !== 'paid')
+      ) && (
+        <div className="bg-white rounded-xl border shadow-sm p-8 text-center text-gray-500 text-sm">
+          Không có phiếu lương nào ở trạng thái này
+        </div>
+      )}
 
       {/* ---- Empty state ---- */}
       {payrollData.length === 0 && (
@@ -1023,6 +1567,11 @@ export default function HrmPayrollView({
 
       {/* ---- Payroll Table ---- */}
       {payrollData.length > 0 && (
+        filterStatusTab === 'all' ||
+        (filterStatusTab === 'draft' && (payrollStatus === 'draft' || payrollStatus === 'calculated')) ||
+        (filterStatusTab === 'approved' && (payrollStatus === 'approved' || payrollStatus === 'paid')) ||
+        (filterStatusTab === 'paid' && payrollStatus === 'paid')
+      ) && (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1234,6 +1783,71 @@ export default function HrmPayrollView({
 
       {/* ---- Detail modal ---- */}
       {renderDetailModal()}
+
+      {/* ---- Salary Rates Modal ---- */}
+      {showRatesModal && isAdmin && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowRatesModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b">
+              <h3 className="text-lg font-bold text-gray-800">⚙️ Đơn giá lương</h3>
+              <p className="text-xs text-gray-500 mt-1">Áp dụng cho toàn tenant — dùng để tự động tính tiền khi tạo bảng lương</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">📹 Đơn giá Media (đồng/video)</h4>
+                <div className="space-y-2">
+                  {[
+                    { key: 'rate_content', label: '📝 Content (kịch bản)' },
+                    { key: 'rate_film', label: '🎥 Quay phim' },
+                    { key: 'rate_edit', label: '✂️ Dựng phim' },
+                    { key: 'rate_actor', label: '🎭 Diễn viên' },
+                  ].map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between gap-3">
+                      <label className="text-sm text-gray-700 flex-1">{label}</label>
+                      <input
+                        type="number" min="0" step="1000"
+                        value={ratesForm[key] || 0}
+                        onChange={e => setRatesForm({ ...ratesForm, [key]: parseInt(e.target.value) || 0 })}
+                        className="w-32 px-3 py-1.5 border rounded-lg text-sm text-right focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">🔧 Đơn giá khác</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm text-gray-700 flex-1">Job kỹ thuật (đồng/job)</label>
+                    <input
+                      type="number" min="0" step="10000"
+                      value={ratesForm.rate_tech_job || 0}
+                      onChange={e => setRatesForm({ ...ratesForm, rate_tech_job: parseInt(e.target.value) || 0 })}
+                      className="w-32 px-3 py-1.5 border rounded-lg text-sm text-right focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm text-gray-700 flex-1">Tăng ca (đồng/giờ)</label>
+                    <input
+                      type="number" min="0" step="1000"
+                      value={ratesForm.rate_overtime || 0}
+                      onChange={e => setRatesForm({ ...ratesForm, rate_overtime: parseInt(e.target.value) || 0 })}
+                      className="w-32 px-3 py-1.5 border rounded-lg text-sm text-right focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">Để 0 với tăng ca = dùng công thức cũ (Lương CB / 26 / 8 × 1.5)</p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex gap-2 justify-end rounded-b-2xl">
+              <button onClick={() => setShowRatesModal(false)} className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg">Huỷ</button>
+              <button onClick={saveSalaryRates} disabled={savingRates} className="px-5 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium disabled:opacity-50">
+                {savingRates ? 'Đang lưu...' : 'Lưu đơn giá'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

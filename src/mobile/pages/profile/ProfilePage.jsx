@@ -423,6 +423,41 @@ function SalaryDetail({ salary }) {
         <span className="mprof-sal-detail-total-label">Tổng lương</span>
         <span className="mprof-sal-detail-total-val">{formatMoney(s.total_salary)}</span>
       </div>
+
+      {/* Media breakdown — 4 ô Content/Quay/Dựng/Diễn */}
+      {s.detail && (
+        (s.detail.media_content_count > 0 ||
+         s.detail.media_film_count > 0 ||
+         s.detail.media_edit_count > 0 ||
+         s.detail.media_actor_count > 0) && (
+          <div className="mprof-sal-section">
+            <h4 className="mprof-sal-section-title">📊 Công việc Media</h4>
+            <div className="mprof-media-grid">
+              <div className="mprof-media-cell mprof-media-content">
+                <div className="mprof-media-icon">📝</div>
+                <div className="mprof-media-num">{s.detail.media_content_count || 0}</div>
+                <div className="mprof-media-lbl">Content</div>
+              </div>
+              <div className="mprof-media-cell mprof-media-film">
+                <div className="mprof-media-icon">🎥</div>
+                <div className="mprof-media-num">{s.detail.media_film_count || 0}</div>
+                <div className="mprof-media-lbl">Quay</div>
+              </div>
+              <div className="mprof-media-cell mprof-media-edit">
+                <div className="mprof-media-icon">✂️</div>
+                <div className="mprof-media-num">{s.detail.media_edit_count || 0}</div>
+                <div className="mprof-media-lbl">Dựng</div>
+              </div>
+              <div className="mprof-media-cell mprof-media-actor">
+                <div className="mprof-media-icon">🎭</div>
+                <div className="mprof-media-num">{s.detail.media_actor_count || 0}</div>
+                <div className="mprof-media-lbl">Diễn</div>
+              </div>
+            </div>
+          </div>
+        )
+      )}
+
       {sections.map((sec, i) => (
         <div key={i} className="mprof-sal-section">
           <h4 className="mprof-sal-section-title">{sec.label}</h4>
