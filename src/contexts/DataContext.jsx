@@ -146,11 +146,24 @@ export function DataProvider({ children }) {
   const loadTasks = useCallback(async () => {
     if (!tenant) return;
     try {
-      const { data, error } = await supabase
-        .from('tasks').select('*').eq('tenant_id', tenant.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      const formattedTasks = (data || []).map(task => ({
+      // Supabase default limit = 1000. Loop pagination để lấy TẤT CẢ tasks.
+      const PAGE = 1000;
+      let allData = [];
+      let page = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const from = page * PAGE;
+        const { data, error } = await supabase
+          .from('tasks').select('*').eq('tenant_id', tenant.id)
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        hasMore = (data || []).length === PAGE;
+        page++;
+      }
+
+      const formattedTasks = allData.map(task => ({
         id: task.id, title: task.title, assignee: task.assignee, team: task.team,
         status: task.status, dueDate: task.due_date, platform: task.platform,
         isOverdue: task.is_overdue, comments: task.comments || [], postLinks: task.post_links || [],

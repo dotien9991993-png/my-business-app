@@ -94,33 +94,64 @@ export default function HrmReportView({
     });
   }, [attendances, attMonth, attDeptFilter, employees]);
 
-  // Tổng hợp chấm công theo nhân viên
+  // Tổng hợp chấm công theo nhân viên — đếm UNIQUE dates, không đếm records
   const attendanceSummary = useMemo(() => {
-    const empMap = {};
+    // Group attendance theo empId → date → chỉ lấy status ca 1
+    const empDayMap = {};
     filteredAttendances.forEach(a => {
       const empId = a.employee_id;
-      if (!empMap[empId]) {
-        const emp = (employees || []).find(e => e.id === empId);
-        empMap[empId] = {
-          id: empId,
-          name: getEmpName(emp),
-          department: getDeptName(emp?.department_id, departments || []),
-          present: 0, late: 0, early_leave: 0, absent: 0, half_day: 0,
-          overtime_hours: 0, total: 0,
-        };
+      const date = (a.date || '').substring(0, 10);
+      if (!date) return;
+      if (!empDayMap[empId]) empDayMap[empId] = {};
+      // Ưu tiên ca 1 (shift_number=1 hoặc record đầu tiên cho ngày đó)
+      if (!empDayMap[empId][date] || (a.shift_number || 1) === 1) {
+        empDayMap[empId][date] = { status: a.status || 'present', overtime_hours: parseFloat(a.overtime_hours || 0) };
+      } else {
+        // Cộng thêm overtime từ các ca khác
+        empDayMap[empId][date].overtime_hours += parseFloat(a.overtime_hours || 0);
       }
-      const row = empMap[empId];
-      row.total++;
-      const status = a.status || 'present';
-      if (status === 'present') row.present++;
-      else if (status === 'late') { row.late++; row.present++; }
-      else if (status === 'early_leave') { row.early_leave++; row.present++; }
-      else if (status === 'absent') row.absent++;
-      else if (status === 'half_day') row.half_day++;
-      row.overtime_hours += parseFloat(a.overtime_hours || 0);
     });
-    return Object.values(empMap).sort((a, b) => b.present - a.present);
-  }, [filteredAttendances, employees, departments]);
+
+    const result = {};
+    Object.entries(empDayMap).forEach(([empId, days]) => {
+      const emp = (employees || []).find(e => e.id === empId);
+      const row = {
+        id: empId,
+        name: getEmpName(emp),
+        department: getDeptName(emp?.department_id, departments || []),
+        present: 0, late: 0, early_leave: 0, absent: 0, half_day: 0,
+        overtime_hours: 0, total: 0,
+      };
+
+      Object.values(days).forEach(day => {
+        const status = day.status;
+        if (['present', 'late', 'early_leave'].includes(status)) row.present++;
+        if (status === 'late') row.late++;
+        if (status === 'early_leave') row.early_leave++;
+        if (status === 'absent') row.absent++;
+        if (status === 'half_day') { row.half_day++; row.present += 0.5; }
+        row.total++;
+        row.overtime_hours += day.overtime_hours || 0;
+      });
+
+      result[empId] = row;
+    });
+
+    // Thêm nhân viên không có attendance (nếu filter dept match)
+    activeEmployees.forEach(emp => {
+      if (result[emp.id]) return;
+      if (attDeptFilter !== 'all' && emp.department_id !== attDeptFilter) return;
+      result[emp.id] = {
+        id: emp.id,
+        name: getEmpName(emp),
+        department: getDeptName(emp?.department_id, departments || []),
+        present: 0, late: 0, early_leave: 0, absent: 0, half_day: 0,
+        overtime_hours: 0, total: 0,
+      };
+    });
+
+    return Object.values(result).sort((a, b) => b.present - a.present);
+  }, [filteredAttendances, employees, departments, activeEmployees, attDeptFilter]);
 
   // Dữ liệu biểu đồ cột chấm công theo phòng ban
   const attDeptChartData = useMemo(() => {
@@ -171,20 +202,19 @@ export default function HrmReportView({
       const balance = (leaveBalances || []).find(
         lb => lb.employee_id === emp.id && lb.year === leaveYear
       );
-      const annualUsed = balance?.annual_leave_used || 0;
-      const annualTotal = balance?.annual_leave_total || 12;
-      const sickUsed = balance?.sick_leave_used || 0;
-      const sickTotal = balance?.sick_leave_total || 30;
+      // DB dùng total_days + used_days (không phải annual_leave_used)
+      const annualTotal = balance?.total_days || 12;
+      const annualUsed = balance?.used_days || 0;
       const annualRemaining = annualTotal - annualUsed;
-      const sickRemaining = sickTotal - sickUsed;
       return {
         id: emp.id,
         name: getEmpName(emp),
         department: getDeptName(emp.department_id, departments || []),
         annualUsed, annualTotal, annualRemaining,
-        sickUsed, sickTotal, sickRemaining,
-        totalRemaining: annualRemaining + sickRemaining,
+        sickUsed: 0, sickTotal: 0, sickRemaining: 0, // Schema không có field riêng
+        totalRemaining: annualRemaining,
         lowLeave: annualRemaining <= 2,
+        usedPercent: annualTotal > 0 ? Math.round((annualUsed / annualTotal) * 100) : 0,
       };
     }).sort((a, b) => a.annualRemaining - b.annualRemaining);
   }, [activeEmployees, leaveBalances, departments, leaveYear]);
@@ -392,9 +422,9 @@ export default function HrmReportView({
     } else if (activeSubTab === 'leave') {
       rows.push(['BÁO CÁO PHÉP NĂM', `Năm ${leaveYear}`]);
       rows.push([]);
-      rows.push(['Nhân viên', 'Phòng ban', 'Phép năm (đã dùng)', 'Phép năm (tổng)', 'Nghỉ ốm (đã dùng)', 'Nghỉ ốm (tổng)', 'Còn lại']);
+      rows.push(['Nhân viên', 'Phòng ban', 'Đã dùng', 'Tổng phép', 'Còn lại', 'Tỷ lệ (%)']);
       leaveData.forEach(emp => {
-        rows.push([emp.name, emp.department, emp.annualUsed, emp.annualTotal, emp.sickUsed, emp.sickTotal, emp.totalRemaining]);
+        rows.push([emp.name, emp.department, emp.annualUsed, emp.annualTotal, emp.annualRemaining, emp.usedPercent]);
       });
     } else if (activeSubTab === 'kpi') {
       rows.push(['BÁO CÁO KPI', `Kỳ ${kpiPeriod}`]);
@@ -666,8 +696,8 @@ export default function HrmReportView({
                   <tr className="bg-gray-50">
                     <th className="text-left p-3 font-medium text-gray-600">Nhân viên</th>
                     <th className="text-left p-3 font-medium text-gray-600">Phòng ban</th>
-                    <th className="text-center p-3 font-medium text-gray-600">Phép năm</th>
-                    <th className="text-center p-3 font-medium text-gray-600">Nghỉ ốm</th>
+                    <th className="text-center p-3 font-medium text-gray-600">Đã dùng / Tổng</th>
+                    <th className="text-center p-3 font-medium text-gray-600">Tình trạng</th>
                     <th className="text-center p-3 font-medium text-gray-600">Còn lại</th>
                   </tr>
                 </thead>
@@ -702,17 +732,17 @@ export default function HrmReportView({
                         </div>
                       </td>
                       <td className="p-3">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="text-xs text-gray-500">{emp.sickUsed}/{emp.sickTotal}</span>
-                          <div className="w-full max-w-[80px] bg-gray-200 rounded-full h-2">
+                        <div className="w-full max-w-[100px] mx-auto">
+                          <div className="w-full bg-gray-200 rounded-full h-2.5">
                             <div
-                              className={`h-2 rounded-full transition-all ${
-                                emp.sickUsed / emp.sickTotal > 0.8 ? 'bg-red-500' :
-                                emp.sickUsed / emp.sickTotal > 0.5 ? 'bg-yellow-500' : 'bg-blue-500'
+                              className={`h-2.5 rounded-full transition-all ${
+                                emp.usedPercent > 80 ? 'bg-red-500' :
+                                emp.usedPercent > 50 ? 'bg-yellow-500' : 'bg-green-500'
                               }`}
-                              style={{ width: `${Math.min(100, (emp.sickUsed / emp.sickTotal) * 100)}%` }}
+                              style={{ width: `${Math.min(100, emp.usedPercent)}%` }}
                             />
                           </div>
+                          <div className="text-[10px] text-gray-500 text-center mt-0.5">{emp.usedPercent}% đã dùng</div>
                         </div>
                       </td>
                       <td className="p-3 text-center">

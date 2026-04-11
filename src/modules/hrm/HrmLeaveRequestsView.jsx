@@ -256,7 +256,7 @@ export default function HrmLeaveRequestsView({
 
       // Notification: leave_request_new → admin/manager
       try {
-        const empName = employees.find(e => e.id === formEmployeeId)?.name || currentUser?.name;
+        const empName = employees.find(e => e.id === formEmployeeId)?.full_name || currentUser?.name;
         const typeName = LEAVE_TYPES[formType]?.label || formType;
         const { data: admins } = await supabase.from('users').select('id').eq('tenant_id', tenant.id)
           .in('role', ['Admin', 'admin', 'Manager']).neq('id', currentUser?.id);
@@ -269,7 +269,7 @@ export default function HrmLeaveRequestsView({
             created_by: currentUser?.id, is_read: false,
           })));
         }
-      } catch (_) { /* non-critical */ }
+      } catch (_e) { /* non-critical */ }
 
       setShowCreateModal(false);
       if (loadHrmData) await loadHrmData();
@@ -496,6 +496,22 @@ export default function HrmLeaveRequestsView({
         description: `Hủy đơn nghỉ phép ${request.code}`
       });
 
+      // Notification: leave_request_cancelled → admin/manager
+      try {
+        const typeName = LEAVE_TYPES[request.type]?.label || request.type;
+        const { data: admins } = await supabase.from('users').select('id').eq('tenant_id', tenant.id)
+          .in('role', ['Admin', 'admin', 'Manager']).neq('id', currentUser?.id);
+        if (admins?.length > 0) {
+          await supabase.from('notifications').insert(admins.map(u => ({
+            tenant_id: tenant.id, user_id: u.id, type: 'leave_request_cancelled',
+            title: '🗑️ Đơn nghỉ đã bị hủy',
+            message: `${empName} đã hủy đơn ${typeName} từ ${formatDate(request.start_date)} đến ${formatDate(request.end_date)}`,
+            icon: '🗑️', reference_type: 'leave_request', reference_id: request.id,
+            created_by: currentUser?.id, is_read: false,
+          })));
+        }
+      } catch (_e) { /* non-critical */ }
+
       if (loadHrmData) await loadHrmData();
       alert('Đã hủy đơn!');
     } catch (err) {
@@ -638,7 +654,7 @@ export default function HrmLeaveRequestsView({
                 const canCancel = (isOwner || userIsAdmin) && req.status === 'pending';
 
                 return (
-                  <tr key={req.id} className="border-t hover:bg-gray-50 transition cursor-pointer" onClick={() => setSelectedRequest(req)}>
+                  <tr key={req.id} className={`border-t hover:bg-gray-50 transition cursor-pointer ${req.status === 'pending' ? 'bg-yellow-50/60' : ''}`} onClick={() => setSelectedRequest(req)}>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">
                       {req.code || '-'}
                     </td>

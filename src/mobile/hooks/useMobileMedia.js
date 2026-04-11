@@ -145,6 +145,9 @@ export function useMobileMedia(userId, userName, tenantId) {
 
     if (error) throw error;
 
+    // Optimistic update — cập nhật local state ngay, không chờ realtime
+    setAllTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updateData } : t));
+
     // Create notification for task assignee / admins
     try {
       const task = allTasks.find(t => t.id === taskId);

@@ -43,7 +43,9 @@ const isOverdue = (dueDate, status) => {
   if (!dueDate || status === 'Hoàn Thành') return false;
   const now = new Date();
   const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-  return new Date(dueDate) < vnNow;
+  const deadline = new Date(dueDate);
+  deadline.setHours(23, 59, 59, 999);
+  return vnNow > deadline;
 };
 
 const formatNum = (n) => {
@@ -51,9 +53,12 @@ const formatNum = (n) => {
   return n.toLocaleString('vi-VN');
 };
 
-export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment, userName, onCopyLink }) {
+export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment, userName, onCopyLink, onTaskChanged }) {
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [newLinkUrl, setNewLinkUrl] = useState('');
+  const [newLinkType, setNewLinkType] = useState('Facebook');
+  const [savingLink, setSavingLink] = useState(false);
   const [expandSection, setExpandSection] = useState({ timeline: true, links: true, comments: true });
   const [statusUpdating, setStatusUpdating] = useState(false);
 
@@ -105,6 +110,26 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url);
       onCopyLink?.(url);
+    }
+  };
+
+  // Thêm link — giống desktop DataContext.addPostLink
+  const handleAddLink = async () => {
+    if (!newLinkUrl.trim()) return;
+    setSavingLink(true);
+    try {
+      const now = new Date();
+      const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const newLink = { url: newLinkUrl.trim(), type: newLinkType, addedBy: userName, addedAt: timeStr };
+      const updatedLinks = [...postLinks, newLink];
+      const { error } = await supabase.from('tasks').update({ post_links: updatedLinks }).eq('id', task.id);
+      if (error) throw error;
+      task.post_links = updatedLinks;
+      setNewLinkUrl('');
+    } catch (err) {
+      alert('Lỗi lưu link: ' + (err.message || ''));
+    } finally {
+      setSavingLink(false);
     }
   };
 
@@ -189,8 +214,8 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
 
       await haptic();
 
-      // Optimistic update — cập nhật task local để UI phản ánh ngay
-      Object.assign(task, updateData);
+      // Cập nhật parent state + trigger refresh danh sách
+      onTaskChanged?.(updateData);
     } catch (err) {
       console.error('Error updating timeline:', err, err?.message, err?.details, err?.code);
       alert('Lỗi cập nhật tiến trình: ' + (err?.message || ''));
@@ -281,6 +306,42 @@ export default function TaskDetail({ task, onBack, onUpdateStatus, onAddComment,
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 1b. Thêm link — chỉ hiện khi chưa hoàn thành */}
+        {task.status !== 'Hoàn Thành' && (
+          <div className="mmed-d2-section">
+            <h3 className="mmed-d2-section-title">🔗 Thêm link đã đăng</h3>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <select
+                value={newLinkType}
+                onChange={e => setNewLinkType(e.target.value)}
+                style={{ padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: 14, background: '#f9fafb', flex: '0 0 auto' }}
+              >
+                {Object.entries(PLATFORM_ICONS).map(([plat, icon]) => (
+                  <option key={plat} value={plat}>{icon} {plat}</option>
+                ))}
+              </select>
+              <input
+                type="url"
+                value={newLinkUrl}
+                onChange={e => setNewLinkUrl(e.target.value)}
+                placeholder="Dán link vào đây..."
+                style={{ flex: 1, padding: '8px 10px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: 14, background: '#f9fafb', minWidth: 0 }}
+              />
+            </div>
+            <button
+              onClick={handleAddLink}
+              disabled={!newLinkUrl.trim() || savingLink}
+              style={{
+                width: '100%', padding: 10, background: newLinkUrl.trim() ? '#15803d' : '#d1d5db',
+                color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600,
+                opacity: savingLink ? 0.5 : 1, cursor: newLinkUrl.trim() ? 'pointer' : 'default',
+              }}
+            >
+              {savingLink ? 'Đang lưu...' : '💾 Lưu link'}
+            </button>
           </div>
         )}
 

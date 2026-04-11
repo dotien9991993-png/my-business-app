@@ -26,7 +26,10 @@ const isOverdue = (dueDate, status) => {
   if (!dueDate || status === 'Hoàn Thành') return false;
   const now = new Date();
   const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
-  return new Date(dueDate) < vnNow;
+  const deadline = new Date(dueDate);
+  // Cùng ngày deadline = CHƯA quá hạn (set cuối ngày 23:59:59)
+  deadline.setHours(23, 59, 59, 999);
+  return vnNow > deadline;
 };
 
 const formatNum = (n) => {
@@ -37,8 +40,17 @@ const formatNum = (n) => {
 };
 
 export default function TaskCard({ task, onClick, onToggleStep, onCopyLink }) {
-  const statusBadge = STATUS_BADGE[task.status] || STATUS_BADGE['Nháp'];
-  const overdue = isOverdue(task.due_date, task.status);
+  // DEBUG — xóa sau
+  if (task.title === '123123' || task.title === 'TIEN 123') {
+    console.warn('TASKCARD DEBUG:', task.title, '| status:', task.status, '| filmed_at:', task.filmed_at, '| edited_at:', task.edited_at, '| completed_at:', task.completed_at, '| ALL KEYS:', Object.keys(task).join(','));
+  }
+  // Badge status: ưu tiên timeline fields → fallback status field
+  const displayStatus = task.completed_at ? 'Hoàn Thành'
+    : task.edited_at ? 'Đang Edit'
+    : task.filmed_at ? 'Đã Quay'
+    : (task.status || 'Nháp');
+  const statusBadge = STATUS_BADGE[displayStatus] || STATUS_BADGE['Nháp'];
+  const overdue = isOverdue(task.due_date, displayStatus);
   const postLinks = task.post_links || [];
   const firstLink = postLinks.find(l => l.url);
 
@@ -53,10 +65,12 @@ export default function TaskCard({ task, onClick, onToggleStep, onCopyLink }) {
   }, { views: 0, likes: 0, comments: 0 });
   const hasStats = totalStats.views > 0 || totalStats.likes > 0;
 
-  // Production steps
+  // Production steps — check cả status để tránh inconsistency
   const steps = PRODUCTION_STEPS.map(step => ({
     ...step,
-    done: step.key === 'created' ? true : !!task[step.field],
+    done: step.key === 'created' ? true
+      : step.key === 'completed' ? (task.status === 'Hoàn Thành')
+      : !!task[step.field],
   }));
 
   const handleCopy = (e) => {

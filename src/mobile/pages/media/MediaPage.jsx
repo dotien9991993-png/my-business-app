@@ -116,6 +116,13 @@ export default function MediaPage({ user, tenantId, openEntityId, onEntityOpened
           task={selectedTask}
           onBack={handleCloseDetail}
           onUpdateStatus={handleStatusUpdate}
+          onTaskChanged={(updatedFields) => {
+            setSelectedTask(prev => prev ? { ...prev, ...updatedFields } : null);
+            // Optimistic update in hook's allTasks
+            if (selectedTask?.id) {
+              refresh();
+            }
+          }}
           onAddComment={addComment}
           userName={user?.name}
           onCopyLink={() => showToast('Đã copy link! 📋')}

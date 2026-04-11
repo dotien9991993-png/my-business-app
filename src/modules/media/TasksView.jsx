@@ -146,6 +146,8 @@ const TasksView = ({
   const sortBy = taskSortBy || 'newest';
   const setSortBy = setTaskSortBy || (() => {});
   const [activePreset, setActivePreset] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   // Quick presets
   const PRESETS = [
@@ -539,6 +541,17 @@ const TasksView = ({
 
   const hasActiveFilters = filterTeam.length > 0 || filterStatus.length > 0 || filterAssignee.length > 0 || filterCategory.length > 0 || filterCrew.length > 0 || filterEditor.length > 0 || filterActor.length > 0 || filterParticipant !== 'all' || filterProducts.length > 0 || filterLinkIssue !== 'all' || dateFilter !== 'all';
 
+  // Pagination
+  const totalFiltered = sortedTasks.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIdx = (safePage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, totalFiltered);
+  const paginatedTasks = sortedTasks.slice(startIdx, endIdx);
+
+  // Reset page khi filter/sort thay đổi
+  React.useEffect(() => { setCurrentPage(1); }, [filterTeam, filterStatus, filterAssignee, filterCategory, filterCrew, filterEditor, filterActor, filterParticipant, filterProducts, filterLinkIssue, dateFilter, sortBy]);
+
   // Export Excel
   const handleExportExcel = async () => {
     try {
@@ -617,7 +630,10 @@ const TasksView = ({
         {/* Stats Bar */}
         <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-50 border-b gap-2">
           <span className="text-xs md:text-sm text-gray-600 shrink-0">
-            <span className="font-bold text-blue-600">{filteredTasks.length}</span>/{visibleTasks.length} video
+            {totalFiltered > pageSize
+              ? <><span className="font-bold text-blue-600">{startIdx + 1}-{endIdx}</span> / {totalFiltered} video</>
+              : <><span className="font-bold text-blue-600">{totalFiltered}</span>/{visibleTasks.length} video</>
+            }
           </span>
           <select
             value={sortBy}
@@ -964,7 +980,7 @@ const TasksView = ({
       </div>
 
       <div className="grid gap-1 md:gap-4">
-        {sortedTasks.map(task => {
+        {paginatedTasks.map(task => {
           const platformStats = getTaskStatsByPlatform(task);
           const totalPrice = (task.product_ids || []).reduce((sum, pid) => sum + (parseFloat(productMap[pid]?.sell_price) || 0), 0);
 
@@ -1118,6 +1134,60 @@ const TasksView = ({
           );
         })}
       </div>
+
+      {/* Pagination controls */}
+      {totalFiltered > pageSize && (
+        <div className="flex items-center justify-between bg-white rounded-xl border shadow-sm px-4 py-3 mt-3">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>{startIdx + 1}-{endIdx} / {totalFiltered} video</span>
+            <select
+              value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+              className="ml-2 border rounded px-2 py-1 text-xs bg-white"
+            >
+              <option value={25}>25/trang</option>
+              <option value={50}>50/trang</option>
+              <option value={100}>100/trang</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ◀ Trước
+            </button>
+            {/* Page numbers */}
+            {(() => {
+              const pages = [];
+              const show = (n) => pages.push(
+                <button key={n} onClick={() => setCurrentPage(n)}
+                  className={`w-8 h-8 text-xs rounded-lg ${safePage === n ? 'bg-green-600 text-white font-bold' : 'hover:bg-gray-100 text-gray-700'}`}>
+                  {n}
+                </button>
+              );
+              if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) show(i);
+              } else {
+                show(1);
+                if (safePage > 3) pages.push(<span key="d1" className="px-1 text-gray-400">…</span>);
+                for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) show(i);
+                if (safePage < totalPages - 2) pages.push(<span key="d2" className="px-1 text-gray-400">…</span>);
+                show(totalPages);
+              }
+              return pages;
+            })()}
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Sau ▶
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Toast thông báo kết quả bulk update */}
       {bulkResult && (
