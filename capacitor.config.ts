@@ -4,14 +4,12 @@ const config: CapacitorConfig = {
   appId: 'vn.hoangnamaudio.app',
   appName: 'Hoang Nam Audio',
   webDir: 'dist',
-  server: {
-    url: 'https://in.hoangnamaudio.vn',
-    cleartext: false,
-  },
+  // ⚠️ KHÔNG bật server.url khi build production — sẽ bị App Store reject (4.2)
+  // Khi cần dev live-reload, tạm thời thêm vào nhưng đừng commit
   ios: {
     contentInset: 'automatic',
     preferredContentMode: 'mobile',
-    scheme: 'Hoang Nam Audio',
+    scheme: 'hoangnamaudio',
   },
   plugins: {
     SplashScreen: {

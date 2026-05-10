@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
-import { getVietnamDate, getTodayVN, getNowStringVN } from '../utils/dateUtils';
+import { getVietnamDate, getTodayVN, getNowStringVN, getISODaysAgo } from '../utils/dateUtils';
 import { isAdmin } from '../utils/permissionUtils';
 import { useApp } from './AppContext';
 import { useNotifications } from './NotificationContext';
@@ -8,7 +8,7 @@ import { useNotifications } from './NotificationContext';
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  const { tenant, currentUser, allUsers, isLoggedIn, loadUsers, loadPermissions, getPermissionLevel } = useApp();
+  const { tenant, currentUser, allUsers, isLoggedIn, loadUsers, loadPermissions, getPermissionLevel, activeModule } = useApp();
   const { createNotification } = useNotifications();
 
   // ---- Loading ----
@@ -146,15 +146,20 @@ export function DataProvider({ children }) {
   const loadTasks = useCallback(async () => {
     if (!tenant) return;
     try {
-      // Supabase default limit = 1000. Loop pagination để lấy TẤT CẢ tasks.
+      // Tối ưu egress: chỉ kéo tasks 180 ngày gần đây (đủ cho UI thường ngày).
+      // Tasks cũ hơn xem qua Báo cáo (có filter ngày riêng) — load on-demand.
+      // Cap tối đa 3000 (3 page × 1000) để tránh trường hợp DB lớn quá.
       const PAGE = 1000;
+      const MAX_PAGES = 3;
+      const since = getISODaysAgo(180);
       let allData = [];
       let page = 0;
       let hasMore = true;
-      while (hasMore) {
+      while (hasMore && page < MAX_PAGES) {
         const from = page * PAGE;
         const { data, error } = await supabase
           .from('tasks').select('*').eq('tenant_id', tenant.id)
+          .gte('created_at', since)
           .order('created_at', { ascending: false })
           .range(from, from + PAGE - 1);
         if (error) throw error;
@@ -184,9 +189,13 @@ export function DataProvider({ children }) {
   const loadTechnicalJobs = useCallback(async () => {
     if (!tenant) return;
     try {
+      // Tối ưu egress: chỉ lấy jobs 180 ngày + cap 1000
+      const since = getISODaysAgo(180);
       const { data, error } = await supabase
         .from('technical_jobs').select('*').eq('tenant_id', tenant.id)
-        .order('created_at', { ascending: false });
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(1000);
       if (error) throw error;
       const formattedJobs = (data || []).map(job => ({
         id: job.id, title: job.title, type: job.type,
@@ -204,10 +213,16 @@ export function DataProvider({ children }) {
   const loadFinanceData = useCallback(async () => {
     if (!tenant) return;
     try {
+      // Tối ưu egress: chỉ kéo dữ liệu 180 ngày gần đây + giảm limit
+      const since180 = getISODaysAgo(180);
       const [receiptsRes, debtsRes, salariesRes] = await Promise.all([
-        supabase.from('receipts_payments').select('*').eq('tenant_id', tenant.id).order('receipt_date', { ascending: false }).limit(1000),
-        supabase.from('debts').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
-        supabase.from('salaries').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500)
+        supabase.from('receipts_payments').select('*').eq('tenant_id', tenant.id)
+          .gte('receipt_date', since180.slice(0, 10)) // receipt_date là DATE
+          .order('receipt_date', { ascending: false }).limit(500),
+        supabase.from('debts').select('*').eq('tenant_id', tenant.id)
+          .order('created_at', { ascending: false }).limit(300),
+        supabase.from('salaries').select('*').eq('tenant_id', tenant.id)
+          .order('created_at', { ascending: false }).limit(300)
       ]);
       if (receiptsRes.data) setReceiptsPayments(receiptsRes.data);
       if (debtsRes.data) setDebts(debtsRes.data);
@@ -281,8 +296,12 @@ export function DataProvider({ children }) {
   const loadSalesData = useCallback(async () => {
     if (!tenant) return;
     try {
+      // Tối ưu egress: orders chỉ lấy 90 ngày gần đây + giảm limit
+      const since90 = getISODaysAgo(90);
       const [ordersRes, customersRes, addressesRes] = await Promise.all([
-        supabase.from('orders').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
+        supabase.from('orders').select('*').eq('tenant_id', tenant.id)
+          .gte('created_at', since90)
+          .order('created_at', { ascending: false }).limit(300),
         supabase.from('customers').select('*').eq('tenant_id', tenant.id).order('name', { ascending: true }),
         supabase.from('customer_addresses').select('*').eq('tenant_id', tenant.id).order('is_default', { ascending: false })
       ]);
@@ -310,11 +329,20 @@ export function DataProvider({ children }) {
   const loadWarrantyData = useCallback(async () => {
     if (!tenant) return;
     try {
+      // Tối ưu egress: warranty data 365 ngày (vì bảo hành thường tra cứu trong 1 năm),
+      // serials giữ nguyên 500 vì cần đủ để check trùng SN khi tạo phiếu mới
+      const since365 = getISODaysAgo(365);
       const [serialsRes, cardsRes, repairsRes, requestsRes] = await Promise.all([
         supabase.from('product_serials').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
-        supabase.from('warranty_cards').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
-        supabase.from('warranty_repairs').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
-        supabase.from('warranty_requests').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500)
+        supabase.from('warranty_cards').select('*').eq('tenant_id', tenant.id)
+          .gte('created_at', since365)
+          .order('created_at', { ascending: false }).limit(300),
+        supabase.from('warranty_repairs').select('*').eq('tenant_id', tenant.id)
+          .gte('created_at', since365)
+          .order('created_at', { ascending: false }).limit(300),
+        supabase.from('warranty_requests').select('*').eq('tenant_id', tenant.id)
+          .gte('created_at', since365)
+          .order('created_at', { ascending: false }).limit(300)
       ]);
       if (serialsRes.data) setSerials(serialsRes.data);
       if (cardsRes.data) setWarrantyCards(cardsRes.data);
@@ -326,17 +354,27 @@ export function DataProvider({ children }) {
   const loadHrmData = useCallback(async () => {
     if (!tenant) return;
     try {
+      // Tối ưu egress: hrm_attendances chỉ 90 ngày (chấm công cũ xem qua report),
+      // leave_requests 180 ngày, kpi_evaluations 180 ngày
+      const since90 = getISODaysAgo(90);
+      const since180 = getISODaysAgo(180);
       const [empRes, deptRes, posRes, shiftRes, attRes, leaveRes, balRes, tplRes, critRes, evalRes, detailRes] = await Promise.all([
         supabase.from('employees').select('*').eq('tenant_id', tenant.id).order('full_name', { ascending: true }),
         supabase.from('departments').select('*').eq('tenant_id', tenant.id).order('name', { ascending: true }),
         supabase.from('positions').select('*').eq('tenant_id', tenant.id).order('level', { ascending: true }),
         supabase.from('work_shifts').select('*').eq('tenant_id', tenant.id).order('start_time', { ascending: true }),
-        supabase.from('hrm_attendances').select('*').eq('tenant_id', tenant.id).order('date', { ascending: false }).limit(2000),
-        supabase.from('leave_requests').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
+        supabase.from('hrm_attendances').select('*').eq('tenant_id', tenant.id)
+          .gte('date', since90.slice(0, 10))
+          .order('date', { ascending: false }).limit(1000),
+        supabase.from('leave_requests').select('*').eq('tenant_id', tenant.id)
+          .gte('created_at', since180)
+          .order('created_at', { ascending: false }).limit(300),
         supabase.from('leave_balances').select('*').eq('tenant_id', tenant.id),
         supabase.from('kpi_templates').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
         supabase.from('kpi_criteria').select('*'),
-        supabase.from('kpi_evaluations').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(500),
+        supabase.from('kpi_evaluations').select('*').eq('tenant_id', tenant.id)
+          .gte('created_at', since180)
+          .order('created_at', { ascending: false }).limit(300),
         supabase.from('kpi_evaluation_details').select('*')
       ]);
       if (empRes.data) setHrmEmployees(empRes.data);
@@ -363,54 +401,105 @@ export function DataProvider({ children }) {
     await Promise.all([loadUsers(), loadTasks(), loadTechnicalJobs(), loadFinanceData(), loadWarehouseData(), loadSalesData(), loadPermissions(), loadSettingsData(), loadWarrantyData(), loadHrmData()]);
   }, [tenant, loadUsers, loadTasks, loadTechnicalJobs, loadFinanceData, loadWarehouseData, loadSalesData, loadPermissions, loadSettingsData, loadWarrantyData, loadHrmData]);
 
+  // Refresh CHỈ data của module đang xem — dùng cho visibilitychange/focus
+  // để tiết kiệm egress (thay vì kéo lại cả 9 modules mỗi lần user về app)
+  const refreshActiveModule = useCallback(async (mod) => {
+    if (!tenant) return;
+    // Settings dùng chung cho mọi module → luôn refresh
+    const tasks = [loadSettingsData()];
+    switch (mod) {
+      case 'media':
+        tasks.push(loadTasks());
+        break;
+      case 'technical':
+        tasks.push(loadTechnicalJobs());
+        break;
+      case 'finance':
+        tasks.push(loadFinanceData());
+        break;
+      case 'warehouse':
+        tasks.push(loadWarehouseData());
+        break;
+      case 'sales':
+        tasks.push(loadSalesData(), loadWarehouseData()); // sales dùng kho
+        break;
+      case 'warranty':
+        tasks.push(loadWarrantyData());
+        break;
+      case 'hrm':
+        tasks.push(loadHrmData());
+        break;
+      case 'dashboard':
+        // Dashboard tổng hợp — chỉ kéo nhẹ tasks + finance, các view con tự lazy-load
+        tasks.push(loadTasks(), loadFinanceData());
+        break;
+      case 'settings':
+        // Settings tự load qua loadSettingsData() ở trên
+        break;
+      case 'chat':
+        // Chat dùng realtime, không cần refresh
+        break;
+      default:
+        // Module lạ → refresh nhẹ
+        tasks.push(loadTasks());
+    }
+    await Promise.all(tasks);
+  }, [tenant, loadTasks, loadTechnicalJobs, loadFinanceData, loadWarehouseData, loadSalesData, loadSettingsData, loadWarrantyData, loadHrmData]);
+
   // ---- Load data + realtime subscriptions ----
   useEffect(() => {
     if (!tenant) return;
     loadUsers(); loadTasks(); loadTechnicalJobs(); loadFinanceData(); loadWarehouseData(); loadSalesData(); loadPermissions(); loadSettingsData(); loadWarrantyData(); loadHrmData();
 
-    const tasksChannel = supabase.channel('tasks-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks()).subscribe();
-    const jobsChannel = supabase.channel('jobs-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'technical_jobs' }, () => loadTechnicalJobs()).subscribe();
-    const financeChannel = supabase.channel('finance-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts_payments' }, () => loadFinanceData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts' }, () => loadFinanceData()).subscribe();
-    const warehouseChannel = supabase.channel('warehouse-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_transactions' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouses' }, () => loadWarehouseData())
+    // ⚠️ Realtime channels được scope theo tenant.id để tránh cross-tenant broadcast
+    // (mỗi update của 1 tenant chỉ trigger refresh cho client của tenant đó, không lan ra)
+    // + filter postgres_changes theo tenant_id để Supabase chỉ gửi event tương ứng → giảm egress
+    const tid = tenant.id;
+    const tFilter = `tenant_id=eq.${tid}`;
+
+    const tasksChannel = supabase.channel(`tasks-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: tFilter }, () => loadTasks()).subscribe();
+    const jobsChannel = supabase.channel(`jobs-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'technical_jobs', filter: tFilter }, () => loadTechnicalJobs()).subscribe();
+    const financeChannel = supabase.channel(`finance-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts_payments', filter: tFilter }, () => loadFinanceData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts', filter: tFilter }, () => loadFinanceData()).subscribe();
+    const warehouseChannel = supabase.channel(`warehouse-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: tFilter }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_transactions', filter: tFilter }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouses', filter: tFilter }, () => loadWarehouseData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_stock' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_combo_items' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stocktakes' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_transfers' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_combo_items', filter: tFilter }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: tFilter }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stocktakes', filter: tFilter }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_transfers', filter: tFilter }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders', filter: tFilter }, () => loadWarehouseData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_order_items' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_payments' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_returns' }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_payments', filter: tFilter }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_returns', filter: tFilter }, () => loadWarehouseData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_return_items' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_receipts' }, () => loadWarehouseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_receipts', filter: tFilter }, () => loadWarehouseData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'return_receipt_items' }, () => loadWarehouseData()).subscribe();
-    const salesChannel = supabase.channel('sales-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadSalesData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => loadSalesData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_addresses' }, () => loadSalesData()).subscribe();
-    const settingsChannel = supabase.channel('settings-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, () => loadSettingsData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_configs' }, () => loadSettingsData()).subscribe();
-    const warrantyChannel = supabase.channel('warranty-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_serials' }, () => loadWarrantyData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_cards' }, () => loadWarrantyData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_repairs' }, () => loadWarrantyData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_requests' }, () => loadWarrantyData()).subscribe();
-    const hrmChannel = supabase.channel('hrm-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_shifts' }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'hrm_attendances' }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_evaluations' }, () => loadHrmData()).subscribe();
+    const salesChannel = supabase.channel(`sales-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: tFilter }, () => loadSalesData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: tFilter }, () => loadSalesData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_addresses', filter: tFilter }, () => loadSalesData()).subscribe();
+    const settingsChannel = supabase.channel(`settings-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings', filter: tFilter }, () => loadSettingsData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_configs', filter: tFilter }, () => loadSettingsData()).subscribe();
+    const warrantyChannel = supabase.channel(`warranty-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_serials', filter: tFilter }, () => loadWarrantyData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_cards', filter: tFilter }, () => loadWarrantyData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_repairs', filter: tFilter }, () => loadWarrantyData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_requests', filter: tFilter }, () => loadWarrantyData()).subscribe();
+    const hrmChannel = supabase.channel(`hrm-changes-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: tFilter }, () => loadHrmData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments', filter: tFilter }, () => loadHrmData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'positions', filter: tFilter }, () => loadHrmData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_shifts', filter: tFilter }, () => loadHrmData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hrm_attendances', filter: tFilter }, () => loadHrmData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests', filter: tFilter }, () => loadHrmData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_evaluations', filter: tFilter }, () => loadHrmData()).subscribe();
 
     return () => {
       supabase.removeChannel(tasksChannel); supabase.removeChannel(jobsChannel);
@@ -436,18 +525,33 @@ export function DataProvider({ children }) {
   }, [tenant, currentUser]);
 
   // ---- Auto refresh on visibility/focus ----
+  // Trước: refreshAllData() — kéo lại 9 modules mỗi lần user switch tab → ngốn egress
+  // Sau: refreshActiveModule(activeModule) — chỉ refresh module đang xem
+  // + Throttle 30s để tránh refresh liên tục khi user nhảy tab nhanh
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && tenant && isLoggedIn) refreshAllData();
+    let lastRefresh = 0;
+    const REFRESH_THROTTLE_MS = 30 * 1000; // 30s
+
+    const maybeRefresh = () => {
+      if (!tenant || !isLoggedIn) return;
+      const now = Date.now();
+      if (now - lastRefresh < REFRESH_THROTTLE_MS) return; // throttle
+      lastRefresh = now;
+      refreshActiveModule(activeModule);
     };
-    const handleFocus = () => { if (tenant && isLoggedIn) refreshAllData(); };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') maybeRefresh();
+    };
+    const handleFocus = () => maybeRefresh();
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [tenant, isLoggedIn, refreshAllData]);
+  }, [tenant, isLoggedIn, refreshActiveModule, activeModule]);
 
   // ---- CRUD: Tasks ----
   const changeStatus = useCallback(async (taskId, newStatus) => {
@@ -705,7 +809,7 @@ export function DataProvider({ children }) {
     // Draft helpers
     saveJobEditDraft, loadJobEditDraft, clearJobEditDraft,
     // Loaders
-    loadTasks, loadTechnicalJobs, loadFinanceData, loadAttendanceData, loadWarehouseData, loadSalesData, loadSettingsData, loadHrmData, refreshAllData,
+    loadTasks, loadTechnicalJobs, loadFinanceData, loadAttendanceData, loadWarehouseData, loadSalesData, loadSettingsData, loadHrmData, refreshAllData, refreshActiveModule,
     // CRUD
     changeStatus, createNewTask, createTechnicalJob, deleteTechnicalJob,
     addComment, addPostLink, removePostLink, createFromTemplate, deleteTask,

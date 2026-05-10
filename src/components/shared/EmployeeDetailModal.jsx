@@ -54,7 +54,7 @@ export default function EmployeeDetailModal({ user, onClose, onSaved }) {
     }
     if (!window.confirm(`Đặt lại mật khẩu cho "${user.name}"?`)) return;
     try {
-      const hashed = await bcrypt.hash(newPassword, 10);
+      const hashed = await bcrypt.hash(newPassword, 8);
       const { error } = await supabase
         .from('users')
         .update({ password: hashed, password_hashed: true })

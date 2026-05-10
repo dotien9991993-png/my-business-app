@@ -29,7 +29,7 @@ export default function HrmModule() {
     hrmEmployees, hrmDepartments, hrmPositions, hrmWorkShifts,
     hrmAttendances, hrmLeaveRequests, hrmLeaveBalances,
     hrmKpiTemplates, hrmKpiCriteria, hrmKpiEvaluations, hrmKpiEvalDetails,
-    tasks, loadHrmData, getSettingValue
+    tasks, technicalJobs, loadHrmData, getSettingValue
   } = useData();
 
   const tabFallback = <div className="flex items-center justify-center py-20"><div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
@@ -72,7 +72,7 @@ export default function HrmModule() {
           employees={hrmEmployees} departments={hrmDepartments} positions={hrmPositions}
           attendances={hrmAttendances} kpiEvaluations={hrmKpiEvaluations}
           leaveRequests={hrmLeaveRequests}
-          tasks={tasks} allUsers={allUsers}
+          tasks={tasks} technicalJobs={technicalJobs} allUsers={allUsers}
           getSettingValue={getSettingValue}
           loadHrmData={loadHrmData} tenant={tenant} currentUser={currentUser}
           hasPermission={hasPermission} canEdit={canEdit}

@@ -60,3 +60,11 @@ export const formatDateVN = (dateStr) => {
   const date = new Date(dateStr);
   return date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 };
+
+// Lấy ISO timestamp của N ngày trước (dùng cho query Supabase tiết kiệm egress)
+// VD: getISODaysAgo(90) → '2026-02-04T00:00:00.000Z'
+export const getISODaysAgo = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+};

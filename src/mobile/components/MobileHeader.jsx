@@ -35,8 +35,8 @@ export default function MobileHeader({ user, tenantId, onNavigate, onNotifNaviga
     };
     loadUnread();
 
-    // Realtime subscription
-    const channel = supabase.channel('mobile-notif-badge')
+    // Realtime subscription — channel name có user.id để cách ly giữa các user
+    const channel = supabase.channel(`mobile-notif-badge-${user.id}`)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'notifications',
         filter: `user_id=eq.${user.id}`

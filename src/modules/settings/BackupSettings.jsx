@@ -2,27 +2,41 @@ import React, { useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useApp } from '../../contexts/AppContext';
 
-const BACKUP_TABLES = [
-  'tenants', 'users', 'user_permissions', 'departments', 'positions', 'employees',
+// Bảng có cột tenant_id — backup chỉ data của tenant hiện tại
+const BACKUP_TABLES_WITH_TENANT = [
+  'users', 'user_permissions', 'departments', 'positions', 'employees',
   'products', 'product_combo_items', 'product_serials',
-  'customers', 'customer_interactions',
-  'orders', 'order_items', 'order_reconciliation',
-  'warehouses', 'warehouse_stock', 'warehouse_transfers', 'warehouse_transfer_items',
-  'stock_transactions', 'stock_transaction_items', 'stocktakes', 'stocktake_items',
+  'customers',
+  'orders',
+  'warehouses', 'warehouse_transfers',
+  'stock_transactions', 'stocktakes',
   'suppliers',
   'receipts_payments', 'debts', 'cod_reconciliation',
   'salaries', 'media_salaries', 'payrolls',
   'tasks', 'technical_jobs', 'technician_bonuses',
   'attendances', 'hrm_attendances', 'work_shifts',
   'leave_requests', 'leave_balances',
-  'kpi_templates', 'kpi_criteria', 'kpi_evaluations', 'kpi_evaluation_details',
+  'kpi_templates', 'kpi_evaluations',
   'notifications', 'activity_logs', 'system_settings',
-  'shipping_configs', 'shipping_tracking_events',
+  'shipping_configs',
   'warranty_cards', 'warranty_repairs', 'warranty_requests',
-  'chat_rooms', 'chat_room_members', 'chat_messages', 'chat_message_reactions',
+  'chat_rooms', 'chat_messages',
   'zalo_config', 'zalo_conversations', 'zalo_messages', 'zalo_chat_messages',
   'zalo_internal_notes', 'zalo_quick_replies', 'zalo_templates',
 ];
+
+// Bảng con (không có tenant_id, ràng buộc qua FK đến parent) — RLS sẽ chặn cross-tenant
+const BACKUP_TABLES_CHILD = [
+  'customer_interactions', 'order_items', 'order_reconciliation',
+  'warehouse_stock', 'warehouse_transfer_items',
+  'stock_transaction_items', 'stocktake_items',
+  'kpi_criteria', 'kpi_evaluation_details',
+  'shipping_tracking_events',
+  'chat_room_members', 'chat_message_reactions',
+];
+
+const BACKUP_TABLES = [...BACKUP_TABLES_WITH_TENANT, ...BACKUP_TABLES_CHILD];
+const TABLES_WITH_TENANT_SET = new Set(BACKUP_TABLES_WITH_TENANT);
 
 export default function BackupSettings({ tenant }) {
   const { currentUser: _currentUser } = useApp();
@@ -58,11 +72,16 @@ export default function BackupSettings({ tenant }) {
         const allRows = [];
         let from = 0;
         const PAGE_SIZE = 1000;
+        const hasTenantCol = TABLES_WITH_TENANT_SET.has(table);
         while (true) {
-          const { data, error } = await supabase
-            .from(table)
-            .select('*')
-            .range(from, from + PAGE_SIZE - 1);
+          // FIX bảo mật: chỉ backup data thuộc tenant hiện tại.
+          // Bảng có tenant_id → filter trực tiếp.
+          // Bảng con (không có tenant_id) → dựa vào RLS để cách ly.
+          let query = supabase.from(table).select('*');
+          if (hasTenantCol && tenant?.id) {
+            query = query.eq('tenant_id', tenant.id);
+          }
+          const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
           if (error) {
             console.warn(`Lỗi backup "${table}":`, error.message);
             break;

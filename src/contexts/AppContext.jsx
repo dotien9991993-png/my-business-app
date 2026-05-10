@@ -264,8 +264,19 @@ export function AppProvider({ children }) {
   }, [tenant]);
 
   const loadPermissions = useCallback(async () => {
+    if (!tenant) return;
     try {
-      const { data } = await supabase.from('user_permissions').select('*');
+      // FIX bảo mật: query trước đây thiếu tenant_id ⇒ load TOÀN BỘ permissions
+      // của mọi tenant (rò rỉ + tốn egress). Giờ chỉ lấy permissions của user
+      // thuộc tenant hiện tại.
+      const { data: tenantUsers } = await supabase
+        .from('users').select('id').eq('tenant_id', tenant.id);
+      const userIds = (tenantUsers || []).map(u => u.id);
+      if (userIds.length === 0) { setUserPermissions({}); return; }
+
+      const { data } = await supabase
+        .from('user_permissions').select('*')
+        .in('user_id', userIds);
       const permsObj = {};
       (data || []).forEach(p => {
         if (!permsObj[p.user_id]) permsObj[p.user_id] = {};
@@ -273,7 +284,7 @@ export function AppProvider({ children }) {
       });
       setUserPermissions(permsObj);
     } catch (_e) { /* ignore */ }
-  }, []);
+  }, [tenant]);
 
   // ---- Auth handlers ----
   const handleLogin = useCallback(async (email, inputPassword) => {
@@ -309,7 +320,7 @@ export function AppProvider({ children }) {
         // Auto-migrate to hashed password on successful login
         if (passwordValid) {
           try {
-            const hashed = await bcrypt.hash(inputPassword, 10);
+            const hashed = await bcrypt.hash(inputPassword, 8);
             await supabase
               .from('users')
               .update({ password: hashed, password_hashed: true })
@@ -405,7 +416,7 @@ export function AppProvider({ children }) {
         return false;
       }
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password, 8);
       const { error } = await supabase
         .from('users')
         .insert([{
@@ -528,7 +539,7 @@ export function AppProvider({ children }) {
       }
 
       // Hash and save new password
-      const hashed = await bcrypt.hash(newPassword, 10);
+      const hashed = await bcrypt.hash(newPassword, 8);
       const { error: updateErr } = await supabase
         .from('users')
         .update({ password: hashed, password_hashed: true })

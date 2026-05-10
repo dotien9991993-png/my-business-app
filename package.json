@@ -9,7 +9,13 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "backup": "node scripts/backup-supabase.js",
-    "restore": "node scripts/restore-supabase.js"
+    "restore": "node scripts/restore-supabase.js",
+    "ios:bump:build": "bash scripts/ios-release.sh build",
+    "ios:bump:patch": "bash scripts/ios-release.sh patch",
+    "ios:bump:minor": "bash scripts/ios-release.sh minor",
+    "ios:bump:major": "bash scripts/ios-release.sh major",
+    "ios:release": "npm run ios:bump:build && npm run build && npx cap sync ios && npx cap open ios",
+    "ios:release:patch": "npm run ios:bump:patch && npm run build && npx cap sync ios && npx cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",

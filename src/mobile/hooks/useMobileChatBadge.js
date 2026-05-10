@@ -41,8 +41,8 @@ export function useMobileChatBadge(userId, tenantId) {
 
     loadUnread();
 
-    // Realtime: listen for new messages across all rooms
-    const channel = supabase.channel('mobile-chat-badge')
+    // Realtime: listen for new messages — scope theo user để tránh cross-user broadcast
+    const channel = supabase.channel(`mobile-chat-badge-${userId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -57,7 +57,7 @@ export function useMobileChatBadge(userId, tenantId) {
       .subscribe();
 
     // Also listen for read events (user reads a room)
-    const readChannel = supabase.channel('mobile-chat-badge-read')
+    const readChannel = supabase.channel(`mobile-chat-badge-read-${userId}`)
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',

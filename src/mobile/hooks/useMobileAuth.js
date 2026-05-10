@@ -90,11 +90,11 @@ export function useMobileAuth() {
       valid = await bcrypt.compare(password, user.password);
     } else if (user.password) {
       // Legacy plaintext: timing-safe comparison via bcrypt
-      const legacyHash = await bcrypt.hash(user.password, 10);
+      const legacyHash = await bcrypt.hash(user.password, 8);
       valid = await bcrypt.compare(password, legacyHash);
       // Auto-migrate to bcrypt hash on successful login
       if (valid) {
-        const hashed = await bcrypt.hash(password, 10);
+        const hashed = await bcrypt.hash(password, 8);
         await supabase.from('users').update({ password: hashed, password_hashed: true }).eq('id', user.id);
       }
     }

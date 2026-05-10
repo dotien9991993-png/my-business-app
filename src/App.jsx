@@ -45,6 +45,7 @@ const PublicWarrantyCheck = lazyWithRetry(() => import('./components/shared/Publ
 const PrivacyPolicy = lazyWithRetry(() => import('./components/shared/PrivacyPolicy'));
 const ChatModule = lazyWithRetry(() => import('./modules/chat'));
 const ChatPopupManager = lazyWithRetry(() => import('./components/chat/ChatPopupManager'));
+import ToastContainer from './components/shared/ToastContainer';
 import { isAdmin } from './utils/permissionUtils';
 import { requestNotificationPermission } from './utils/notificationSound';
 
@@ -407,15 +408,26 @@ export default function App() {
   const isMobile = useMobile();
 
   // Mobile → render standalone Mobile Lite App (no desktop providers)
-  if (isMobile) return <MobileApp />;
+  if (isMobile) {
+    return (
+      <>
+        <MobileApp />
+        <ToastContainer />
+      </>
+    );
+  }
 
   return (
-    <AppProvider>
-      <NotificationProvider>
-        <DataProvider>
-          <AppContent />
-        </DataProvider>
-      </NotificationProvider>
-    </AppProvider>
+    <>
+      <AppProvider>
+        <NotificationProvider>
+          <DataProvider>
+            <AppContent />
+          </DataProvider>
+        </NotificationProvider>
+      </AppProvider>
+      {/* Toast container — render alert() và showToast() ở mọi nơi */}
+      <ToastContainer />
+    </>
   );
 }

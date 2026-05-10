@@ -55,36 +55,95 @@ const getMonthRange = (monthStr) => {
   return { from, to, year: y, month: m };
 };
 
-// Tính ngày công từ attendance
-const countWorkingDays = (attendances, employeeId, monthFrom, monthTo) => {
-  const validStatuses = ['present', 'late', 'early_leave'];
-  return (attendances || []).filter((a) => {
-    if (a.employee_id !== employeeId) return false;
-    if (!a.date) return false;
+// Thống kê chấm công đầy đủ — gom theo ngày để không double-count multi-shift
+// Trả về: workDays (1 hoặc 0.5/ngày), totalHours, lateCount, earlyLeaveCount, late/early minutes, overtimeHours
+const SHIFT_START_HM = { h: 8, m: 0 };
+const SHIFT_END_HM = { h: 17, m: 30 };
+const calcAttendanceStats = (attendances, employeeId, monthFrom, monthTo) => {
+  const byDate = {};
+  (attendances || []).forEach((a) => {
+    if (a.employee_id !== employeeId) return;
+    if (!a.date) return;
     const d = a.date.substring(0, 10);
-    return d >= monthFrom && d <= monthTo && validStatuses.includes(a.status);
-  }).length;
-};
+    if (d < monthFrom || d > monthTo) return;
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(a);
+  });
 
-// Tính nửa ngày (half_day counts as 0.5)
-const countHalfDays = (attendances, employeeId, monthFrom, monthTo) => {
-  return (attendances || []).filter((a) => {
-    if (a.employee_id !== employeeId) return false;
-    if (!a.date) return false;
-    const d = a.date.substring(0, 10);
-    return d >= monthFrom && d <= monthTo && a.status === 'half_day';
-  }).length;
-};
+  let workDays = 0;
+  let totalHours = 0;
+  let lateCount = 0;
+  let earlyLeaveCount = 0;
+  let totalLateMinutes = 0;
+  let totalEarlyLeaveMinutes = 0;
+  let overtimeHours = 0;
 
-// Tổng giờ tăng ca
-const sumOvertimeHours = (attendances, employeeId, monthFrom, monthTo) => {
-  return (attendances || []).reduce((sum, a) => {
-    if (a.employee_id !== employeeId) return sum;
-    if (!a.date) return sum;
-    const d = a.date.substring(0, 10);
-    if (d < monthFrom || d > monthTo) return sum;
-    return sum + (parseFloat(a.overtime_hours) || 0);
-  }, 0);
+  Object.values(byDate).forEach((recs) => {
+    recs.sort((a, b) => (a.check_in || '').localeCompare(b.check_in || ''));
+
+    const statuses = recs.map((r) => r.status);
+    if (statuses.some((s) => ['present', 'late', 'early_leave'].includes(s))) {
+      workDays += 1;
+    } else if (statuses.some((s) => s === 'half_day')) {
+      workDays += 0.5;
+    }
+
+    recs.forEach((r) => {
+      if (r.check_in && r.check_out) {
+        try {
+          const diff = (new Date(r.check_out).getTime() - new Date(r.check_in).getTime()) / 3600000;
+          if (diff > 0) totalHours += diff;
+        } catch (_) { /* ignore */ }
+      }
+      overtimeHours += parseFloat(r.overtime_hours) || 0;
+    });
+
+    // Đi muộn: ca đầu trong ngày check_in > shift_start
+    const firstRec = recs[0];
+    if (firstRec?.check_in) {
+      try {
+        const ci = new Date(firstRec.check_in);
+        if (!isNaN(ci)) {
+          const ciMin = ci.getHours() * 60 + ci.getMinutes();
+          const shiftMin = SHIFT_START_HM.h * 60 + SHIFT_START_HM.m;
+          if (ciMin > shiftMin) {
+            lateCount++;
+            totalLateMinutes += ciMin - shiftMin;
+          }
+        }
+      } catch (_) { /* ignore */ }
+    } else if (statuses.includes('late')) {
+      lateCount++;
+    }
+
+    // Về sớm: ca cuối check_out < shift_end
+    const lastRec = recs[recs.length - 1];
+    if (lastRec?.check_out) {
+      try {
+        const co = new Date(lastRec.check_out);
+        if (!isNaN(co)) {
+          const coMin = co.getHours() * 60 + co.getMinutes();
+          const shiftEndMin = SHIFT_END_HM.h * 60 + SHIFT_END_HM.m;
+          if (coMin < shiftEndMin) {
+            earlyLeaveCount++;
+            totalEarlyLeaveMinutes += shiftEndMin - coMin;
+          }
+        }
+      } catch (_) { /* ignore */ }
+    } else if (statuses.includes('early_leave')) {
+      earlyLeaveCount++;
+    }
+  });
+
+  return {
+    workDays,
+    totalHours: Math.round(totalHours * 10) / 10,
+    lateCount,
+    earlyLeaveCount,
+    totalLateMinutes: Math.round(totalLateMinutes),
+    totalEarlyLeaveMinutes: Math.round(totalEarlyLeaveMinutes),
+    overtimeHours: Math.round(overtimeHours * 10) / 10,
+  };
 };
 
 // Lấy KPI rating cho nhân viên trong kỳ
@@ -127,6 +186,7 @@ export default function HrmPayrollView({
   attendances,
   kpiEvaluations,
   tasks: allTasks,
+  technicalJobs,
   allUsers,
   leaveRequests,
   getSettingValue,
@@ -170,6 +230,43 @@ export default function HrmPayrollView({
   const [ratesForm, setRatesForm] = useState(salaryRates);
   const [savingRates, setSavingRates] = useState(false);
   React.useEffect(() => { setRatesForm(salaryRates); }, [salaryRates]);
+
+  // ---- Load payroll snapshot từ DB khi mount/đổi tháng ----
+  React.useEffect(() => {
+    if (!tenant?.id || !selectedMonth) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payrolls')
+          .select('data, status')
+          .eq('tenant_id', tenant.id)
+          .eq('month', selectedMonth)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          console.warn('Load payroll snapshot failed:', error.message);
+          setPayrollData([]);
+          setPayrollStatus('draft');
+          return;
+        }
+        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
+          setPayrollData(data.data);
+          setPayrollStatus(data.status || 'calculated');
+        } else {
+          setPayrollData([]);
+          setPayrollStatus('draft');
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('Load payroll exception:', e);
+          setPayrollData([]);
+          setPayrollStatus('draft');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenant?.id, selectedMonth]);
 
   const saveSalaryRates = async () => {
     setSavingRates(true);
@@ -266,18 +363,30 @@ export default function HrmPayrollView({
         (t.actors || []).forEach(n => addCount(n, 'actor'));
       });
 
+      // Đếm job kỹ thuật hoàn thành trong kỳ — match by technician name
+      // technicalJobs đã được format ở DataContext: status='Hoàn thành', scheduledDate, technicians[]
+      const techByName = {};
+      (technicalJobs || []).forEach(job => {
+        if (job.status !== 'Hoàn thành') return;
+        const d = job.scheduledDate || '';
+        if (!d || d < monthFrom || d >= monthTo) return;
+        const techs = (job.technicians || []).filter(Boolean);
+        techs.forEach(name => {
+          if (!techByName[name]) techByName[name] = 0;
+          techByName[name] += 1;
+        });
+      });
+
       const rows = activeEmployees.map((emp) => {
         const baseSalary = parseFloat(emp.base_salary) || 0;
         const dailyRate = baseSalary / config.workingDaysPerMonth;
         const hourlyRate = dailyRate / config.hoursPerDay;
 
-        // Ngày công
-        const fullDays = countWorkingDays(attendances, emp.id, monthFrom, monthTo);
-        const halfDays = countHalfDays(attendances, emp.id, monthFrom, monthTo);
-        const workingDays = fullDays + halfDays * 0.5;
-
-        // Tăng ca
-        const overtimeHours = sumOvertimeHours(attendances, emp.id, monthFrom, monthTo);
+        // Chấm công — gom theo ngày để tránh double-count khi multi-shift
+        const attStats = calcAttendanceStats(attendances, emp.id, monthFrom, monthTo);
+        const workingDays = attStats.workDays;
+        const overtimeHours = attStats.overtimeHours;
+        const standardHours = Math.round(workingDays * config.hoursPerDay * 10) / 10;
 
         // KPI
         const kpiRating = getKpiRating(kpiEvaluations, emp.id, monthYear, monthNum);
@@ -295,6 +404,11 @@ export default function HrmPayrollView({
         const moneyActorPay = media.actor * (salaryRates.rate_actor || 0);
         const mediaPay = moneyContent + moneyFilm + moneyEdit + moneyActorPay;
 
+        // Tech jobs trong kỳ
+        const techJobsCount = techByName[userName] || 0;
+        const techJobRate = salaryRates.rate_tech_job || 0;
+        const techJobsPay = techJobsCount * techJobRate;
+
         // Tính lương
         const basicPay = dailyRate * workingDays;
         const overtimePay = (salaryRates.rate_overtime > 0)
@@ -304,7 +418,7 @@ export default function HrmPayrollView({
         const socialInsurance = baseSalary * config.socialInsuranceRate;
         const extraDeduction = 0; // Khấu trừ thêm (admin chỉnh)
         const totalDeduction = socialInsurance + extraDeduction;
-        const netPay = basicPay + overtimePay + mediaPay + kpiBonus + allowances - totalDeduction;
+        const netPay = basicPay + overtimePay + mediaPay + techJobsPay + kpiBonus + allowances - totalDeduction;
 
         return {
           employee_id: emp.id,
@@ -334,11 +448,48 @@ export default function HrmPayrollView({
           media_cam: media.cam,
           media_edit: media.edit,
           media_actor: media.actor,
+          tech_jobs_count: techJobsCount,
+          tech_jobs_pay: techJobsPay,
+          tech_jobs_rate: techJobRate,
+          total_hours: attStats.totalHours,
+          standard_hours: standardHours,
+          late_count: attStats.lateCount,
+          early_leave_count: attStats.earlyLeaveCount,
+          total_late_minutes: attStats.totalLateMinutes,
+          total_early_leave_minutes: attStats.totalEarlyLeaveMinutes,
         };
       });
 
       setPayrollData(rows);
       setPayrollStatus('calculated');
+
+      // Persist payroll snapshot vào `payrolls` để reload trang vẫn còn
+      try {
+        const { data: existingPr } = await supabase
+          .from('payrolls')
+          .select('id, status')
+          .eq('tenant_id', tenant.id)
+          .eq('month', selectedMonth)
+          .maybeSingle();
+        // Không ghi đè nếu đã approved/paid
+        if (!existingPr || existingPr.status === 'draft' || existingPr.status === 'calculated') {
+          const snapshot = {
+            tenant_id: tenant.id,
+            month: selectedMonth,
+            status: 'calculated',
+            total_net_pay: Math.round(rows.reduce((s, r) => s + (r.net_pay || 0), 0)),
+            total_employees: rows.length,
+            data: rows,
+            created_by: currentUser?.id || null,
+          };
+          const { error: prErr } = await supabase
+            .from('payrolls')
+            .upsert(snapshot, { onConflict: 'tenant_id,month' });
+          if (prErr) console.warn('Lưu payroll snapshot thất bại:', prErr.message);
+        }
+      } catch (e) {
+        console.warn('Persist payrolls failed:', e);
+      }
 
       // Auto-sync to `salaries` table — để mobile + MySalaryView đọc được
       try {
@@ -368,7 +519,9 @@ export default function HrmPayrollView({
             media_videos: (row.media_cam || 0) + (row.media_edit || 0),
             media_actor_count: row.media_actor || 0,
             media_total: Math.round(row.media_pay || 0),
-            kythuat_jobs: 0,
+            kythuat_jobs: row.tech_jobs_count || 0,
+            kythuat_per_job: Math.round(row.tech_jobs_rate || 0),
+            kythuat_total: Math.round(row.tech_jobs_pay || 0),
             bonus: row.kpi_bonus || 0,
             deduction: Math.round(row.total_deduction || 0),
             total_salary: Math.round(row.net_pay || 0),
@@ -385,6 +538,15 @@ export default function HrmPayrollView({
               media_pay_edit: Math.round(row.media_pay_edit || 0),
               media_pay_actor: Math.round(row.media_pay_actor || 0),
               media_pay_total: Math.round(row.media_pay || 0),
+              tech_jobs_count: row.tech_jobs_count || 0,
+              tech_jobs_pay: Math.round(row.tech_jobs_pay || 0),
+              tech_jobs_rate: Math.round(row.tech_jobs_rate || 0),
+              total_hours: row.total_hours || 0,
+              standard_hours: row.standard_hours || 0,
+              late_count: row.late_count || 0,
+              early_leave_count: row.early_leave_count || 0,
+              total_late_minutes: row.total_late_minutes || 0,
+              total_early_leave_minutes: row.total_early_leave_minutes || 0,
               work_days_actual: row.working_days || 0,
               work_days_standard: DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth,
               overtime_hours: row.overtime_hours || 0,
@@ -436,7 +598,7 @@ export default function HrmPayrollView({
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, activeEmployees, attendances, kpiEvaluations, allTasks, allUsers, salaryRates, monthFrom, monthTo, monthYear, monthNum, selectedMonth, tenant, currentUser]);
+  }, [isAdmin, activeEmployees, attendances, kpiEvaluations, allTasks, technicalJobs, allUsers, salaryRates, monthFrom, monthTo, monthYear, monthNum, selectedMonth, tenant, currentUser]);
 
   // ---- Recalculate single row ----
   const recalcRow = (row) => {
@@ -452,7 +614,7 @@ export default function HrmPayrollView({
     const socialInsurance = row.base_salary * config.socialInsuranceRate;
     const totalDeduction = socialInsurance + (parseFloat(row.extra_deduction) || 0);
     const netPay =
-      basicPay + overtimePay + row.kpi_bonus + totalAllowances - totalDeduction;
+      basicPay + overtimePay + (row.media_pay || 0) + (row.tech_jobs_pay || 0) + row.kpi_bonus + totalAllowances - totalDeduction;
 
     return {
       ...row,
@@ -649,6 +811,8 @@ export default function HrmPayrollView({
         'Diễn (SL)': row.media_actor || 0,
         'Diễn (Tiền)': Math.round(row.media_pay_actor || 0),
         'Tổng Media': Math.round(row.media_pay || 0),
+        'Job KT (SL)': row.tech_jobs_count || 0,
+        'Job KT (Tiền)': Math.round(row.tech_jobs_pay || 0),
         'Tăng ca (h)': row.overtime_hours || 0,
         'Tiền TC': Math.round(row.overtime_pay || 0),
         'KPI': row.kpi_rating || '—',
@@ -660,7 +824,7 @@ export default function HrmPayrollView({
 
       // Dòng tổng cộng
       const totalRow = { 'STT': '', 'Mã NV': '', 'Họ tên': 'TỔNG CỘNG', 'Phòng ban': '', 'Chức vụ': '' };
-      ['Lương CB', 'Lương thực', 'Content (Tiền)', 'Quay (Tiền)', 'Dựng (Tiền)', 'Diễn (Tiền)', 'Tổng Media', 'Tiền TC', 'Thưởng KPI', 'Phụ cấp', 'Khấu trừ', 'Thực nhận'].forEach(key => {
+      ['Lương CB', 'Lương thực', 'Content (Tiền)', 'Quay (Tiền)', 'Dựng (Tiền)', 'Diễn (Tiền)', 'Tổng Media', 'Job KT (Tiền)', 'Tiền TC', 'Thưởng KPI', 'Phụ cấp', 'Khấu trừ', 'Thực nhận'].forEach(key => {
         totalRow[key] = salaryRows.reduce((s, r) => s + (r[key] || 0), 0);
       });
       salaryRows.push(totalRow);
@@ -669,7 +833,7 @@ export default function HrmPayrollView({
       ws1['!cols'] = [
         { wch: 4 }, { wch: 8 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 12 },
         { wch: 6 }, { wch: 12 }, { wch: 6 }, { wch: 12 }, { wch: 6 }, { wch: 12 }, { wch: 6 }, { wch: 12 },
-        { wch: 12 }, { wch: 6 }, { wch: 10 }, { wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 },
+        { wch: 12 }, { wch: 7 }, { wch: 12 }, { wch: 6 }, { wch: 10 }, { wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 },
       ];
       XLSX.utils.book_append_sheet(wb, ws1, 'Bảng lương');
 
@@ -909,6 +1073,9 @@ export default function HrmPayrollView({
         totalDeduction: 0,
         totalNetPay: 0,
         totalOvertimeHours: 0,
+        totalMediaPay: 0,
+        totalTechJobsCount: 0,
+        totalTechJobsPay: 0,
         avgNetPay: 0,
         count: 0,
       };
@@ -921,6 +1088,9 @@ export default function HrmPayrollView({
     const totalDeduction = payrollData.reduce((s, r) => s + r.total_deduction, 0);
     const totalNetPay = payrollData.reduce((s, r) => s + r.net_pay, 0);
     const totalOvertimeHours = payrollData.reduce((s, r) => s + r.overtime_hours, 0);
+    const totalMediaPay = payrollData.reduce((s, r) => s + (r.media_pay || 0), 0);
+    const totalTechJobsCount = payrollData.reduce((s, r) => s + (r.tech_jobs_count || 0), 0);
+    const totalTechJobsPay = payrollData.reduce((s, r) => s + (r.tech_jobs_pay || 0), 0);
 
     // Status counts (toàn bộ bảng dùng cùng 1 status)
     const total = payrollData.length;
@@ -939,6 +1109,9 @@ export default function HrmPayrollView({
       totalDeduction,
       totalNetPay,
       totalOvertimeHours,
+      totalMediaPay,
+      totalTechJobsCount,
+      totalTechJobsPay,
       avgNetPay: totalNetPay / payrollData.length,
       count: payrollData.length,
       approvedCount,
@@ -1083,6 +1256,46 @@ export default function HrmPayrollView({
               </div>
             </div>
 
+            {/* Chấm công */}
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1.5 text-sm">
+              <h4 className="font-semibold text-gray-700 mb-1">Chấm công</h4>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Ngày công</span>
+                <span className="font-medium">{row.working_days}/{DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth} ngày</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Tổng giờ làm</span>
+                <span className="font-medium">{(row.total_hours || 0)}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Giờ chuẩn</span>
+                <span className="text-gray-500">{(row.standard_hours || 0)}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Chênh lệch</span>
+                <span className={`font-medium ${(row.total_hours || 0) >= (row.standard_hours || 0) ? 'text-green-600' : 'text-red-600'}`}>
+                  {(row.total_hours || 0) >= (row.standard_hours || 0) ? '+' : ''}
+                  {(((row.total_hours || 0) - (row.standard_hours || 0))).toFixed(1)}h
+                </span>
+              </div>
+              {(row.late_count > 0) && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Đi muộn</span>
+                  <span className="text-amber-600 font-medium">
+                    {row.late_count} lần{row.total_late_minutes ? ` (${row.total_late_minutes} phút)` : ''}
+                  </span>
+                </div>
+              )}
+              {(row.early_leave_count > 0) && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Về sớm</span>
+                  <span className="text-orange-600 font-medium">
+                    {row.early_leave_count} lần{row.total_early_leave_minutes ? ` (${row.total_early_leave_minutes} phút)` : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+
             {/* Chi tiết tính lương */}
             <div className="space-y-2 text-sm">
               <h4 className="font-semibold text-gray-700 border-b pb-1">Thu nhập</h4>
@@ -1142,6 +1355,24 @@ export default function HrmPayrollView({
                   <div className="flex justify-between text-sm py-1 border-t border-gray-200 mt-1 pt-2">
                     <span className="font-medium text-gray-700">Tổng Media</span>
                     <span className="text-blue-700 font-medium">{(row.media_pay || 0).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                </>
+              )}
+
+              {/* Section Kỹ thuật */}
+              {(row.tech_jobs_count > 0) && (
+                <>
+                  <div className="font-medium text-sm text-gray-700 mt-3 mb-1">Kỹ thuật</div>
+                  <div className="flex justify-between text-sm py-1">
+                    <span className="text-gray-600">🔧 Job kỹ thuật × {row.tech_jobs_count}</span>
+                    <span className="text-amber-700 font-medium">{(row.tech_jobs_pay || 0).toLocaleString('vi-VN')}đ</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 pl-4">
+                    <span>Đơn giá: {(row.tech_jobs_rate || 0).toLocaleString('vi-VN')}đ/job</span>
+                  </div>
+                  <div className="flex justify-between text-sm py-1 border-t border-gray-200 mt-1 pt-2">
+                    <span className="font-medium text-gray-700">Tổng Kỹ thuật</span>
+                    <span className="text-amber-700 font-medium">{(row.tech_jobs_pay || 0).toLocaleString('vi-VN')}đ</span>
                   </div>
                 </>
               )}
@@ -1640,12 +1871,21 @@ export default function HrmPayrollView({
                       {fmt(row.base_salary)}
                     </td>
                     <td className="px-3 py-2.5 text-center text-xs">
-                      <span
-                        className={`font-medium ${row.working_days >= DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth ? 'text-green-700' : 'text-orange-600'}`}
-                      >
-                        {row.working_days}
-                      </span>
-                      <span className="text-gray-400">/{DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth}</span>
+                      <div className="font-medium">
+                        <span className={row.working_days >= DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth ? 'text-green-700' : 'text-orange-600'}>
+                          {row.working_days}
+                        </span>
+                        <span className="text-gray-400">/{DEFAULT_PAYROLL_CONFIG.workingDaysPerMonth}</span>
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        {(row.total_hours || 0)}h<span className="text-gray-400">/{(row.standard_hours || 0)}h</span>
+                      </div>
+                      {(row.late_count > 0) && (
+                        <div className="text-[10px] text-amber-600">Muộn: {row.late_count}</div>
+                      )}
+                      {(row.early_leave_count > 0) && (
+                        <div className="text-[10px] text-orange-600">Sớm: {row.early_leave_count}</div>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-center text-xs text-gray-700">
                       {row.overtime_hours > 0 ? (
@@ -1655,12 +1895,13 @@ export default function HrmPayrollView({
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-center">
-                      {(row.media_content || row.media_cam || row.media_edit || row.media_actor) ? (
+                      {(row.media_content || row.media_cam || row.media_edit || row.media_actor || row.tech_jobs_count) ? (
                         <div className="text-[10px] text-gray-500 flex flex-wrap gap-x-1 justify-center">
                           {row.media_content > 0 && <span title="Content">📝{row.media_content}</span>}
                           {row.media_cam > 0 && <span title="Quay">🎥{row.media_cam}</span>}
                           {row.media_edit > 0 && <span title="Dựng">✂️{row.media_edit}</span>}
                           {row.media_actor > 0 && <span title="Diễn">🎭{row.media_actor}</span>}
+                          {row.tech_jobs_count > 0 && <span title="Job kỹ thuật" className="text-amber-700">🔧{row.tech_jobs_count}</span>}
                         </div>
                       ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
