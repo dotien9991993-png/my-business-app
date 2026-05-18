@@ -306,7 +306,7 @@ export default function PurchaseOrderView({
         if (qty <= 0) continue;
         const product = item.product;
         if (!product) continue;
-        const oldQty = Math.max(0, (product.stock || 0));
+        const oldQty = Math.max(0, (product.stock_quantity || 0)); // FIX: schema dùng stock_quantity, không phải stock
         const oldAvgCost = parseFloat(product.avg_cost) || 0;
         const newAvgCost = calculateWAC(oldQty, oldAvgCost, qty, price);
         await supabase.from('products').update({ avg_cost: Math.round(newAvgCost) }).eq('id', item.product_id);

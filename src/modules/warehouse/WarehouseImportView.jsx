@@ -102,10 +102,13 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
   };
 
-  const generateTransactionNumber = () => {
-    const dateStr = getDateStrVN();
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `PN-${dateStr}-${random}`;
+  // FIX P0-3: Trước dùng Math.random → có thể trùng. Giờ gọi RPC atomic.
+  const generateTransactionNumber = async () => {
+    const { data, error } = await supabase.rpc('gen_stock_tx_number', {
+      p_tenant: tenant.id, p_type: 'import',
+    });
+    if (error) throw new Error('Không sinh được mã phiếu nhập: ' + error.message);
+    return data;
   };
 
   const addItem = () => {
@@ -188,7 +191,8 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
         const product = products.find(p => p.id === productId);
         if (!product) continue;
 
-        const oldQty = Math.max(0, (product.stock || 0) - totalQty); // stock before this import
+        // FIX: schema không có cột 'stock', đúng là 'stock_quantity' → WAC trước đây tính sai
+        const oldQty = Math.max(0, (product.stock_quantity || 0) - totalQty); // stock before this import
         const oldAvgCost = parseFloat(product.avg_cost) || 0;
         const newAvgCost = calculateWAC(oldQty, oldAvgCost, totalQty, avgImportPrice);
 
@@ -242,7 +246,7 @@ export default function WarehouseImportView({ products, warehouses, stockTransac
     }
 
     try {
-      const transactionNumber = generateTransactionNumber();
+      const transactionNumber = await generateTransactionNumber();
       const autoApprove = canAutoApprove;
 
       // Create transaction with warehouse_id and approval_status

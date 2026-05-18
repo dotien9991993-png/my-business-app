@@ -88,10 +88,13 @@ export default function WarehouseExportView({ products, warehouses, warehouseSto
     if (defaultWh) setSelectedWarehouseId(defaultWh.id);
   };
 
-  const generateTransactionNumber = () => {
-    const dateStr = getDateStrVN();
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `PX-${dateStr}-${random}`;
+  // FIX P0-3: Trước dùng Math.random → có thể trùng. Giờ gọi RPC atomic.
+  const generateTransactionNumber = async () => {
+    const { data, error } = await supabase.rpc('gen_stock_tx_number', {
+      p_tenant: tenant.id, p_type: 'export',
+    });
+    if (error) throw new Error('Không sinh được mã phiếu xuất: ' + error.message);
+    return data;
   };
 
   const addItem = () => {
@@ -148,7 +151,7 @@ export default function WarehouseExportView({ products, warehouses, warehouseSto
     }
 
     try {
-      const transactionNumber = generateTransactionNumber();
+      const transactionNumber = await generateTransactionNumber();
       const autoApprove = canAutoApprove;
 
       // Create transaction with warehouse_id and approval_status

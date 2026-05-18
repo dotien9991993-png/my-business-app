@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
-import { getDateStrVN } from '../../utils/dateUtils';
 import { logActivity } from '../../lib/activityLog';
 
 export default function WarehouseStocktakeView({
@@ -160,10 +159,11 @@ export default function WarehouseStocktakeView({
   }, [showDetailModal, selectedStocktake?.status]);
 
   // ── Helpers ────────────────────────────────────
-  const genStocktakeCode = () => {
-    const dateStr = getDateStrVN();
-    const rand = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-    return `KK-${dateStr}-${rand}`;
+  // FIX P0-3: Trước dùng Math.random → có thể trùng. Giờ gọi RPC atomic.
+  const genStocktakeCode = async () => {
+    const { data, error } = await supabase.rpc('gen_stocktake_code', { p_tenant: tenant.id });
+    if (error) throw new Error('Không sinh được mã phiếu kiểm kê: ' + error.message);
+    return data;
   };
 
   const formatDate = (dateStr) => {
@@ -235,7 +235,7 @@ export default function WarehouseStocktakeView({
 
     setCreating(true);
     try {
-      const code = genStocktakeCode();
+      const code = await genStocktakeCode();
       const { data: newSt, error: stErr } = await supabase
         .from('stocktakes')
         .insert({

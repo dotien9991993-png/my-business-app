@@ -321,22 +321,22 @@ export default function SalesOrdersView({ tenant, currentUser, orders, customers
   const _isVTP = shippingProvider === 'Viettel Post' && !!vtpToken;
 
   // ---- Helpers: unique number generators ----
+  // FIX P0-3: Trước đây sinh số ở client với MAX+1 → race condition trùng số.
+  // Giờ gọi RPC atomic gen_order_number / gen_receipt_number ở DB.
   const genOrderNumber = async () => {
-    const dateStr = getDateStrVN();
-    const prefix = `DH-${dateStr}-`;
-    const { data } = await supabase.from('orders').select('order_number')
-      .like('order_number', `${prefix}%`).order('order_number', { ascending: false }).limit(1);
-    const lastNum = data?.[0] ? parseInt(data[0].order_number.slice(-3)) || 0 : 0;
-    return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
+    const { data, error } = await supabase.rpc('gen_order_number', { p_tenant: tenant.id });
+    if (error) throw new Error('Không sinh được mã đơn: ' + error.message);
+    return data;
   };
 
   const genReceiptNumber = async (type) => {
-    const dateStr = getDateStrVN();
-    const prefix = `${type === 'thu' ? 'PT' : 'PC'}-${dateStr}-`;
-    const { data } = await supabase.from('receipts_payments').select('receipt_number')
-      .like('receipt_number', `${prefix}%`).order('receipt_number', { ascending: false }).limit(1);
-    const lastNum = data?.[0] ? parseInt(data[0].receipt_number.slice(-3)) || 0 : 0;
-    return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
+    // type không còn dùng vì DB tự sinh PT-YYYYMMDD-001
+    // Nếu cần phân biệt PT (thu) vs PC (chi), tạm dùng RPC chung (PT) cho cả 2
+    const { data, error } = await supabase.rpc('gen_receipt_number', { p_tenant: tenant.id });
+    if (error) throw new Error('Không sinh được mã phiếu: ' + error.message);
+    // Đổi prefix PT → PC nếu là chi
+    if (type === 'chi' && data.startsWith('PT-')) return 'PC-' + data.slice(3);
+    return data;
   };
 
   const resetForm = () => {

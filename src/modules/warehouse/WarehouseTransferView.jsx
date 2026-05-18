@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
-import { getDateStrVN } from '../../utils/dateUtils';
 import { logActivity } from '../../lib/activityLog';
 
 export default function WarehouseTransferView({
@@ -30,10 +29,11 @@ export default function WarehouseTransferView({
   const [actionLoading, setActionLoading] = useState(false);
 
   // --- Helpers ---
-  const genTransferCode = () => {
-    const dateStr = getDateStrVN();
-    const rand = String(Math.floor(Math.random() * 900) + 100);
-    return `CK-${dateStr}-${rand}`;
+  // FIX P0-3: Trước dùng Math.random → có thể trùng. Giờ gọi RPC atomic.
+  const genTransferCode = async () => {
+    const { data, error } = await supabase.rpc('gen_transfer_code', { p_tenant: tenant.id });
+    if (error) throw new Error('Không sinh được mã phiếu chuyển kho: ' + error.message);
+    return data;
   };
 
   const getWarehouseQty = (productId, warehouseId) => {
@@ -154,7 +154,7 @@ export default function WarehouseTransferView({
 
     setSaving(true);
     try {
-      const transferCode = genTransferCode();
+      const transferCode = await genTransferCode();
       const { data: transfer, error: tErr } = await supabase
         .from('warehouse_transfers')
         .insert({

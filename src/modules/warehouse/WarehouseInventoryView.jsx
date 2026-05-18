@@ -227,8 +227,18 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     return list.slice(0, 10);
   }, [products, formComboItems, comboChildSearch]);
 
-  const generateSku = () => 'SP' + Date.now().toString().slice(-6);
-  const generateBarcode = () => 'HNA' + Date.now().toString().slice(-8).toUpperCase();
+  // FIX P0-3: Trước dùng Date.now() → 2 user thêm SP cùng ms cuối → trùng SKU.
+  // Giờ gọi RPC atomic gen_sku để sinh số tăng dần per-tenant.
+  const generateSku = async () => {
+    const { data, error } = await supabase.rpc('gen_sku', { p_tenant: tenant.id });
+    if (error) {
+      // Fallback nếu RPC lỗi (vẫn dùng Date.now nhưng có warning)
+      console.error('gen_sku error:', error);
+      return 'SP' + Date.now().toString().slice(-6);
+    }
+    return data;
+  };
+  const generateBarcode = () => 'HNA' + Date.now().toString(36).toUpperCase().slice(-10);
 
   // Avg cost helper: use avg_cost if set, fallback to import_price
   const avgCost = (p) => (p.avg_cost > 0 ? p.avg_cost : (p.import_price || 0));
@@ -283,8 +293,10 @@ export default function WarehouseInventoryView({ products, warehouses, warehouse
     if (formIsCombo && formComboItems.length === 0) { alert('Vui lòng thêm ít nhất 1 sản phẩm con cho combo!'); return; }
     if (formHasVariants && formVariants.length === 0) { alert('Vui lòng tạo ít nhất 1 biến thể!'); return; }
     try {
+      // Sinh SKU atomic nếu user không nhập tay (chống trùng)
+      const finalSku = formSku || await generateSku();
       const { data: newProd, error } = await supabase.from('products').insert([{
-        tenant_id: tenant.id, sku: formSku || generateSku(), barcode: formBarcode || generateBarcode(),
+        tenant_id: tenant.id, sku: finalSku, barcode: formBarcode || generateBarcode(),
         name: formName, category: formCategory, unit: formUnit,
         import_price: parseFloat(formImportPrice) || 0, sell_price: parseFloat(formSellPrice) || 0,
         stock_quantity: 0, min_stock: parseInt(formMinStock) || 5,

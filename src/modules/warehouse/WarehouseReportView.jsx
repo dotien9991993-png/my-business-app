@@ -107,8 +107,8 @@ export default function WarehouseReportView({ products, stockTransactions, wareh
         const pid = product.id;
         const stats = grouped[pid] || { nhap: 0, xuat: 0, nhap_value: 0, xuat_value: 0 };
 
-        // Current stock
-        let ton_cuoi = product.stock || 0;
+        // Current stock — FIX: schema dùng stock_quantity, không phải stock
+        let ton_cuoi = product.stock_quantity || 0;
         if (filterWarehouse && warehouseStock) {
           const ws = warehouseStock.find(w => w.product_id === pid && w.warehouse_id === filterWarehouse);
           ton_cuoi = ws ? (ws.quantity || 0) : 0;
