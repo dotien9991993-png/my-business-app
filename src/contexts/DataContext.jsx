@@ -457,51 +457,70 @@ export function DataProvider({ children }) {
     const tid = tenant.id;
     const tFilter = `tenant_id=eq.${tid}`;
 
+    // 🔻 Giảm egress: gộp (debounce) các realtime event dồn dập trong 1.5s thành 1 lần reload.
+    // Trước đây mỗi event (kể cả 1 thao tác sinh nhiều event) đều reload cả module ngay → ngốn egress.
+    // Các table cùng 1 module dùng chung 1 "key" nên chỉ reload module đó đúng 1 lần cho cả cụm event.
+    const _rtTimers = {};
+    const debounceReload = (key, fn, wait = 1500) => () => {
+      clearTimeout(_rtTimers[key]);
+      _rtTimers[key] = setTimeout(fn, wait);
+    };
+    const rTasks = debounceReload('tasks', loadTasks);
+    const rJobs = debounceReload('jobs', loadTechnicalJobs);
+    const rFinance = debounceReload('finance', loadFinanceData);
+    const rWarehouse = debounceReload('warehouse', loadWarehouseData);
+    const rSales = debounceReload('sales', loadSalesData);
+    const rSettings = debounceReload('settings', loadSettingsData);
+    const rWarranty = debounceReload('warranty', loadWarrantyData);
+    const rHrm = debounceReload('hrm', loadHrmData);
+
     const tasksChannel = supabase.channel(`tasks-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: tFilter }, () => loadTasks()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: tFilter }, rTasks).subscribe();
     const jobsChannel = supabase.channel(`jobs-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'technical_jobs', filter: tFilter }, () => loadTechnicalJobs()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'technical_jobs', filter: tFilter }, rJobs).subscribe();
     const financeChannel = supabase.channel(`finance-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts_payments', filter: tFilter }, () => loadFinanceData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts', filter: tFilter }, () => loadFinanceData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipts_payments', filter: tFilter }, rFinance)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts', filter: tFilter }, rFinance).subscribe();
     const warehouseChannel = supabase.channel(`warehouse-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_transactions', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouses', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_stock' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_combo_items', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stocktakes', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_transfers', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_order_items' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_payments', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_returns', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_return_items' }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_receipts', filter: tFilter }, () => loadWarehouseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_receipt_items' }, () => loadWarehouseData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_transactions', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouses', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_stock' }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_combo_items', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stocktakes', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warehouse_transfers', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_order_items' }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_payments', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_returns', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_return_items' }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_receipts', filter: tFilter }, rWarehouse)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_receipt_items' }, rWarehouse).subscribe();
     const salesChannel = supabase.channel(`sales-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: tFilter }, () => loadSalesData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: tFilter }, () => loadSalesData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_addresses', filter: tFilter }, () => loadSalesData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: tFilter }, rSales)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers', filter: tFilter }, rSales)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_addresses', filter: tFilter }, rSales).subscribe();
     const settingsChannel = supabase.channel(`settings-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings', filter: tFilter }, () => loadSettingsData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_configs', filter: tFilter }, () => loadSettingsData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings', filter: tFilter }, rSettings)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shipping_configs', filter: tFilter }, rSettings).subscribe();
     const warrantyChannel = supabase.channel(`warranty-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_serials', filter: tFilter }, () => loadWarrantyData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_cards', filter: tFilter }, () => loadWarrantyData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_repairs', filter: tFilter }, () => loadWarrantyData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_requests', filter: tFilter }, () => loadWarrantyData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_serials', filter: tFilter }, rWarranty)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_cards', filter: tFilter }, rWarranty)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_repairs', filter: tFilter }, rWarranty)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'warranty_requests', filter: tFilter }, rWarranty).subscribe();
     const hrmChannel = supabase.channel(`hrm-changes-${tid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: tFilter }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments', filter: tFilter }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'positions', filter: tFilter }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_shifts', filter: tFilter }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'hrm_attendances', filter: tFilter }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests', filter: tFilter }, () => loadHrmData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_evaluations', filter: tFilter }, () => loadHrmData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees', filter: tFilter }, rHrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments', filter: tFilter }, rHrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'positions', filter: tFilter }, rHrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_shifts', filter: tFilter }, rHrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hrm_attendances', filter: tFilter }, rHrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests', filter: tFilter }, rHrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_evaluations', filter: tFilter }, rHrm).subscribe();
 
     return () => {
+      // Dọn các timer debounce còn treo để tránh reload sau khi unmount
+      Object.values(_rtTimers).forEach(clearTimeout);
       supabase.removeChannel(tasksChannel); supabase.removeChannel(jobsChannel);
       supabase.removeChannel(financeChannel); supabase.removeChannel(warehouseChannel);
       supabase.removeChannel(salesChannel); supabase.removeChannel(settingsChannel);

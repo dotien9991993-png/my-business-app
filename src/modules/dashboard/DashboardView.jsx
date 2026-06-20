@@ -93,9 +93,12 @@ export default function DashboardView() {
   const admin = isAdmin(currentUser);
   const canViewProfit = admin || (currentUser?.permissions?.dashboard || 0) >= 3;
 
-  // Auto-refresh every 5 minutes
+  // Auto-refresh mỗi 15 phút, và CHỈ khi tab đang hiển thị (tiết kiệm egress).
+  // Trước: 5 phút/lần kể cả khi tab ẩn → mở dashboard cả ngày = tải lại toàn bộ ~96 lần/ngày.
   useEffect(() => {
-    const interval = setInterval(() => refreshAllData(), 5 * 60 * 1000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshAllData();
+    }, 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, [refreshAllData]);
 
